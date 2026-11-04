@@ -188,6 +188,65 @@ class BillingDueDateTest extends TestCase
     }
 
     #[Test]
+    public function tanggal_akhir_pemakaian_tetap_di_bulan_pemakaian(): void
+    {
+        // `recorded_at` = akhir periode pemakaian, jadi TIDAK ikut bergeser
+        // ke bulan tagihan seperti `due_date`.
+        $akhir = BillingDueDate::inUsageMonth(2026, 6, 26);
+
+        $this->assertSame('2026-06-26', $akhir->toDateString());
+        $this->assertSame('00:00:00', $akhir->format('H:i:s'), 'Nilai ini murni tanggal, bukan jam pencatatan.');
+
+        // Pasangan di bulan tagihan: satu bulan setelahnya, tanggal sama.
+        $this->assertSame(
+            '2026-07-26',
+            BillingDueDate::inBillingMonth(2026, 6, 26)->toDateString(),
+            'Jatuh tempo tetap satu bulan setelah akhir periode.'
+        );
+    }
+
+    #[Test]
+    public function tanggal_akhir_pemakaian_dijepit_ke_hari_terakhir_bulan_pemakaian(): void
+    {
+        $this->assertSame(
+            '2026-02-28',
+            BillingDueDate::inUsageMonth(2026, 2, 31)->toDateString(),
+            'Batas 31 di Februari harus dijepit ke 28.'
+        );
+
+        $this->assertSame(
+            '2028-02-29',
+            BillingDueDate::inUsageMonth(2028, 2, 31)->toDateString(),
+            'Tahun kabisat: Februari punya 29 hari.'
+        );
+
+        $this->assertSame(
+            '2026-11-30',
+            BillingDueDate::inUsageMonth(2026, 11, 31)->toDateString(),
+            'November hanya punya 30 hari.'
+        );
+    }
+
+    #[Test]
+    public function tanggal_akhir_pemakaian_tidak_mundur_ke_bulan_sebelumnya(): void
+    {
+        // `Carbon::setDay(0)` berarti hari TERAKHIR bulan sebelumnya. Angka 0
+        // muncul kalau SOP belum diisi, jadi harus dijepit ke tanggal 1 --
+        // bukan menggeser `recorded_at` satu bulan ke belakang.
+        $this->assertSame(
+            '2026-06-01',
+            BillingDueDate::inUsageMonth(2026, 6, 0)->toDateString(),
+            'Tanggal 0 harus dijepit ke tanggal 1 bulan pemakaian.'
+        );
+
+        $this->assertSame(
+            '2026-06-01',
+            BillingDueDate::inUsageMonth(2026, 6, -5)->toDateString(),
+            'Tanggal negatif juga dijepit ke tanggal 1 bulan pemakaian.'
+        );
+    }
+
+    #[Test]
     public function semua_pemakai_berisi_satu_rumus_yang_sama(): void
     {
         // Dua service yang berbeda (generator massal & per pelanggan) harus

@@ -1381,6 +1381,24 @@ class MonthlyBillController extends Controller
         $year = (int) $request->year;
         $meterValue = (int) $request->meter_value;
 
+        // Tanggal akhir periode pemakaian, dipakai kalau periode ini belum
+        // punya `MeterReading` dan harus dibuat di dalam transaksi di bawah.
+        //
+        // Harus SAMA dengan `MeterReadingController::store`: `recorded_at`
+        // adalah tanggal akhir periode pemakaian (hari `batas_tagihan` di
+        // bulan pemakaian), bukan tanggal hari ini. Dulu cabang ini memakai
+        // `now()`, sehingga mengedit pemakaian periode lama lewat halaman
+        // "Data Pemakaian" menyimpan `recorded_at` hari ini -- dan frontend
+        // menampilkannya sebagai "TANGGAL AKHIR" yang sama sekali bukan akhir
+        // periode itu.
+        //
+        // Rumusnya satu tempat: `BillingDueDate::inUsageMonth()`.
+        $batasTagihan = app(BillingTolerance::class)->tanggal();
+
+        if ($batasTagihan === 0) {
+            $batasTagihan = BillingDueDate::DEFAULT_BATAS_TAGIHAN;
+        }
+
         $customer = Customer::with(['ticket.package', 'ticket.user', 'user'])
             ->findOrFail($request->customer_id);
 
@@ -1448,7 +1466,7 @@ class MonthlyBillController extends Controller
 
         // 3. Terapkan perubahan meter + hitung ulang tagihan.
         try {
-            $result = DB::transaction(function () use ($customer, $year, $month, $meterValue) {
+            $result = DB::transaction(function () use ($customer, $year, $month, $meterValue, $batasTagihan) {
                 $reading = MeterReading::where('customer_id', $customer->id)
                     ->where('reading_year', $year)
                     ->where('reading_month', $month)
@@ -1460,6 +1478,10 @@ class MonthlyBillController extends Controller
                     // Meter belum pernah dicatat untuk periode ini, tapi
                     // tagihannya sudah ada (mis. generate tagihan duluan).
                     // Catat saja supaya angka pemakaian dan tagihan sinkron.
+                    //
+                    // Tanggalnya memakai akhir periode yang sedang diedit
+                    // (`batas_tagihan` di bulan pemakaian), bukan `now()`.
+                    // Lihat komentar `$batasTagihan` di atas.
                     MeterReading::create([
                         'customer_id' => $customer->id,
                         'recorded_by' => Auth::id(),
@@ -1467,7 +1489,8 @@ class MonthlyBillController extends Controller
                         'reading_month' => $month,
                         'meter_value' => $meterValue,
                         'photo_url' => null,
-                        'recorded_at' => now(),
+                        'recorded_at' => BillingDueDate::inUsageMonth($year, $month, $batasTagihan)
+                            ->setTimeFrom(now()),
                     ]);
                 }
 

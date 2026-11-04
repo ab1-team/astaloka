@@ -9,8 +9,9 @@ import sopService from '@/services/sop.service.js'
  *
  * Saat ini menyimpan data Sistem Tagihan:
  * - toleransiTunggakan: TANGGAL untuk semua aturan berbasis tanggal
- *   (jatuh tempo tagihan, generate piutang, ambang piutang, advance
- *   payment) -- default 10
+ *   (jatuh tempo tagihan, generate piutang, advance payment) -- default 10.
+ *   Ambang pengakuan piutang TIDAK memakai angka ini: piutang diakui saat
+ *   tanggal jatuh tempo sudah tercapai.
  * - batasTagihan: SALINAN dari `toleransiTunggakan` dengan nilai yang
  *   sama. Ada karena dua komponen masih membaca nama lama ini:
  *   `ReportCetakDaftarTagihan.vue` (fallback "Tgl Akhir Pembayaran")

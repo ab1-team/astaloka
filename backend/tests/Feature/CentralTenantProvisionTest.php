@@ -6,6 +6,7 @@ use App\Http\Controllers\Central\LocationController;
 use App\Models\Central\Tenant;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\LegacyDomainSync;
 use App\Services\TenantManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -874,7 +875,8 @@ class CentralTenantProvisionTest extends TestCase
          */
         $controller = new LocationController(
             app(TenantManager::class),
-            app(AuditLogger::class)
+            app(AuditLogger::class),
+            app(LegacyDomainSync::class)
         );
 
         $method = new \ReflectionMethod($controller, 'demoUserCredentials');

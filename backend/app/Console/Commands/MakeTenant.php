@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\Central\Tenant;
+use App\Models\Central\TenantDomain;
+use App\Services\DomainNormalizer;
 use App\Services\TenantManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +60,46 @@ class MakeTenant extends Command
 
         $dbName = (string) ($this->option('database') ?: $this->buildDatabaseName($slug));
 
+        /*
+         * `--domain` dinormalisasi DAN didaftarkan ke `tenant_domains`.
+         *
+         * Kolom legacy `tenants.domain` saja tidak cukup: resolver mencari
+         * `tenant_domains` lebih dulu, dan `ensureAvailable()` hanya memeriksa
+         * tabel itu. Lokasi yang dibuat lewat CLI dengan domain legacy saja
+         * karena itu bisa "dibajak" lokasi lain lewat halaman Domain -- host
+         * yang sama didaftarkan ke lokasi kedua, dan resolver memilih yang
+         * punya baris di `tenant_domains`.
+         *
+         * Normalisasi di sini juga wajib: `--domain=https://x.test/` yang
+         * disimpan apa adanya tidak akan pernah cocok dengan host request.
+         */
+        $domainMentah = $this->option('domain');
+        $domain = null;
+
+        if (is_string($domainMentah) && trim($domainMentah) !== '') {
+            [$domain, $domainError] = DomainNormalizer::clean($domainMentah);
+
+            if ($domainError !== null) {
+                $this->error("Domain `{$domainMentah}` tidak valid: {$domainError}");
+
+                return self::FAILURE;
+            }
+
+            $tenantSebelum = Tenant::where('slug', $slug)->first();
+
+            [$boleh, $pesan] = DomainNormalizer::ensureAvailable(
+                $domain,
+                false,
+                $tenantSebelum?->id ?? 0
+            );
+
+            if (! $boleh) {
+                $this->error($pesan ?? "Domain `{$domain}` tidak bisa dipakai.");
+
+                return self::FAILURE;
+            }
+        }
+
         if (Tenant::where('database', $dbName)->exists()) {
             $this->error("Database `{$dbName}` sudah terdaftar untuk lokasi lain.");
 
@@ -108,7 +150,7 @@ class MakeTenant extends Command
                     'nama' => (string) ($this->option('nama') ?: Str::headline($slug)),
                     'nama_lembaga' => $this->option('nama-lembaga'),
                     'database' => $dbName,
-                    'domain' => $this->option('domain'),
+                    'domain' => $domain,
                     'alamat' => $this->option('alamat'),
                     'email' => $this->option('email'),
                     'telepon' => $this->option('telepon'),
@@ -118,6 +160,31 @@ class MakeTenant extends Command
                 ]
             );
             $this->line("      tenant #{$tenant->id} terdaftar.");
+
+            /*
+             * Daftarkan host yang sama di `tenant_domains` supaya tiga jalur
+             * (CLI, form lokasi, halaman Domain) menulis ke sumber yang sama.
+             * Baris yang sudah ada dibiarkan apa adanya -- `--force` pada
+             * lokasi yang sudah punya domain tidak boleh menurunkan status
+             * utamanya hanya karena perintah ini dijalankan ulang.
+             */
+            if ($domain !== null) {
+                $baris = TenantDomain::firstOrNew(['host' => $domain]);
+
+                $baris->tenant_id = $tenant->id;
+                $baris->is_wildcard = false;
+                $baris->is_active = true;
+
+                if (! $baris->exists) {
+                    $baris->is_primary = ! $tenant->domains()
+                        ->where('is_active', true)
+                        ->exists();
+                }
+
+                $baris->save();
+
+                $this->line("      domain `{$domain}` terdaftar.");
+            }
 
             // 3. migration + seeder master
             if ($this->option('skip-migrate')) {
@@ -164,7 +231,7 @@ class MakeTenant extends Command
         $this->info("Lokasi `{$slug}` siap dipakai.");
         $this->line("   database : {$dbName}");
 
-        $domain = $this->option('domain');
+        $domain = $tenant->domain;
         if ($domain) {
             $this->line("   alamat   : https://{$domain}");
         } else {

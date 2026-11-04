@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\MenuAccessController;
 use App\Models\Central\Tenant;
 use App\Models\Jabatan;
 use App\Models\User;
@@ -375,6 +376,37 @@ class CentralMenuAccessTest extends TestCase
 
         $lokasi = DB::connection('mysql');
 
+        /*
+         * User LOKASI yang dibuat test ini juga harus dibersihkan.
+         *
+         * Sebelumnya hanya user PUSAT di atas yang dihapus, sementara
+         * `adminLokasi()` menulis ke database lokasi. Akibatnya user
+         * `hakakses-*` menumpuk di database uji yang sama dan terbaca oleh
+         * test lain -- `ShortcutLoginTest` yang menunjuk database itu akan
+         * melihat user asing di daftar lokasinya.
+         *
+         * Tiket instalasi sisa run sebelumnya bisa menunjuk id user ini lewat
+         * `created_by` (NOT NULL) atau `user_id`; FK menolak DELETE users
+         * selama baris itu masih ada, jadi barisnya dibuang lebih dulu.
+         */
+        $idLokasi = $lokasi->table('users')
+            ->where('email', 'like', 'hakakses-%@test.local')
+            ->pluck('id');
+
+        if ($idLokasi->isNotEmpty()) {
+            $lokasi->table('installation_tickets')
+                ->whereIn('created_by', $idLokasi)
+                ->orWhereIn('user_id', $idLokasi)
+                ->delete();
+
+            $lokasi->table('personal_access_tokens')
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $idLokasi)
+                ->delete();
+
+            $lokasi->table('users')->whereIn('id', $idLokasi)->delete();
+        }
+
         $jabatanIds = $lokasi->table('jabatans')
             ->where('nama_jabatan', 'like', 'Uji-%')
             ->pluck('id');
@@ -546,7 +578,7 @@ class CentralMenuAccessTest extends TestCase
          * ikut menghalang.
          */
         $dariLokasi = app(TenantManager::class)->runFor($this->tenant, function () {
-            return app(\App\Http\Controllers\MenuAccessController::class)->index();
+            return app(MenuAccessController::class)->index();
         });
 
         $lokasi = collect(json_decode($dariLokasi->getContent(), true)['data'])
@@ -1126,7 +1158,7 @@ class CentralMenuAccessTest extends TestCase
         );
     }
 
-// ================================================================
+    // ================================================================
     // Menambah jabatan dari panel pusat
     // ================================================================
 
@@ -1316,18 +1348,18 @@ class CentralMenuAccessTest extends TestCase
             User::query()->delete();
 
             User::query()->create([
-                'name'       => 'Uji Admin',
-                'email'      => $this->prefix.'a@test.local',
-                'password'   => 'x',
-                'role'       => 'admin',
+                'name' => 'Uji Admin',
+                'email' => $this->prefix.'a@test.local',
+                'password' => 'x',
+                'role' => 'admin',
                 'jabatan_id' => $jabatanAdmin,
             ]);
 
             User::query()->create([
-                'name'       => 'Uji Teknisi',
-                'email'      => $this->prefix.'b@test.local',
-                'password'   => 'x',
-                'role'       => 'teknisi',
+                'name' => 'Uji Teknisi',
+                'email' => $this->prefix.'b@test.local',
+                'password' => 'x',
+                'role' => 'teknisi',
                 'jabatan_id' => $jabatanTeknisi,
             ]);
         });

@@ -8,6 +8,7 @@ use App\Models\Central\TenantDomain;
 use App\Models\Central\TenantInvoice;
 use App\Services\AuditLogger;
 use App\Services\DomainNormalizer;
+use App\Services\LegacyDomainSync;
 use App\Services\TenantManager;
 use App\Support\Branding;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +30,7 @@ class LocationController extends Controller
     public function __construct(
         private TenantManager $manager,
         private AuditLogger $audit,
+        private LegacyDomainSync $domainSync,
     ) {}
 
     /** Daftar semua lokasi + ringkasan tagihannya. */
@@ -42,6 +44,20 @@ class LocationController extends Controller
                 ['invoices as total_tagihan' => fn ($q) => $q->where('status', 'UNPAID')],
                 'jumlah'
             )
+            /*
+             * Daftar domain ikut diambil di sini.
+             *
+             * Tanpa ini, tabel `/central/lokasi` hanya menampilkan kolom
+             * `domain` -- satu host saja -- sehingga domain alternatif milik
+             * lokasi itu tidak terlihat di mana pun. Yang tampil cuma satu,
+             * padahal lokasi punya dua.
+             *
+             * Relasi-nya di-eager-load, bukan diambil satu per lokasi: daftar
+             * lokasi tumbuh seiring pelanggan, dan tanpa eager load jumlah
+             * query bertambah satu per baris -- persis masalah yang
+             * `withCount` di atas sudah hindari untuk tagihan.
+             */
+            ->with(['domains' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('host')])
             ->orderBy('id')
             ->get()
             ->map(fn (Tenant $t) => $this->present($t));
@@ -303,14 +319,20 @@ class LocationController extends Controller
              * Kegagalan validasi domain TIDAK menggagalkan pendaftaran lokasi.
              * Database lokasi sudah dibuat dan dimigrasi saat titik ini, dan
              * membatalkan semuanya demi satu host yang berformat aneh akan
-             * meninggalkan DELETE yang harus dibersihkan terpisah. Baris yang
-             * ditolak tidak disimpan; kolom legacy tetap menyimpan input
-             * mentahnya supaya tidak hilang dari catatan.
+             * meninggalkan database yatim yang harus dibersihkan terpisah.
+             * Baris yang ditolak tidak disimpan; kolom legacy tetap menyimpan
+             * input adminnya supaya tidak hilang dari catatan.
+             *
+             * Mode "sebagian" dipakai di sini, bukan mode ketat: satu slot
+             * yang tidak valid tidak boleh mencegah slot lain yang valid ikut
+             * terdaftar. Tanpa itu, satu host aneh membuat lokasi baru punya
+             * nol domain di `tenant_domains` -- dan itu persis keadaan yang
+             * membuat lokasi lama kehilangan domain utamanya.
              */
             $this->syncLegacyDomain($tenant, [
                 'domain' => $data['domain'] ?? null,
                 'domain_alternatif' => $data['domain_alternatif'] ?? null,
-            ]);
+            ], sebagian: true);
 
             if (! empty($data['admin_email']) && ! empty($data['admin_password'])) {
                 $this->createLocationAdmin($tenant, $data);
@@ -502,6 +524,13 @@ class LocationController extends Controller
          */
         $tersimpan = Tenant::query()->find($tenant->id) ?? $tenant;
 
+        /*
+         * Relasi `domains` dimuat eksplisit, karena `find()` mengembalikan
+         * model tanpa relasi -- dan daftar domain yang baru didaftarkan
+         * justru bagian paling ingin dilihat di respons ini.
+         */
+        $tersimpan->load(['domains' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('host')]);
+
         $data = $this->present($tersimpan, detail: true);
 
         $data['akun_demo'] = $this->demoUserCredentials($akunDemo);
@@ -642,7 +671,18 @@ class LocationController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Data lokasi diperbarui.',
-            'data' => $this->present($location->fresh(), detail: true),
+            /*
+             * Relasi `domains` dimuat eksplisit, bukan 기대 sudah ada.
+             *
+             * `fresh()` mengembalikan model BARU tanpa relasi -- jadi
+             * daftar domain yang dikembalikan di sini akan kosong tanpa
+             * baris ini. Padahal daftar itu justru yang paling ingin dilihat
+             * setelah menyimpan form domain: apa yang sebenarnya tersimpan.
+             */
+            'data' => $this->present(
+                $location->fresh()->load(['domains' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('host')]),
+                detail: true,
+            ),
         ]);
     }
 
@@ -900,13 +940,24 @@ class LocationController extends Controller
      */
     private function punyaDomain(Tenant $location): bool
     {
-        $adaDiDaftar = $location->domains()->where('is_active', true)->exists();
-
-        if ($adaDiDaftar) {
+        if ($location->domains()->where('is_active', true)->exists()) {
             return true;
         }
 
-        return (bool) ($location->domain ?: $location->domain_alternatif);
+        /*
+         * Kolom legacy hanya dihitung kalau host itu belum pernah dikelola
+         * di `tenant_domains`. Host yang punya baris nonaktif sudah
+         * "dimatikan" lewat halaman Domain -- menghitungnya lagi lewat kolom
+         * lama membuat lokasi bisa diaktifkan padahal tidak ada satu pun host
+         * yang melayaninya.
+         */
+        foreach (array_filter([$location->domain, $location->domain_alternatif]) as $host) {
+            if (! $location->domains()->where('host', $host)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -956,6 +1007,12 @@ class LocationController extends Controller
     /**
      * Samakan kolom legacy dengan tabel `tenant_domains`.
      *
+     * Aturannya hidup di {@see LegacyDomainSync}, bukan di sini. Alasannya
+     * bentuk gerakannya dipakai di dua tempat -- form lokasi dan perbaikan data
+     * lama -- dan dua salinan aturan yang sama akan pasti berbeda di satu
+     * titik. Waktu_rules yang berbeda itu muncul sebagai "domain saya kok
+     * cuma kelihatan satu", tanpa error apa pun.
+     *
      * Dipanggil dari update() SEBELUM `$location->update()`, dan nilai
      * kembalinya diperiksa lebih dulu. Kalau baris domain sudah terlanjur ditulis
      * lalu ternyata inputnya tidak valid, lokasi sudah dalam keadaan setengah
@@ -966,144 +1023,13 @@ class LocationController extends Controller
      * setiap kali, tapi endpoint lain mungkin hanya mengirim salah satu -- dan
      * field yang absen bukan permintaan untuk mengosongkan.
      *
+     * @param  bool  $sebagian  Boleh menulis slot yang valid meski slot lain
+     *                          tidak valid? Dipakai oleh pendaftaran lokasi.
      * @return array<string, string> [nama kolom => pesan error]
      */
-    private function syncLegacyDomain(Tenant $location, array $data): array
+    private function syncLegacyDomain(Tenant $location, array $data, bool $sebagian = false): array
     {
-        $errors = [];
-
-        // Kolom mana yang perannya domain utama. `domain` = utama,
-        // `domain_alternatif` = cadangan.
-        $slots = [
-            'domain' => true,
-            'domain_alternatif' => false,
-        ];
-
-        foreach ($slots as $kolom => $isPrimary) {
-            if (! array_key_exists($kolom, $data)) {
-                continue;
-            }
-
-            $raw = $data[$kolom];
-            $raw = is_string($raw) ? trim($raw) : '';
-
-            // Mengosongkan form berarti "pakai halaman Domain saja". Baris
-            // domain persis yang lama dilepas supaya tidak hidup dua kali --
-            // dan supaya tidak memblokir index unik ketika host diganti.
-            if ($raw === '') {
-                $this->detachLegacyDomain($location, $isPrimary);
-
-                continue;
-            }
-
-            [$host, $problem] = DomainNormalizer::clean($raw);
-
-            if ($problem !== null) {
-                $errors[$kolom] = $problem;
-
-                continue;
-            }
-
-            [$boleh, $tabrak] = DomainNormalizer::ensureAvailable($host, false, $location->id);
-
-            if (! $boleh) {
-                $errors[$kolom] = $tabrak;
-
-                continue;
-            }
-
-            // Host sama persis dengan yang sudah dimiliki lokasi ini: ini
-            // bukan domain baru, hanya perubahan peran -- naik atau turun jadi
-            // utama atau cadangan.
-            $sama = $location->domains()
-                ->where('host', $host)
-                ->where('is_wildcard', false)
-                ->first();
-
-            if ($sama) {
-                $sama->update(['is_active' => true, 'is_primary' => $isPrimary]);
-
-                if ($isPrimary) {
-                    $this->clearPrimaryExcept($location->id, $sama->id);
-                }
-
-                continue;
-            }
-
-            /*
-             * Host BERUBAH, jadi baris lama milik lokasi ini masih memegang
-             * host yang sekarang. Baris itu harus dilepas dulu:
-             * `tenant_domains_host_unique` menolak dua baris dengan host yang
-             * sama, dan meskipun keduanya milik satu lokasi yang sama, MySQL
-             * tetap memperlakukannya sebagai duplikat.
-             */
-            $this->detachLegacyDomain($location, $isPrimary);
-
-            $baru = TenantDomain::create([
-                'tenant_id' => $location->id,
-                'host' => $host,
-                'is_wildcard' => false,
-                'is_primary' => $isPrimary,
-                'is_active' => true,
-            ]);
-
-            /*
-             * `clearPrimaryExcept()` tanpa `$keepId` akan ikut mematikan baris yang
-             * baru saja dibuat -- karena saat dipanggil, baris itu sudah punya
-             * `is_primary = true`. Gejalanya tidak kelihatan di daftar domain
-             * (barisnya ada, hanya tidak ditandai utama), tapi `syncPrimary()`
-             * lalu jatuh ke domain lain, dan `tenants.domain` menunjuk ke host
-             * yang tidak lagi jadi milik lokasi ini.
-             *
-             * Baris yang baru dibuat harus jadi PENGECUALIAN, bukan ikut
-             * dibersihkan.
-             */
-            if ($isPrimary) {
-                $this->clearPrimaryExcept($location->id, $baru->id);
-            }
-        }
-
-        return $errors;
-    }
-
-    /**
-     * Lepaskan baris domain persis milik satu slot legacy.
-     *
-     * Baris wildcard TIDAK ikut tersentuh. Wildcard dibuat lewat halaman
-     * Domain, dan form lama tidak punya field untuk itu -- jadi ikut ditulis
-     * di sini akan membuat wildcard terhapus setiap kali admin menyimpan form.
-     *
-     * Untuk slot cadangan, `is_primary` dipakai hanya sebagai urutan pilihan:
-     * mana yang dibuang lebih dulu kalau lokasi punya beberapa domain persis
-     * tanpa domain utama.
-     */
-    private function detachLegacyDomain(Tenant $location, bool $isPrimary): void
-    {
-        $location->domains()
-            ->where('is_wildcard', false)
-            ->when(
-                $isPrimary,
-                fn ($q) => $q->where('is_primary', true),
-                fn ($q) => $q->orderByDesc('is_primary'),
-            )
-            ->delete();
-    }
-
-    /**
-     * Pastikan hanya satu domain utama per lokasi.
-     *
-     * Tanpa ini, dua admin yang menekan tombol hampir bersamaan bisa menyimpan
-     * dua `is_primary = true`. Efeknya bukan sekadar baris ganda di daftar --
-     * `settings.domain` di database lokasi jadi tidak pasti menunjuk ke mana,
-     * sehingga kop laporan bisa mencantumkan domain yang tidak dipakai lagi.
-     */
-    private function clearPrimaryExcept(int $tenantId, ?int $keepId = null): void
-    {
-        TenantDomain::query()
-            ->where('tenant_id', $tenantId)
-            ->where('is_primary', true)
-            ->when($keepId !== null, fn ($q) => $q->where('id', '!=', $keepId))
-            ->update(['is_primary' => false]);
+        return $this->domainSync->sync($location, $data, $sebagian);
     }
 
     /**
@@ -1254,11 +1180,21 @@ class LocationController extends Controller
         }
 
         /*
-         * Daftar domain custom ikut dikirim di detail. Halaman ini tempat
-         * admin akan jelas mencari "domain mana yang dipakai lokasi ini",
-         * dan halaman Domain adalah tempat semuanya sekaligus.
+         * Daftar domain custom ikut dikirim kalau relasinya sudah dimuat.
+         *
+         * Syaratnya HANYA "relasinya dimuat", bukan "ini respons detail".
+         * Daftar `/central/lokasi` juga memuatnya -- kalau tidak, tabel itu
+         * hanya menampilkan kolom `domain`, satu host saja, sehingga domain
+         * alternatif milik lokasi itu tidak terlihat di mana pun. Yang
+         * tampil cuma satu, padahal lokasi punya dua.
+         *
+         * Relasi yang belum dimuat berarti pemanggil memang tidak
+         * membutuhkannya -- dan mengirim daftar kosong untuk spot yang
+         * tidak diketahui isinya lebih buruk daripada tidak mengirim
+         * sama sekali, karena frontend akan menganggap daftar itu kosong
+         * dan menampilkan "Belum ada domain".
          */
-        if ($detail && $t->relationLoaded('domains')) {
+        if ($t->relationLoaded('domains')) {
             $data['domains'] = $t->domains->map(fn (TenantDomain $d) => [
                 'id' => $d->id,
                 'host' => $d->displayHost(),

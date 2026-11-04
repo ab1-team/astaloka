@@ -28,24 +28,46 @@ class GenerateOverdueTransactions extends Command
         $todayYmd = $today;
         $force = (bool) $this->option('force');
 
-        // Ambang tunggakan: berapa HARI (dihitung dari hari generate) sebuah
-        // tagihan dianggap menunggak.
+        // AMBANG PENGAKUAN PIUTANG
+        // -----------------------
         //
-        // Nilai ini dibaca sebagai JUMLAH HARI di sini dengan sengaja,
-        // sementara `toleransi_tunggakan` dipakai sebagai TANGGAL di dua
-        // tempat lain. Perbedaan makna itu sekarang dikunci di
-        // `BillingTolerance`, bukan dibaca langsung dari `Setting`.
+        // Sebuah tagihan menjadi piutang begitu TANGGAL JATUH TEMPO-nya
+        // sudah tercapai. Jadi ambangnya adalah TANGGAL GENERATE itu
+        // sendiri -- BUKAN tanggal generate dikurangi sejumlah hari.
         //
-        // Data aktual perusahaan: tagihan periode Agustus/2026 jatuh tempo
-        // 26-27 September. Dengan ambang hari-toleransi dalam bulan pemakaian
-        // (tanggal 6), ambangnya jatuh ke 6 AGUSTUS -- sehingga 26 September
-        // dianggap belum menunggak dan 3286 tagihan gagal diproses. Versi ini
-        // (6 hari sebelum hari generate) memberi ambang 30 September, sesuai.
-        $toleransi = app(BillingTolerance::class)->graceDays();
-        $thresholdDate = date('Y-m-d', strtotime("$today -$toleransi days"));
+        // Kenapa begitu? Karena generate hanya jalan SATU HARI dalam bulan,
+        // dan tanggal jalannya diambil dari angka yang SAMA dengan tanggal
+        // jatuh tempo tagihan (`settings.batas_tagihan`). Ambang lama
+        // (`today - N hari`, dengan N = angka "hari ke berapa dalam bulan")
+        // karena itu selalu jatuh di AKHIR BULAN SEBELUMNYA -- sehingga
+        // tagihan periode M (jatuh tempo di bulan M+1) baru dijurnal pada
+        // generate bulan M+2.
+        //
+        // Akibatnya generate di bulan G hanya mencatat tagihan yang
+        // jatuh temponya sudah lewat akhir bulan G-1, dan tagihan periode
+        // G-1 -- yang jatuh temponya ADA di bulan G -- terlewat satu bulan
+        // penuh. Itu persis gejala "piutang bulan ini sudah tercatat,
+        // tapi kok generate bulan berikutnya tidak mencatatkan apa-apa".
+        //
+        // Aturan baru ini juga sama dengan aplikasi lama, yang mengakuan
+        // piutang saat `$usage->tgl_akhir <= $date` -- yaitu saat tanggal
+        // jatuh tempo sudah tercapai.
+        //
+        // Perbandingannya INKLUSIF (`<=`), bukan `<`: tagihan yang jatuh
+        // tempo PADA tanggal generate ini ikut dibukukan. Tanpa `=` itu,
+        // tagihan periode M baru terbumui pada generate bulan M+2 lagi --
+        // masalah yang sama, cuma muncul satu bulan kemudian.
+        //
+        // Perbandingan ini TIDAK sama dengan definisi "menunggak" untuk
+        // suspend (`UnpaidMonths`) dan daftar Arsip Piutang, yang memakai
+        // `due_date < hari ini`. Artinya: tagihan yang jatuh tempo hari ini
+        // sudah boleh dibukukan jadi piutang, tapi belum dianggap
+        // "menunggak" sampai besok.
+        $thresholdDate = app(BillingTolerance::class)
+            ->piutangBerlakuPada(Carbon::parse($today)->startOfDay());
 
         $overdueBills = MonthlyBill::where('status', 'unpaid')
-            ->where('due_date', '<', $thresholdDate)
+            ->where('due_date', '<=', $thresholdDate)
             ->with(['customer.user'])
             ->get();
 
@@ -533,8 +555,23 @@ class GenerateOverdueTransactions extends Command
         int $jurnalDenda
     ): void {
         $totalUnpaid = (int) MonthlyBill::where('status', 'unpaid')->count();
+
+        /*
+         * Total tunggakan = tagihan unpaid yang jatuh temponya SUDAH
+         * TERCEPAT.
+         *
+         * Operatornya `=` (bukan `<`) supaya sama persis dengan syarat
+         * yang dipakai command di atas. Kalau tidak, popup bisa menampilkan
+         * "Tagihan Diproses: 5" tapi "Total Tunggakan: 0" -- padahal
+         * kelima tagihan itu barusan saja dibukukan sebagai piutang.
+         *
+         * Perbedaannya dengan daftar Arsip Piutang (yang memakai `<`) adalah
+         * disengaja: Arsip adalah daftar kerja penagihan, dan tagihan yang
+         * jatuh tempo HARI INI belum sempat terlambat. Angka di sini
+         * dipakai untuk menjelaskan hasil run.
+         */
         $totalOverdue = (int) MonthlyBill::where('status', 'unpaid')
-            ->where('due_date', '<', $today)
+            ->where('due_date', '<=', $today)
             ->count();
         /*
          * Cache dashboard lokasi ini sudah basi karena piutang baru saja

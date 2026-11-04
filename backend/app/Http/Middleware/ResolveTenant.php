@@ -155,10 +155,18 @@ class ResolveTenant
              * Keduanya saling tunggu lock, dan suite menggantung tanpa batas
              * tanpa satu pun pesan error.
              *
+             * `deactivate()` juga mengosongkan `TenantManager::$current`.
+             * Tanpa itu, pada proses panjang (test, queue worker) request
+             * berikutnya yang tidak punya lokasi masih membaca
+             * `current()` milik lokasi sebelumnya -- mis. `api/branding`
+             * menjawab branding lokasi lama padahal host-nya tidak dikenal.
+             *
              * `finally`, bukan sesudah `$next` sukses: kalau controller melempar
              * exception, default tetap harus kembali atau render halaman error
              * berikutnya membaca database yang salah.
              */
+            $this->manager->deactivate();
+
             Config::set('database.default', $defaultSebelum);
         }
     }
