@@ -395,7 +395,13 @@
           </header>
 
           <ul v-if="daftarDomain.length" class="domain-list">
-            <li v-for="d in daftarDomain" :key="d.id" class="domain-item">
+            <!--
+              `key`, bukan `id`: daftar domain di sini bisa berisi entri
+              dari kolom legacy, dan entri legacy tidak punya id baris
+              database. `utils/daftarDomain.js` sudah menyediakan kunci yang
+              selalu ada untuk keduanya.
+            -->
+            <li v-for="d in daftarDomain" :key="d.key" class="domain-item">
               <font-awesome-icon icon="globe" class="domain-item__icon" />
 
               <!--
@@ -796,6 +802,7 @@ import { MySwal, showSuccessToast, showErrorToast } from '@/utils/swal'
 import { locationService, invoiceService, rekeningService } from '@/services/central.service'
 import { formatRupiah } from '@/utils/format'
 import { tenantUrl } from '@/utils/tenantUrl'
+import { daftarDomainTerurut } from '@/utils/daftarDomain'
 import '@/assets/css/central-form.css'
 
 const route = useRoute()
@@ -878,42 +885,23 @@ const goBack = () => router.push('/central/lokasi')
 /*
  * Daftar domain milik tenant ini.
  *
- * Sumbernya `lokasi.domains` (tabel `tenant_domains`), BUKAN kolom `domain` /
- * `domain_alternatif`. Kolom itu cuma dua slot dan tidak bisa memuat wildcard
- * atau domain tambahan.
+ * Sumbernya `lokasi.domains` (tabel `tenant_domains`), dengan kolom legacy
+ * `domain` / `domain_alternatif` digabung sebagai pelengkap -- bukan
+ * fallback "kalau daftarnya kosong".
  *
- * Fallback ke kolom legacy hanya dipakai kalau backend tidak mengirim daftar --
- * yang terjadi kalau endpoint dijalankan pada versi lama. Tanpa fallback itu,
- * tenant yang punya domain tapi tidak punya baris di `tenant_domains` akan
- * tampil "tidak punya domain", padahal resolver tetap melayaninya. Tampilan
- * yang lebih jarang diperbarui tapi benar lebih mudah dipercaya daripada
- * tampilan yang sering diperbarui tapi salah.
+ * Alasannya ada di `utils/daftarDomain.js`; ringkasannya: kedua sumber bisa
+ * berbeda isinya, dan kolom legacy masih dibaca resolver sebagai cadangan.
+ * Lokasi yang kehilangan domain utamanya dari `tenant_domains` -- bug lama
+ * yang menghapus baris utama setiap kali slot alternatif diisi -- tetap punya
+ * `domain` di kolom lamanya, dan host itu masih dilayani. Kalau daftar dari
+ * tabel baru dipakai sendiri, host itu tidak terlihat di panel: admin
+ * melihat satu domain, padahal ada dua yang hidup.
  *
  * Diurutkan ulang di sini bukan bergantung pada urutan backend: domain utama
  * selalu di atas, karena itu satu-satunya yang dipakai `settings.domain` di
  * database lokasi dan satu-satunya yang muncul di kop laporan.
  */
-const daftarDomain = computed(() => {
-  const dari = Array.isArray(lokasi.value?.domains) ? lokasi.value.domains : []
-
-  if (dari.length) {
-    return [...dari].sort((a, b) => {
-      if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1
-      if (a.is_active !== b.is_active) return a.is_active ? -1 : 1
-      return String(a.host).localeCompare(String(b.host))
-    })
-  }
-
-  // Fallback: susun dari kolom legacy.
-  const legacy = [
-    lokasi.value?.domain ? { host: lokasi.value.domain, is_primary: true } : null,
-    lokasi.value?.domain_alternatif
-      ? { host: lokasi.value.domain_alternatif, is_primary: false }
-      : null,
-  ].filter(Boolean)
-
-  return legacy.map((d, i) => ({ id: `legacy-${i}`, ...d, is_wildcard: false, is_active: true }))
-})
+const daftarDomain = computed(() => daftarDomainTerurut(lokasi.value))
 
 /*
  * Satu bentuk untuk template, bukan lima nama yang disebut di seluruh kartu.

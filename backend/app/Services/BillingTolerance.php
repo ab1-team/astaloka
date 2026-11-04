@@ -22,6 +22,12 @@ use Carbon\Carbon;
  *   4. JUMLAH tagihan unpaid sebelum suspend -> `MeterReadingController::store`
  *      memutus sambungan dengan `$unpaidCount > $toleransi`.
  *
+ * Makna (2) SUDAH DIHAPUS. Alasannya ada di bagian "PENGAKUAN PIUTANG"
+ * di bawah -- singkatnya: angka "hari ke berapa dalam bulan" tidak pernah
+ * bisa dipakai sebagai JUMLAH HARI, dan selama dipakai begitu, ambang
+ * pengakuan piutang selalu jatuh di akhir bulan sebelumnya -- sehingga
+ * tagihan baru dijurnal satu bulan lebih lambat dari seharusnya.
+ *
  * Kelima: `TenantManager:511` mengisi kolom ini dari `invoice_grace_months`
  * yang satuan-nya BULAN, untuk tagihan langganan ke lokasi.
  *
@@ -40,6 +46,54 @@ use Carbon\Carbon;
  * besar, batas suspend butuh angka puluhan. Admin yang ingin menunda
  * generate sampai tanggal 20 tidak akan ikutan ingin ambang piutang 20 hari.
  *
+ * Makna (2) sudah dihapus sepenuhnya -- lihat "PENGAKUAN PIUTANG" di bawah.
+ * Sekarang tidak ada lagi aturan yang memakai satuan JUMLAH HARI, jadi
+ * satu angka tanggal ini benar-benar bisa berlaku untuk semua aturan
+ * berbasis tanggal.
+ *
+ * PENGAKUAN PIUTANG
+ * -----------------
+ *
+ * ATURAN SEKARANG: sebuah tagihan menjadi piutang pada saat TANGGAL
+ * JATUH TEMPO-nya sudah tercapai. Tidak ada lagi "ambang mundur N hari".
+ *
+ * Kenapa begini?
+ *
+ *   1. Satuan "hari ke berapa dalam bulan" (1-31) TIDAK BISA dipakai
+ *      sebagai JUMLAH HARI. Angka 27 berarti tanggal 27, bukan 27 hari.
+ *      Membacanya sebagai jumlah hari membuat ambang pengakuan piutang
+ *      jatuh di tanggal 27, yang -- karena tanggal generate juga diambil
+ *      dari angka yang sama -- selalu berakhir di AKHIR BULAN SEBELUMNYA.
+ *
+ *   2. Akibatnya, tagihan periode M (jatuh tempo di bulan M+1) baru
+ *      dijurnal pada generate bulan M+2 -- satu bulan lebih lambat dari
+ *      aturan bisnis ("tagihan periode Mei menjadi piutang pada generate
+ *      bulan Juni") dan satu bulan lebih lambat dari aplikasi lama
+ *      (`$usage->tgl_akhir <= $date`).
+ *
+ *   3. Menambah "toleransi" agar piutang diakui lebih cepat tidak
+ *      menolong: generate hanya jalan SATU HARI dalam bulan, dan tanggal
+ *      jalannya sama dengan tanggal jatuh tempo tagihan. Jadi agar
+ *      tagihan periode M tercatat pada generate bulan M+1 -- generate itu
+ *      harus jalan tepat pada tanggal jatuh temponya. Toleransi berapa
+ *      pun yang lebih besar dari nol justru mendorongnya ke bulan M+2.
+ *
+ *   4. Aturan "jatuh tempo sudah tercapai" juga persis sama dengan
+ *      aplikasi lama: sana pengakuan piutang terjadi saat
+ *      `$usage->tgl_akhir <= $date`. Perbedaannya cuma pada TANGGAL
+ *      jurnalnya: aplikasi lama memakai tanggal jatuh tempo, ASTALOKA
+ *      memakai tanggal generate (tanggal jalannya generate == tanggal
+ *      jatuh tempo tagihan pada aturan normal, jadi angkanya sama).
+ *
+ * Ini juga menjawab pertanyaan "kenapa generate di bulan ini tidak
+ * mencatat apa-apa?": jawaban yang benar adalah "karena tagihan itu
+ * BELUM jatuh tempo" -- bukan "karena ambangnya sudah lewat bulan lalu".
+ *
+ * Yang TIDAK berubah: definisi "menunggak" untuk keperluan suspend
+ * (`UnpaidMonths`) dan daftar Arsip Piutang tetap memakai
+ * `due_date < hari ini` -- tagihan yang jatuh tempo hari ini belum
+ * dianggap menunggak sampai besok.
+ *
  * YANG DILAKUKAN
  * -------------
  *
@@ -57,7 +111,7 @@ use Carbon\Carbon;
  *
  *   - `settings.batas_tagihan` = sumber angka TANGGAL yang dipakai SEMUA
  *     aturan berbasis tanggal: jatuh tempo tagihan, generate piutang,
- *     ambang piutang, dan deteksi advance payment.
+ *     dan deteksi advance payment.
  *   - `settings.toleransi_tunggakan` = SALINAN dari angka yang sama.
  *     Kolomnya tidak dihapus (dipakai import legacy, dan dilacak lewat
  *     banyak query lama), tapi isinya selalu sama dengan `batas_tagihan`.
@@ -91,7 +145,7 @@ use Carbon\Carbon;
  * SEKARANG pemisahan itu DIPULIHKAN, tapi dengan pembagian yang benar:
  *
  *   - `batas_tagihan` = TANGGAL (1-31). Satu angka untuk jatuh tempo,
- *     generate piutang, ambang piutang, dan advance payment.
+ *     generate piutang, dan advance payment.
  *   - `billing_unpaid_limit` = JUMLAH BULAN. Batas tagihan menunggak yang
  *     boleh ditoleransi sebelum sambungan pelanggan diputus.
  *
@@ -130,6 +184,10 @@ use Carbon\Carbon;
  * `tanggal()` mengembalikan SATU angka yang dipakai semua consumer
  * berbasis tanggal. Setiap perbaikan PERILAKU dilakukan lewat override,
  * sehingga selama override kosong hasilnya identik dengan versi lama.
+ *
+ * PENGECUALIAN: makna "ambang piutang" yang dulu memakai satuan JUMLAH
+ * HARI sudah DIHAPUS (lihat "PENGAKUAN PIUTANG"). Tidak ada accessor
+ * yang lagi membaca angka ini sebagai jumlah hari.
  */
 class BillingTolerance
 {
@@ -149,8 +207,8 @@ class BillingTolerance
      * Ambil `Setting` satu kali per instance.
      *
      * Satu request bisa memanggil beberapa accessor di sini (login memanggil
-     * `generateDay()`, `graceDays()`, dan `unpaidBillLimit()`), dan tiap
-     * pemanggilan tanpa cache adalah satu query.
+     * `generateDay()`, `piutangBerlakuPada()`, dan `unpaidBillLimit()`), dan
+     * tiap pemanggilan tanpa cache adalah satu query.
      */
     private function settings(): Setting
     {
@@ -285,20 +343,43 @@ class BillingTolerance
     }
 
     /**
-     * (2) Ambang piutang: berapa HARI sebelum hari generate sebuah tagihan
-     *     dianggap menunggak.
+     * (2) Tanggal terakhir pengakuan piutang: sebuah tagihan dianggap sudah
+     *     jatuh tempo -- dan boleh dibukukan jadi piutang -- paling lambat
+     *     pada tanggal ini.
      *
-     * Satu-satunya tempat nilai ini dibaca sebagai JUMLAH HARI. Frontend
-     * tidak pernah memakainya, jadi tidak ada risiko pratinjau melenceng
-     * seperti pada makna advance payment.
+     * ATURANNYA
+     * ---------
      *
-     * Tidak ada override. Ambang ini terlalu dekat dengan tanggal generate:
-     * kalau orang menggeser tanggal generate, mereka hampir selalu juga
-     * ingin ambang piutang ikut bergeser.
+     * Sebuah tagihan menjadi piutang begitu TANGGAL JATUH TEMPO-nya sudah
+     * tercapai. Jadi ambangnya adalah TANGGAL GENERATE itu sendiri -- bukan
+     * tanggal generate dikurangi sejumlah hari.
+     *
+     * Kenapa bukan "generate hari ini dikurangi N hari"?
+     *
+     * Karena generate hanya jalan SATU HARI dalam bulan, dan tanggal
+     * jalannya diambil dari angka yang SAMA dengan tanggal jatuh tempo
+     * tagihan (`batas_tagihan`). Kalau ambangnya digeser mundur N hari,
+     * ambangnya selalu jatuh di AKHIR BULAN SEBELUMNYA -- sehingga
+     * tagihan periode M (jatuh tempo di bulan M+1) baru dijurnal pada
+     * generate bulan M+2: satu bulan lebih lambat dari aturan bisnis
+     * ("tagihan periode Mei menjadi piutang pada generate bulan Juni")
+     * dan satu bulan lebih lambat dari aplikasi lama.
+     *
+     * Ini juga alasan kenapa memakai accessor ini lebih baik daripada
+     * menulis `due_date <= now()` langsung di command: aturan pengakuan
+     * piutang punya SATU sumber, dan sumber itu bisa ditanya kalau
+     * angkanya pernah diperdebatkan.
+     *
+     * Parameter `$tanggalGenerate` dipakai supaya pemanggil yang
+     * menjalankan command dengan `--tanggal` (mis. generate ulang untuk
+     * tanggal lampau) memakai acuan yang sama dengan tagihan yang
+     * dijurnalkan.
      */
-    public function graceDays(): int
+    public function piutangBerlakuPada(?Carbon $tanggalGenerate = null): string
     {
-        return $this->tanggal();
+        $tanggalGenerate ??= now();
+
+        return $tanggalGenerate->toDateString();
     }
 
     /**

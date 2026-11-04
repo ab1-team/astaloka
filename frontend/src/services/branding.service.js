@@ -40,8 +40,20 @@ export async function ambilBranding() {
    *
    * Di produksi subdomain sudah menjawabnya dan header ini diabaikan.
    */
+  /*
+   * Panel pusat tidak boleh mewarisi slug lokasi dari localStorage.
+   *
+   * `tenantSlugAktif()` membaca `localStorage`, dan nilai itu bertahan
+   * sampai logout lokasi. Superadmin yang membuka panel pusat di browser
+   * yang sama akan mendapat branding lokasi terakhir kalau header ini tetap
+   * dikirim. Branding panel pusat selalu bawaan; `CentralBrandingEditor`
+   * memuat data lokasi lewat jalur lain.
+   */
+  const diPanelPusat =
+    typeof window !== 'undefined' && (window.location?.pathname ?? '').startsWith('/central')
+
   const headers = { Accept: 'application/json' }
-  const slug = tenantSlugAktif()
+  const slug = diPanelPusat ? null : tenantSlugAktif()
 
   if (slug) {
     headers['X-Tenant-Slug'] = slug

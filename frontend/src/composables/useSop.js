@@ -70,8 +70,10 @@ export function useSop() {
    *
    *   - `toleransiTunggakan`  : TANGGAL (1-31) untuk semua aturan berbasis
    *                             tanggal -- jatuh tempo tagihan bulanan,
-   *                             generate piutang tiap bulan, ambang piutang,
-   *                             dan deteksi advance payment.
+   *                             generate piutang tiap bulan, dan deteksi
+   *                             advance payment. (Ambang pengakuan piutang
+   *                             TIDAK memakai angka ini: piutang diakui saat
+   *                             tanggal jatuh tempo sudah tercapai.)
    *   - `batasBulanTunggakan` : JUMLAH BULAN tunggakan yang boleh ditoleransi
    *                             sebelum sambungan pelanggan diputus.
    *

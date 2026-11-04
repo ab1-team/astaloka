@@ -4,6 +4,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\ParallelTesting;
 use RuntimeException;
 use Throwable;
 
@@ -132,6 +133,8 @@ abstract class TestCase extends BaseTestCase
     {
         $app = parent::createApplication();
 
+        $this->isolasiDatabasePusatParalel();
+
         $app->make('migrator')->path(
             $app->basePath((string) config(
                 'tenancy.migrations_path',
@@ -140,6 +143,50 @@ abstract class TestCase extends BaseTestCase
         );
 
         return $app;
+    }
+
+    /**
+     * Beri setiap worker paralel database PUSAT sendiri.
+     *
+     * Laravel hanya mengganti nama database pada koneksi default (`mysql`)
+     * saat `--parallel` dipakai -- lihat `TestDatabases::testDatabase()`.
+     * Koneksi `central` tidak dikenalinya, jadi seluruh worker menulis ke
+     * `astaloka_testing_central` yang sama. Akibatnya test yang membuat
+     * superadmin, lokasi, atau domain di database pusat saling menghapus
+     * pekerjaan satu sama lain: hasilnya deretan kegagalan yang tidak
+     * reproducible saat file yang sama dijalankan sendiri.
+     *
+     * Penamaan mengikuti konvensi Laravel (`..._test_<token>`) supaya
+     * `periksaDatabase()` tetap mengenalinya sebagai database uji, dan
+     * `createTestingCentralDatabaseIfMissing()` membuat + memigrasikannya
+     * sekali per proses.
+     *
+     * Pembersihan database per-token dilakukan manual kalau perlu: callback
+     * `tearDownProcess` Laravel dijalankan dari proses INDUK dengan aplikasi
+     * yang dibuat lewat `Tests\CreatesApplication`, bukan lewat kelas ini --
+     * jadi tidak ada tempat yang aman untuk mendaftarkannya dari sini.
+     */
+    private function isolasiDatabasePusatParalel(): void
+    {
+        $token = ParallelTesting::token();
+
+        if (! $token) {
+            return;
+        }
+
+        $central = (string) config('tenancy.central_database');
+
+        // Pengaman: jangan menyentuh apa pun yang bukan database uji.
+        if ($central === '' || stripos($central, 'testing') === false) {
+            return;
+        }
+
+        $nama = $central.'_test_'.$token;
+
+        config([
+            'tenancy.central_database' => $nama,
+            'database.connections.central.database' => $nama,
+        ]);
     }
 
     /**

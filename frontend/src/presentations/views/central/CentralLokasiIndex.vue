@@ -92,21 +92,39 @@
         host tanpa titik seperti `srv01`) tetap tampil sebagai teks biasa --
         tautan yang selalu gagal hanya mengajari admin bahwa domainnya rusak,
         padahal yang rusak hanya tautannya.
+
+        SEMUA domain milik lokasi ditampilkan, bukan hanya yang pertama.
+        Satu lokasi bisa punya domain utama DAN domain alternatif -- keduanya
+        diisi di form yang sama, keduanya dilayani resolver. Menampilkan
+        hanya satu berarti admin melihat "domain saya cuma satu" padahal
+        ada dua, dan itu persis keluhan yang muncul waktu form ini masih
+        menyimpan satu slot saja.
       -->
       <template #column-domain="{ row }">
-        <a
-          v-if="tenantUrl(row.domain)"
-          :href="tenantUrl(row.domain)"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="lokasi-domain"
-        >
-          {{ row.domain }}
-          <font-awesome-icon icon="arrow-up-right-from-square" />
-        </a>
-        <span v-else class="font-mono! text-slate-600! text-[12px]!">
-          {{ row.domain || '—' }}
-        </span>
+        <div class="lokasi-domain-list">
+          <template v-for="d in domainLokasi(row)" :key="d.key">
+            <a
+              v-if="tenantUrl(d.host)"
+              :href="tenantUrl(d.host)"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="lokasi-domain"
+            >
+              {{ d.host }}
+              <font-awesome-icon icon="arrow-up-right-from-square" />
+            </a>
+            <span v-else class="font-mono! text-slate-600! text-[12px]!">
+              {{ d.host }}
+            </span>
+          </template>
+
+          <span
+            v-if="domainLokasi(row).length === 0"
+            class="font-mono! text-slate-600! text-[12px]!"
+          >
+            —
+          </span>
+        </div>
       </template>
 
       <template #column-tagihan="{ row }">
@@ -210,6 +228,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { locationService } from '@/services/central.service'
 import { formatRupiah } from '@/utils/format'
 import { tenantUrl } from '@/utils/tenantUrl'
+import { daftarDomainLokasi } from '@/utils/daftarDomain'
 import DataTable from '@/presentations/components/ui/DataTable.vue'
 import BaseButton from '@/presentations/components/ui/BaseButton.vue'
 
@@ -238,6 +257,20 @@ const locations = ref([])
 const searchQuery = ref('')
 const currentPage = ref(1)
 const perPage = ref(10)
+
+/*
+ * Semua domain milik satu lokasi, siap ditampilkan di kolom "Domain".
+ *
+ * Aturan penggabungannya ada di `utils/daftarDomain.js` -- dipakai juga
+ * oleh halaman detail, supaya dua halaman tidak pernah menampilkan domain
+ * yang berbeda untuk lokasi yang sama.
+ *
+ * Ringkasnya: daftar dari `tenant_domains` jadi basisnya, kolom legacy
+ * hanya menambah host yang belum ada di sana. Kolom legacy dibaca resolver
+ * sebagai cadangan, jadi host di sana masih hidup -- dan tidak boleh hilang
+ * dari tampilan hanya karena barisnya belum ada di tabel baru.
+ */
+const domainLokasi = (row) => daftarDomainLokasi(row)
 
 const tableColumns = [
   { key: 'lokasi', title: 'Lokasi' },
@@ -272,6 +305,8 @@ const filteredLocations = computed(() => {
       row.nama?.toLowerCase().includes(keyword) ||
       row.slug?.toLowerCase().includes(keyword) ||
       row.domain?.toLowerCase().includes(keyword) ||
+      row.domain_alternatif?.toLowerCase().includes(keyword) ||
+      domainLokasi(row).some((d) => d.host.toLowerCase().includes(keyword)) ||
       row.database?.toLowerCase().includes(keyword),
   )
 })
@@ -527,6 +562,24 @@ onMounted(loadData)
 .lokasi-domain :deep(svg) {
   font-size: 0.6rem;
   opacity: 0.7;
+}
+
+/*
+ * Beberapa domain per lokasi.
+ *
+ * Satu lokasi bisa punya domain utama dan domain alternatif, jadi kolom ini
+ * bukan satu nilai -- tapi daftar. Barisnya ditumpuk, bukan dipisah dengan
+ * koma: host yang dipisah koma di dalam satu sel sulit dibaca kalau yang
+ * kedua terpotong, dan memotong host berarti admin menyalin host yang salah.
+ *
+ * Jarak antarbaris kecil supaya kolom ini tetap muat di lebar tabel yang
+ * sudah ada -- menambah lebar kolom akan memaksa kolom lain (yang isinya
+ * lebih penting, seperti nama database) ikut terpotong.
+ */
+.lokasi-domain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 /*

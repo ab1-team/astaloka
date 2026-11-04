@@ -12,13 +12,41 @@
  * usage:
  *   php tools/bersihkan-db-uji.php --dry-run   # hanya tampilkan, tidak hapus
  *   php tools/bersihkan-db-uji.php             # benar-benar hapus
+ *   php tools/bersihkan-db-uji.php --yatim     # + hapus DB yatim (tak terdaftar di pusat)
  *
  * `--dry-run` itu WAJIB dipakai lebih dulu. Perintah ini menghapus SELURUH
  * isi database yang cocok -- dan "seluruh isi" termasuk data yang tidak ada
  * salinannya di mana pun.
+ *
+ * `--yatim` menambah satu cakupan lagi: database yang NAMANYA berawalan
+ * `astaloka_` tapi TIDAK terdaftar di registry pusat (tabel `tenants`) ikut
+ * dihapus. Yang begini muncul kalau lokasi dihapus dari registry tanpa
+ * database-nya ikut hilang -- sisa yang tidak akan pernah dibersihkan oleh
+ * pola uji di bawah, karena namanya terlihat "normal".
+ *
+ * Flag itu TIDAK aktif secara default. Menyeret penghapusan database ke
+ * dalam perilaku bawaan skrip berarti satu kesalahan penulisan nama akan
+ * menghapus data yang tidak ada salinannya -- dan tidak ada yang bisa
+ * membatalkan `DROP DATABASE`.
  */
 
 $kering = in_array('--dry-run', $argv, true);
+$yatim = in_array('--yatim', $argv, true);
+
+/*
+ * Database sistem MySQL.
+ *
+ * Tidak akan pernah cocok dengan awalan `astaloka_`, tapi tetap dicatat
+ * eksplisit: daftar ini adalah "> TIDAK boleh dihapus, apa pun keadaannya",
+ * dan menambah nama ke sini lebih murah daripada memikirkannya ulang
+ * setiap kali aturan penghapusan berubah.
+ */
+$semuaPusat = [
+    'information_schema',
+    'mysql',
+    'performance_schema',
+    'sys',
+];
 
 $pdo = new PDO('mysql:host=127.0.0.1;port=3306', 'root', '');
 
@@ -141,18 +169,37 @@ try {
             $operasional[] = $db;
         }
     }
+
+    /*
+     * Nama database LOKASI yang terdaftar di pusat.
+     *
+     * Dipisah dari `$operasional` karena perannya berbeda: `$operasional`
+     * berisi semua yang TIDAK BOLEH dihapus (pusat, fallback koneksi, dan
+     * lokasi yang terdaftar). Daftar ini berisi lokasi yang terdaftar --
+     * dipakai untuk mengenali database yatim, yaitu yang namanya berawalan
+     * `astaloka_` tapi tidak ada di registry.
+     */
+    $terdaftar = array_values(array_unique(array_filter($operasional, function ($nama) {
+        return is_string($nama) && str_starts_with($nama, 'astaloka_');
+    })));
 } catch (Throwable $e) {
     // Config atau registry tidak terbaca -- pakai daftar bawaan saja.
     // Daftar bawaan tetap konservatif: isinya hanya nama-nama yang memang
     // sudah diketahui sebagai database operasional.
     echo 'PERINGATAN: daftar database operasional tidak lengkap ('.$e->getMessage().').', PHP_EOL;
     echo '            Yang dipakai: daftar bawaan.', PHP_EOL;
+
+    // Tanpa registry, daftar lokasi terdaftar TIDAK boleh ditebak.
+    // Menebaknya berarti menandai database operasional sebagai yatim --
+    // dan `--yatim` menghapus yang ditandai yatim.
+    $terdaftar = [];
 }
 
 $operasional = array_values(array_unique($operasional));
 
 $dihapus = 0;
 $disimpan = [];
+$yatimDitemukan = [];
 
 foreach ($semua as $nama) {
     if (in_array($nama, $operasional, true)) {
@@ -170,7 +217,30 @@ foreach ($semua as $nama) {
         }
     }
 
-    if (! $cocok) {
+    /*
+     * Database YATIM: berawalan `astaloka_` (jadi terlihat seperti database
+     * lokasi), tapi TIDAK terdaftar di registry pusat.
+     *
+     * Bentuknya muncul kalau lokasi dihapus dari registry tanpa database-nya
+     * ikut hilang. Polanya di atas tidak akan pernah menyentuhnya -- namanya
+     * tidak mengandung `testing`, dan tidak punya prefix test.
+     *
+     * Syarat `--yatim` WAJIB menyala. Tanpa itu, database yang namanya
+     * `astaloka_` dan kebetulan tidak terbaca registry-nya akan ikut
+     * terhapus -- dan `DROP DATABASE` tidak punya tombol batal.
+     *
+     * Nama variabelnya `$isYatim`, bukan `$yatim`: yang kedua itu flag dari
+     * command line. Menimpanya di dalam loop membuat flag itu ikut berubah
+     * jadi `false` setelah database pertama diperiksa -- jadi setiap database
+     * berikutnya lolos tanpa pernah dihitung sebagai yatim.
+     */
+    $isYatim = $yatim
+        && $terdaftar !== []
+        && str_starts_with($nama, 'astaloka_')
+        && ! in_array($nama, $terdaftar, true)
+        && ! in_array($nama, $semuaPusat, true);
+
+    if (! $cocok && ! $isYatim) {
         continue;
     }
 
@@ -182,8 +252,14 @@ foreach ($semua as $nama) {
         continue;
     }
 
+    if ($isYatim && ! $cocok) {
+        $yatimDitemukan[] = $nama;
+    }
+
+    $catatan = $isYatim && ! $cocok ? '  (yatim: tidak terdaftar di pusat)' : '';
+
     if ($kering) {
-        echo "akan dihapus: {$nama}", PHP_EOL;
+        echo "akan dihapus: {$nama}{$catatan}", PHP_EOL;
 
         $dihapus++;
 
@@ -191,7 +267,7 @@ foreach ($semua as $nama) {
     }
 
     $pdo->exec("DROP DATABASE IF EXISTS `{$nama}`");
-    echo "dropped: {$nama}", PHP_EOL;
+    echo "dropped: {$nama}{$catatan}", PHP_EOL;
 
     $dihapus++;
 }
@@ -199,6 +275,10 @@ foreach ($semua as $nama) {
 echo PHP_EOL;
 echo ($kering ? 'akan dihapus: ' : 'dihapus: ').$dihapus.PHP_EOL;
 echo 'disimpan (operasional): '.implode(', ', $disimpan).PHP_EOL;
+
+if ($yatimDitemukan !== []) {
+    echo 'yatim (tak terdaftar di pusat): '.implode(', ', $yatimDitemukan).PHP_EOL;
+}
 
 if ($kering) {
     echo PHP_EOL;

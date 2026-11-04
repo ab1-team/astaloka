@@ -17,6 +17,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Village;
 use App\Services\AmountRecalculator;
+use App\Services\BillingDueDate;
 use App\Services\BillingService;
 use App\Services\SuspendTransactionsTrigger;
 use App\Services\TenantManager;
@@ -580,8 +581,7 @@ class SeedTenantPelangganCommand extends Command
                 'reading_month' => $bulan,
                 'meter_value' => $meter,
                 'photo_url' => null,
-                'recorded_at' => Carbon::create($tahun, $bulan, 1)
-                    ->setDay(min($batasTagihan, Carbon::create($tahun, $bulan, 1)->daysInMonth))
+                'recorded_at' => BillingDueDate::inUsageMonth($tahun, $bulan, $batasTagihan)
                     ->setTime(9, 0),
             ]);
 

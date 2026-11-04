@@ -269,10 +269,14 @@ export function usePemakaianAir() {
             denda_bulan: item.denda_bulan || null,
             abodemen: Number(item.abodemen ?? 0),
             jatuhTempo: item.due_date || null,
-            // Tanggal akhir pemakaian (batas akhir input meter untuk periode
-            // ini). Dipakai di modal edit sebagai nilai awal date picker
-            // "TANGGAL AKHIR". Kalau backend tidak mengirimnya, fallback ke
-            // jatuh tempo tagihan.
+            // Tanggal akhir pemakaian (batas akhir periode input meter).
+            // Backend mengisinya dari `BillingDueDate::inUsageMonth()`:
+            // hari `batas_tagihan` di bulan PEMAKAIAN -- sengaja berbeda
+            // dari `due_date` yang ada di bulan tagihan.
+            //
+            // Dipakai modal edit sebagai tampilan "TANGGAL AKHIR"
+            // (read-only), bukan input. Fallback ke `due_date` hanya untuk
+            // baris lama yang belum punya `meter_readings`.
             tanggalAkhir: item.reading_recorded_at || item.due_date || null,
             status: statusLabel,
             paid_amount: Number(item.paid_amount ?? 0),

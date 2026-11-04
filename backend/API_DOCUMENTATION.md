@@ -375,7 +375,8 @@ Response:
 - `force` opsional, default `false`. Jika `true`, hapus jurnal tunggakan lama untuk bill yang sama (`reverence_type='overdue_bill'`, `reverence_id=`) sebelum insert baru. Default idempotent: skip bill yang sudah punya jurnal.
 
 **Logika:**
-- Loop `MonthlyBill` dengan `status='unpaid'` dan `due_date < (tanggal - toleransi)`. `toleransi` = `BillingTolerance::graceDays()` = **JUMLAH HARI** mundur dari `tanggal`, dan angka itu sama dengan tanggal SOP (`settings.batas_tagihan`). Kalau tanggal SOP belum diisi (0), toleransi 0 dan ambangnya jatuh tempo itu sendiri.
+- Loop `MonthlyBill` dengan `status='unpaid'` dan `due_date <= tanggal`. Ambang pengakuan piutang = **tanggal generate itu sendiri** (`BillingTolerance::piutangBerlakuPada()`), inklusif: tagihan yang jatuh tempo tepat pada tanggal generate ikut dibukukan. Dulu dipakai `tanggal - graceDays()` hari, tetapi `graceDays()` membaca angka tanggal SOP (1–31) sebagai jumlah hari sehingga ambang selalu jatuh di akhir bulan sebelumnya dan tagihan periode berjalan terlambat satu bulan; accessor itu sudah dihapus. Aturan ini sama dengan APK lama (`$usage->tgl_akhir <= $date`).
+- Definisi "menunggak" untuk suspend/Arsip tetap `due_date < hari ini`, jadi tagihan yang jatuh tempo hari ini sudah dicatat sebagai piutang tetapi belum masuk daftar menunggak.
 - Untuk tiap bill:
   - Insert 1 baris jurnal ke `transactions` (`account_debet='1.1.03.01'` Piutang, `account_kredit='4.1.01.02'` Abodemen, `saldo = bill.abodemen`) jika `bill.abodemen > 0`.
   - Insert 1 baris jurnal (`account_kredit='4.1.01.03'` Pemakaian, `saldo = bill.usage_charge`) jika `bill.usage_charge > 0`.
@@ -699,6 +700,23 @@ otomatis, bukan apakah fitur scan boleh dipakai.
 
 ## 3. Changelog
 
+### v1.4 (2026-11-04) — Perbaiki Pengakuan Piutang Bulan Berjalan
+
+**Diubah:**
+- `billing:generate-overdue-transactions` / `POST /api/piutang/generate` — ambang pengakuan piutang sekarang **tanggal generate itu sendiri**, dengan perbandingan **inklusif** (`due_date <= tanggal`). Sebelumnya `due_date < (tanggal - graceDays())`.
+- `App\Services\BillingTolerance` — `graceDays()` **dihapus** (unitnya keliru: angka tanggal 1-31 dibaca sebagai jumlah hari). Penggantinya `piutangBerlakuPada(?Carbon $tanggalGenerate = null): string`, yang mengembalikan tanggal acuan dalam format `Y-m-d`.
+- Ringkasan run (`total_overdue` pada cache `overdue_gen_summary` dan fallback `DashboardController`) memakai `due_date <= hari ini`, konsisten dengan himpunan yang diproses.
+
+**Perbaikan:**
+- Tagihan periode M (jatuh tempo bulan M+1) kini dicatat pada generate bulan M+1, bukan M+2. Generate tidak lagi "kosong" untuk tagihan yang jatuh tempo bulan berjalan.
+- Paritas dengan APK lama: sana piutang diakui saat `$usage->tgl_akhir <= $date`.
+
+**Catatan:**
+- Tidak ada perubahan skema dan tidak ada migration baru.
+- Jurnal lama tidak diubah/dihapus (tidak ada hard delete).
+- Definisi "menunggak" untuk suspend (`UnpaidMonths`) dan Arsip Piutang tetap `due_date < hari ini` — sengaja berbeda satu hari dari ambang pengakuan piutang.
+- Test regresi: `backend/tests/Feature/AkurasiPiutangPerBulanTest.php`.
+
 ### v1.3 (2026-10-31) — Gabung Dua Field Tanggal SOP (Toleransi Menunggak)
 
 **Baru:**
@@ -707,7 +725,7 @@ otomatis, bukan apakah fitur scan boleh dipakai.
 **Diubah:**
 - `POST /api/settings/sop/sistem-tagihan` — field tanggal jadi SATU: `toleransiTunggakan` (wajib, 1-31). `batasTagihan` diterima sebagai alias legacy opsional, dan kalau dikirim nilainya harus sama dengan `toleransiTunggakan` (selain itu ditolak `422`). `batasBulanTunggakan` tetap wajib (0-24). Penyimpanan menulis kedua kolom `settings` dengan angka yang sama.
 - `GET /api/settings/sop` — `data.sistemTagihan` mengirim `batasTagihan` dan `toleransiTunggakan` dengan nilai yang sama, supaya consumer lama tidak perlu diubah.
-- `App\Services\BillingTolerance` — `legacy()` diganti jadi `tanggal()`. Sekarang membaca `settings.batas_tagihan` (sumber tunggal), dengan fallback ke `settings.toleransi_tunggakan` kalau `batas_tagihan` belum berisi tanggal yang sah (0 / di luar 1-31), supaya baris lama tidak kehilangan jadwal generate. `generateDay()`, `graceDays()`, dan `advanceDayOfMonth()` semuanya memakai angka itu.
+- `App\Services\BillingTolerance` — `legacy()` diganti jadi `tanggal()`. Sekarang membaca `settings.batas_tagihan` (sumber tunggal), dengan fallback ke `settings.toleransi_tunggakan` kalau `batas_tagihan` belum berisi tanggal yang sah (0 / di luar 1-31), supaya baris lama tidak kehilangan jadwal generate. `generateDay()`, `graceDays()`, dan `advanceDayOfMonth()` semuanya memakai angka itu. (`graceDays()` kemudian dihapus di v1.4 — lihat di atas.)
 - `App\Services\TenantManager` dan `SettingsSeeder` — baris baru ditulis dengan kedua kolom tanggal bernilai sama (10).
 
 **Perbaikan:**

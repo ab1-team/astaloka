@@ -283,6 +283,29 @@ php artisan test
 > `tenants`) dan `backend/config/database.php`, dan **tidak akan** menyentuh
 > salah satunya -- jadi aman dijalankan selagi database uji sedang dipakai
 > suite yang lain. Yang dihapus hanya yang cocok dengan pola di atas.
+>
+> Ada satu jenis sisa lagi yang TIDAK tertangkap pola di atas: database
+> **yatim** -- namanya berawalan `astaloka_` (jadi terlihat seperti database
+> lokasi), tapi TIDAK terdaftar di registry pusat. Bentuknya muncul kalau
+> lokasi dihapus dari registry tanpa database-nya ikut hilang, dan tidak akan
+> pernah dibersihkan oleh skrip di atas karena namanya tidak mengandung
+> `testing`.
+>
+> Untuk itu ada flag tambahan. **Tetap `--dry-run` dulu**:
+>
+> ```bash
+> php tools/bersihkan-db-uji.php --dry-run --yatim   # tampilkan saja
+> php tools/bersihkan-db-uji.php --yatim             # baru benar-benar menghapus
+> ```
+>
+> `--yatim` TIDAK aktif secara default. Registry pusat adalah satu-satunya
+> sumber kebenaran nama database lokasi, jadi database yang tidak ada di sana
+> memang tidak pernah dipakai aplikasi -- tapi `DROP DATABASE` tidak punya
+> tombol batal, jadi pengTriggeran itu harus disengaja, bukan bawaan.
+>
+> Kalau registry pusat tidak terbaca, `--yatim` otomatis MENONAKKAN diri --
+> menebak nama database yang terdaftar sama dengan menandai database
+> operasional sebagai yatim.
 
 > [!WARNING]
 > **Hanya SATU `php artisan test` boleh jalan pada satu mesin.** Semua test

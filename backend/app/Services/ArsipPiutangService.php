@@ -36,11 +36,14 @@ use Illuminate\Support\Facades\DB;
  * --------------------------
  *
  *   - Tagihan periode M (mis. Mei) dibuat saat meteran Mei dicatat, dan
- *     jatuh temponya ada di bulan Mei.
+ *     jatuh temponya ada di bulan TAGIHAN -- yaitu bulan pemakaian + 1
+ *     (lihat `BillingDueDate`). Tagihan Mei jatuh tempo, misalnya, tanggal
+ *     27 Juni.
  *   - Jurnal piutang tagihan itu dibuat pada TANGGAL GENERATE -- yaitu
- *     generate pertama yang ambangnya sudah melewati jatuh tempo tagihan itu.
- *     Karena generate hanya jalan satu hari dalam bulan, tagihan periode Mei
- *     umumnya baru menjadi piutang pada generate bulan Juni.
+ *     generate pertama yang tanggalnya sudah mencapai jatuh tempo tagihan
+ *     itu. Karena jatuh tempo tagihan jatuh pada tanggal yang SAMA dengan
+ *     tanggal generate, tagihan periode Mei umumnya menjadi piutang pada
+ *     generate bulan Juni -- tanggal jatuh temponya.
  *   - Sejak tanggal generate itu, piutang tagihan Mei terlihat sampai
  *     generate berikutnya datang (atau sampai tagihannya dibayar).
  *
@@ -51,10 +54,14 @@ use Illuminate\Support\Facades\DB;
  * tidak menyesatkan, dan kolom "Tercatat" menampilkan tanggal generate
  * yang dipakai.
  *
- * Tagihan menunggak yang BELUM punya jurnal tidak masuk bulan mana pun --
- * ia belum masuk periode piutang manapun. Baris seperti itu tetap
- * ditampilkan dengan status "Menunggu Generate", karena diam-diam
- * disembunyikan akan membuat orang mengira tidak ada tunggakan.
+ * CATATAN SOAL "MENUNGGU GENERATE"
+ * -------------------------------
+ *
+ * Tagihan yang jatuh temponya sudah tercapai tapi belum punya jurnal
+ * (mis. tanggal generate terlewat, atau generate belum pernah jalan) tidak
+ * masuk bulan mana pun -- ia belum masuk periode piutang manapun. Baris
+ * seperti itu tetap ditampilkan dengan status "Menunggu Generate", karena
+ * diam-diam disembunyikan akan membuat orang mengira tidak ada tunggakan.
  */
 class ArsipPiutangService
 {

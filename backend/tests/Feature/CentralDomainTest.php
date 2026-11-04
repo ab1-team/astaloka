@@ -6,6 +6,7 @@ use App\Models\Central\Tenant;
 use App\Models\Central\TenantDomain;
 use App\Models\User;
 use App\Services\DomainNormalizer;
+use App\Services\LegacyDomainSync;
 use App\Services\TenantResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -520,6 +521,284 @@ class CentralDomainTest extends TestCase
         $this->assertNull($this->resolveFor('formlama.test'));
     }
 
+    /**
+     * Dua field domain harus menghasilkan DUA baris -- dan salah satunya utama.
+     *
+     * INI ADALAH REGRESI DARI BUG YANG PERNAH ADA.
+     *
+     * `syncLegacyDomain()` versi lama melepas baris "lama" sebuah slot dengan
+     * cara menghapus SELURUH baris domain persis milik lokasi itu -- untuk
+     * slot cadangan. Urutan slotnya `domain` dulu, lalu `domain_alternatif`,
+     * jadi baris utama yang barusan dibuat ikut terhapus oleh langkah slot
+     * cadangan.
+     *
+     * Gejalanya persis seperti yang dilaporkan: form-nya berisi "Domain
+     * Utama" dan "Domain Alternatif", keduanya tersimpan di kolom legacy --
+     * tapi hanya SATU domain yang muncul, dan itu pun bukan yang utama.
+     *
+     * Yang diuji di sini bukan cuma "dua baris ada" -- tapi juga peran
+     * masing-masing. Tanpa peran yang benar, `syncPrimary()` lalu jatuh ke
+     * domain lain, dan `tenants.domain` menunjuk ke host yang tidak lagi
+     * jadi milik lokasi ini.
+     */
+    #[Test]
+    public function dua_field_domain_menyimpan_dua_domain_dengan_satu_utama(): void
+    {
+        $tenant = $this->makeTenant('duaslot');
+
+        $this->actingAsSuperadmin();
+
+        $this->putJson("/api/central/locations/{$tenant->id}", [
+            'nama' => $tenant->nama,
+            'domain' => 'duaslot-utama.test',
+            'domain_alternatif' => 'duaslot-alternatif.test',
+        ])->assertOk();
+
+        $baris = $tenant->domains()->orderBy('id')->get();
+
+        $this->assertCount(
+            2,
+            $baris,
+            'Kedua field domain harus menghasilkan dua baris di tenant_domains.'
+        );
+
+        $utama = $baris->firstWhere('is_primary', true);
+
+        $this->assertNotNull($utama, 'Harus ada tepat satu domain utama.');
+        $this->assertSame('duaslot-utama.test', $utama->host);
+        $this->assertSame(1, $baris->where('is_primary', true)->count());
+
+        /*
+         * Dua-duanya harus bisa dilayani.
+         *
+         * Kolom legacy akan tetap dibaca resolver sebagai cadangan, jadi test
+         * ini bisa lulus хотя tabelnya salah -- makanya kedua host diuji
+         * lewat resolver, bukan lewat isi tabel saja.
+         */
+        $this->assertSame($tenant->id, $this->resolveFor('duaslot-utama.test')?->id);
+        $this->assertSame($tenant->id, $this->resolveFor('duaslot-alternatif.test')?->id);
+    }
+
+    /**
+     * Mengganti SATU slot tidak boleh menghapus slot yang lain.
+     *
+     * Bug yang sama, dilihat dari sisi lain: versi lama menghapus semua baris
+     * domain persis milik lokasi setiap kali slot alternatif diisi ulang.
+     * Jadi mengubah "Domain Alternatif" saja -- tanpa menyentuh "Domain
+     * Utama" -- tetap menghapus domain utamanya.
+     *
+     * Efeknya: domain utama hilang dari daftar, dan `settings.domain` di
+     * database lokasi menunjuk ke host yang sudah tidak dilayani.
+     */
+    #[Test]
+    public function mengganti_satu_slot_tidak_menghapus_slot_lain(): void
+    {
+        $tenant = $this->makeTenant('gantislot');
+
+        $this->actingAsSuperadmin();
+
+        $this->putJson("/api/central/locations/{$tenant->id}", [
+            'nama' => $tenant->nama,
+            'domain' => 'gantislot-utama.test',
+            'domain_alternatif' => 'gantislot-alternatif.test',
+        ])->assertOk();
+
+        // Hanya slot alternatif yang diganti.
+        $this->putJson("/api/central/locations/{$tenant->id}", [
+            'nama' => $tenant->nama,
+            'domain_alternatif' => 'gantislot-alternatif-baru.test',
+        ])->assertOk();
+
+        $host = $tenant->domains()->pluck('host')->all();
+
+        $this->assertContains('gantislot-utama.test', $host, 'Domain utama ikut terhapus.');
+        $this->assertContains('gantislot-alternatif-baru.test', $host);
+        $this->assertNotContains('gantislot-alternatif.test', $host, 'Host lama tidak dilepas.');
+
+        $this->assertSame(
+            1,
+            $tenant->domains()->where('is_primary', true)->count(),
+            'Tetap satu domain utama.'
+        );
+    }
+
+    /**
+     * Mengosongkan slot utama boleh membuat slot cadangan naik jadi utama.
+     *
+     * Kalau tidak, lokasi itu punya domain tapi tidak punya "domain utama" --
+     * dan `settings.domain` di database lokasinya menunjuk ke host yang sudah
+     * tidak jadi milik lokasi ini.
+     */
+    #[Test]
+    public function mengosongkan_slot_utama_menaikkan_slot_cadangan(): void
+    {
+        $tenant = $this->makeTenant('naikslot');
+
+        $this->actingAsSuperadmin();
+
+        $this->putJson("/api/central/locations/{$tenant->id}", [
+            'nama' => $tenant->nama,
+            'domain' => 'naikslot-utama.test',
+            'domain_alternatif' => 'naikslot-alternatif.test',
+        ])->assertOk();
+
+        $this->putJson("/api/central/locations/{$tenant->id}", [
+            'nama' => $tenant->nama,
+            'domain' => null,
+        ])->assertOk();
+
+        $this->assertNull(
+            $tenant->domains()->where('host', 'naikslot-utama.test')->first(),
+            'Domain utama lama harus dilepas.'
+        );
+
+        $utama = $tenant->domains()->where('is_primary', true)->first();
+
+        $this->assertNotNull($utama, 'Lokasi harus punya domain utama.');
+        $this->assertSame('naikslot-alternatif.test', $utama->host);
+    }
+
+    /**
+     * Satu field yang salah tidak boleh membatalkan field yang sudah benar.
+     *
+     * Aturan lama memvalidasi slot satu per satu di dalam loop yang sama
+     * yang menulis barisnya. Jadi host utama yang valid sudah ditulis ke
+     * `tenant_domains` -- lalu host alternatif ditolak, dan `update()`
+     * mengembalikan 422 TANPA menulis kolom legacy. Lokasi jadi setengah jadi:
+     * domain baru ada di tabel, kolom lamanya masih kosong, dan tidak ada
+     * yang melapor.
+     *
+     * Sekarang semua input divalidasi dulu, dan tidak ada satu baris pun
+     * ditulis kalau ada satu saja yang tidak valid.
+     */
+    #[Test]
+    public function satu_field_salah_tidak_meninggalkan_lokasi_setengah_jadi(): void
+    {
+        $tenant = $this->makeTenant('setengah');
+
+        $this->actingAsSuperadmin();
+
+        $res = $this->putJson("/api/central/locations/{$tenant->id}", [
+            'nama' => $tenant->nama,
+            'domain' => 'setengah-utama.test',
+            'domain_alternatif' => 'localhost:5173',
+        ])->assertStatus(422);
+
+        $this->assertNotEmpty($res->json('errors.domain_alternatif'));
+
+        $this->assertSame(
+            0,
+            $tenant->domains()->count(),
+            'Domain yang sudah divalidasi tidak boleh terlanjur ditulis.'
+        );
+
+        $this->assertNull($tenant->fresh()->domain);
+    }
+
+    /**
+     * Pendaftaran lokasi: satu slot yang tidak valid tidak boleh membatalkan
+     * slot lain yang valid.
+     *
+     * Mode "sebagian" dipakai di sini karena database lokasi sudah dibuat
+     * dan dimigrasi pada saat domain didaftarkan -- membatalkan semuanya
+     * demi satu host yang berformat aneh akan meninggalkan database yatim
+     * yang harus dibersihkan terpisah.
+     *
+     * Tapi satu slot yang tidak valid juga tidak boleh membuat lokasi baru
+     * punya NOL domain: itu persis keadaan yang membuat lokasi lama
+     * kehilangan domain utamanya.
+     */
+    #[Test]
+    public function satu_slot_salah_tidak_menggagalkan_slot_lain_saat_pendaftaran(): void
+    {
+        $tenant = $this->makeTenant('daftarsetengah');
+
+        $hasil = app(LegacyDomainSync::class)->sync($tenant, [
+            'domain' => 'daftarsetengah-utama.test',
+            'domain_alternatif' => 'localhost:5173',
+        ], sebagian: true);
+
+        $this->assertArrayHasKey('domain_alternatif', $hasil);
+        $this->assertArrayNotHasKey('domain', $hasil);
+
+        $host = $tenant->domains()->pluck('host')->all();
+
+        $this->assertContains('daftarsetengah-utama.test', $host, 'Slot yang valid harus tetap terdaftar.');
+        $this->assertNotContains('localhost', $host);
+    }
+
+    /**
+     * Daftar lokasi harus menunjukkan KEDUA domain milik setiap lokasi.
+     *
+     * Tanpa relasi `domains` di respons daftar, kolom "Domain" di
+     * `/central/lokasi` hanya menampilkan `row.domain` -- satu host saja --
+     * sehingga domain alternatif tidak terlihat di mana pun. Gejalanya sama
+     * seperti bug di atas, tapi di halaman yang berbeda: user tidak bisa
+     * melihat domain kedua yang mereka isi sendiri.
+     */
+    #[Test]
+    public function daftar_lokasi_menampilkan_semua_domain(): void
+    {
+        $tenant = $this->makeTenant('daftardomain');
+
+        $this->makeDomain($tenant->id, 'daftardomain-utama.test', primary: true);
+        $this->makeDomain($tenant->id, 'daftardomain-alternatif.test');
+
+        $this->actingAsSuperadmin();
+
+        $baris = collect($this->centralLocations())->firstWhere('id', $tenant->id);
+
+        $this->assertNotNull($baris, 'Lokasi harus muncul di daftar.');
+
+        $host = collect($baris['domains'] ?? [])->pluck('host')->all();
+
+        $this->assertContains('daftardomain-utama.test', $host);
+        $this->assertContains('daftardomain-alternatif.test', $host);
+    }
+
+    /**
+     * Lokasi yang domainnya hilang dari `tenant_domains` harus bisa diperbaiki.
+     *
+     * `backfillLegacyDomains()` SENGAJA melewati lokasi yang sudah punya baris
+     * apa pun -- supaya tidak menimpa pilihan admin yang lebih baru. Lokasi
+     * yang rusak oleh bug lama justru punya baris (kurang satu), jadi ia
+     * tidak pernah tersentuh oleh pemulihan biasa.
+     *
+     * Perbaikannya hanya menambah baris yang hilang; baris yang sudah ada
+     * tidak boleh dihapus.
+     */
+    #[Test]
+    public function perbaikan_domain_menambah_baris_yang_hilang_tanpa_menghapus_yang_ada(): void
+    {
+        $tenant = $this->makeTenant('perbaiki');
+
+        $central = DB::connection(self::CENTRAL);
+
+        $central->table('tenants')->where('id', $tenant->id)->update([
+            'domain' => 'perbaiki-utama.test',
+            'domain_alternatif' => 'perbaiki-alternatif.test',
+        ]);
+
+        // Keadaan rusak: hanya slot alternatif yang punya baris.
+        $this->makeDomain($tenant->id, 'perbaiki-alternatif.test');
+
+        $hasil = app(LegacyDomainSync::class)->repair($tenant->fresh());
+
+        $this->assertSame(1, $hasil['disimpan'], 'Slot utama yang hilang harus ditambahkan.');
+
+        $host = $tenant->domains()->pluck('host')->all();
+
+        $this->assertContains('perbaiki-utama.test', $host);
+        $this->assertContains('perbaiki-alternatif.test', $host);
+        $this->assertCount(2, $host);
+
+        $this->assertSame(
+            1,
+            $tenant->domains()->where('is_primary', true)->count(),
+            'Harus ada tepat satu domain utama.'
+        );
+    }
+
     #[Test]
     public function form_domain_legacy_tidak_menghapus_wildcard(): void
     {
@@ -984,6 +1263,24 @@ class CentralDomainTest extends TestCase
     private function publicLocations(): array
     {
         $response = $this->getJson('/api/central/lokasi')->assertOk();
+
+        $this->assertTrue($response->json('success'));
+
+        return $response->json('data');
+    }
+
+    /**
+     * Isi `data` dari daftar lokasi panel pusat, sudah di-decode.
+     *
+     * Endpoint yang sama dengan `publicLocations()` -- `/api/central/lokasi` --
+     * tapi dipanggil sebagai superadmin, jadi yang dikembalikan adalah
+     * daftar LENGKAP beserta domainnya, bukan ringkasan publik.
+     */
+    private function centralLocations(): array
+    {
+        $this->actingAsSuperadmin();
+
+        $response = $this->getJson('/api/central/locations')->assertOk();
 
         $this->assertTrue($response->json('success'));
 
