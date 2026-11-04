@@ -670,7 +670,7 @@ class DashboardController extends Controller
         $totalUnpaid = (int) ($ringkasan['total_unpaid']
             ?? MonthlyBill::where('status', 'unpaid')->count());
         $totalOverdue = (int) ($ringkasan['total_overdue']
-            ?? MonthlyBill::where('status', 'unpaid')->where('due_date', '<', $todayYmd)->count());
+            ?? MonthlyBill::where('status', 'unpaid')->where('due_date', '<=', $todayYmd)->count());
 
         $payload = [
             'success' => true,

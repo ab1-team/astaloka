@@ -150,11 +150,22 @@ class TenantDomainController extends Controller
             ], 422);
         }
 
+        $adaUtama = $location->domains()
+            ->where('is_active', true)
+            ->where('is_primary', true)
+            ->where('is_wildcard', false)
+            ->exists();
+
         $domain = TenantDomain::create([
             'tenant_id' => $location->id,
             'host' => $host,
             'is_wildcard' => $wildcard,
-            'is_primary' => false,
+            /*
+             * Domain persis pertama yang aktif otomatis menjadi utama.
+             * Wildcard tidak pernah dijadikan utama: ia tidak punya host yang
+             * bisa dibuka atau dicetak, dan `syncPrimary()` juga melewatinya.
+             */
+            'is_primary' => ! $wildcard && ! $adaUtama,
             'is_active' => true,
         ]);
 
@@ -188,15 +199,23 @@ class TenantDomainController extends Controller
             'is_primary' => ['sometimes', 'boolean'],
         ]);
 
-        $sebelum = $domain->only(array_keys($data));
-
         /*
          * Domain utama yang DIMATIKAN tidak boleh tetap utama -- kalau iya,
          * `settings.domain` di database lokasi menunjuk ke domain yang sudah
          * tidak dilayani, dan laporan menghasilkan alamat yang tidak bisa
          * dibuka. `syncPrimary()` di bawah menunjukkannya ke domain aktif
-         * yang lain, atau ke kolom legacy kalau tidak ada satupun.
+         * yang lain, atau melepas kolom legacy kalau tidak ada satupun.
+         *
+         * `is_primary` harus ikut dikosongkan di baris ini: tanpa itu domain
+         * nonaktif tetap ditandai "Utama" di panel, dan saat baris yang sama
+         * diaktifkan lagi ia langsung jadi utama tanpa pernah dipilih admin.
          */
+        if (array_key_exists('is_active', $data) && $data['is_active'] === false) {
+            $data['is_primary'] = false;
+        }
+
+        $sebelum = $domain->only(array_keys($data));
+
         if (array_key_exists('is_primary', $data) && $data['is_primary'] === true) {
             $this->clearPrimaryExcept($domain->tenant_id, $domain->id);
         }

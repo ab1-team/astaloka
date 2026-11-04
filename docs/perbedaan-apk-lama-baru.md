@@ -351,14 +351,20 @@ $usage->tgl_akhir <= $date
 **APK Baru:** `GenerateOverdueTransactions` (artisan) atau auto saat login.
 ```php
 // GenerateOverdueTransactions.php
-$thresholdDate = today - graceDays() DAYS
-// pilih: status='unpaid' AND due_date < $thresholdDate
+$thresholdDate = BillingTolerance::piutangBerlakuPada($tanggalGenerate)
+// pilih: status='unpaid' AND due_date <= $thresholdDate
 ```
 
-> ⚠️ **Perbedaan semantic sama sekali:** angka di APK lama = **tanggal** (dalam bulan), di APK baru = **jumlah HARI**.
+> ✅ **Semantiknya kini SAMA dengan APK lama:** piutang diakui saat tanggal jatuh
+> tempo sudah tercapai (`tgl_akhir <= $date` di APK lama, `due_date <= tanggal
+> generate` di APK baru). Bedanya hanya tanggal jurnal: APK lama memakai tanggal
+> jatuh tempo, APK baru memakai tanggal generate — pada aturan normal keduanya
+> sama, karena generate berjalan tepat pada tanggal jatuh tempo.
 >
->>`graceDays()` = tanggal SOP yang sama (`batas_tagihan`), jadi **ambang piutang
-> di APK baru ikut bergeser** kalau tanggal SOP digeser. Lihat §6.2.1.
+> Catatan sejarah: versi sebelumnya menghitung `today − graceDays()` hari, dengan
+> `graceDays()` membaca angka tanggal (1–31). Satuan itu tidak cocok sebagai
+> jumlah hari, sehingga ambangnya selalu jatuh di akhir bulan sebelumnya dan
+> tagihan baru dijurnal satu bulan terlambat. `graceDays()` sudah dihapus.
 
 ---
 
@@ -453,7 +459,7 @@ Masing-masing punya **satuan berbeda**, dan karena itu dipisah-pisah:
 
 | Kolom `settings` | Label di UI | Satuan | Dipakai untuk |
 |---|---|---|---|
-| `batas_tagihan` | Toleransi Menunggak | **TANGGAL** (1-31) | **Sumber tunggal**: jatuh tempo tagihan (`BillingDueDate`), tanggal generate jurnal piutang, ambang piutang, dan ambang deteksi advance payment |
+| `batas_tagihan` | Toleransi Menunggak | **TANGGAL** (1-31) | **Sumber tunggal**: jatuh tempo tagihan (`BillingDueDate`), tanggal generate jurnal piutang, dan ambang deteksi advance payment. Ambang pengakuan piutang **tidak** memakai angka ini — piutang diakui saat `due_date <= tanggal generate` |
 | `toleransi_tunggakan` | — (kolom salinan, tidak ada input sendiri) | **TANGGAL** (1-31) | Salinan dari `batas_tagihan`; dibaca import legacy. Tidak pernah berbeda isinya |
 | `billing_unpaid_limit` | Batas Tagihan Bulanan | **JUMLAH BULAN** (0-24) | Batas tunggakan sebelum sambungan `suspended` |
 

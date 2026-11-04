@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Central\Tenant;
 use App\Models\Central\TenantDomain;
 use Illuminate\Http\Request;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
 
 /**
@@ -73,7 +72,7 @@ class TenantResolver
      * Petugas yang membuka `tirto-mulo.astaloka.test` akan melihat halaman
      * marketing di mana dia justru ingin langsung masuk login.
      */
-private function fromHost(Request $request): ?Tenant
+    private function fromHost(Request $request): ?Tenant
     {
         try {
             $host = strtolower(trim($request->getHost()));
@@ -163,11 +162,24 @@ private function fromHost(Request $request): ?Tenant
         // ditambahkan lewat `php artisan tenancy:make` -- yang tidak melewati
         // controller dan tidak selalu punya baris di `tenant_domains` -- tetap
         // bisa diakses lewat domainnya.
+        //
+        // TAPI host yang barisnya sudah ada dan DINONAKTIFKAN tidak boleh
+        // dilayani lagi lewat jalur ini. Tanpa penjagaan di bawah, mematikan
+        // satu-satunya domain sebuah lokasi tidak mengubah apa pun: exact
+        // match-nya hilang dari `tenant_domains`, lalu fallback ini menemukan
+        // host yang sama di `tenants.domain` dan tetap mengarahkan request ke
+        // database lokasi itu.
         return Tenant::query()
             ->where('is_active', true)
             ->where(function ($q) use ($host) {
                 $q->where('domain', $host)
                     ->orWhere('domain_alternatif', $host);
+            })
+            ->whereNotExists(function ($q) use ($host) {
+                $q->selectRaw('1')
+                    ->from('tenant_domains')
+                    ->where('tenant_domains.host', $host)
+                    ->where('tenant_domains.is_active', false);
             })
             ->first();
     }

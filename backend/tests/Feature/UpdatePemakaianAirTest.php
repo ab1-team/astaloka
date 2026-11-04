@@ -7,10 +7,12 @@ use App\Models\InstallationPackage;
 use App\Models\InstallationTicket;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
+use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WaterTariffBlock;
 use App\Services\BillingService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -620,5 +622,186 @@ class UpdatePemakaianAirTest extends TestCase
         $this->assertNotNull($bill, 'Tagihan harus dibuat kalau belum ada.');
         $this->assertSame(20.0, (float) $bill->usage_m3);
         $this->assertSame(55_000.0, (float) $bill->total_amount);
+    }
+
+    /**
+     * `recorded_at` saat mencatat meter baru = AKHIR PERIODE PEMAKAIAN,
+     * bukan tanggal hari ini.
+     *
+     * Periode sengaja dipilih beberapa bulan lalu: kalau `recorded_at`
+     * memakai `now()` -- seperti yang dulu terjadi di jalur edit -- tanggalnya
+     * akan berada di bulan ini, sehingga test gagal tanpa perlu mengubah jam
+     * sistem.
+     */
+    #[Test]
+    public function store_menyimpan_tanggal_akhir_di_bulan_pemakaian(): void
+    {
+        Sanctum::actingAs($this->admin, ['*'], 'sanctum');
+
+        $package = $this->makePaket();
+        $customer = $this->makeCustomer($package);
+
+        $periode = now()->subMonthsNoOverflow(5);
+        $tahun = (int) $periode->year;
+        $bulan = (int) $periode->month;
+
+        $this->postJson('/api/meter-readings', [
+            'customer_id' => $customer->id,
+            'meter_value' => 129,
+            'reading_month' => $bulan,
+            'reading_year' => $tahun,
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $reading = MeterReading::where('customer_id', $customer->id)
+            ->where('reading_year', $tahun)
+            ->where('reading_month', $bulan)
+            ->firstOrFail();
+
+        // Tanpa baris Setting, `batas_tagihan` jatuh ke bawaan 27.
+        $akhirPeriode = Carbon::create($tahun, $bulan, 1);
+        $akhirPeriode->setDay(min(27, $akhirPeriode->daysInMonth));
+
+        $this->assertSame(
+            $akhirPeriode->toDateString(),
+            Carbon::parse($reading->recorded_at)->toDateString(),
+            'recorded_at harus hari batas_tagihan di bulan pemakaian.'
+        );
+
+        // Jatuh tempo adalah tanggal yang sama di bulan BERIKUTNYA.
+        $jatuhTempo = Carbon::create($tahun, $bulan, 1)->addMonthNoOverflow();
+        $jatuhTempo->setDay(min(27, $jatuhTempo->daysInMonth));
+
+        $bill = MonthlyBill::where('customer_id', $customer->id)
+            ->where('billing_period_year', $tahun)
+            ->where('billing_period_month', $bulan)
+            ->firstOrFail();
+
+        $this->assertSame(
+            $jatuhTempo->toDateString(),
+            $bill->due_date->toDateString(),
+            'due_date tetap di bulan tagihan (satu bulan setelah pemakaian).'
+        );
+    }
+
+    /**
+     * Tanggal akhir mengikuti angka TANGGAL di SOP -- bukan tanggal hari ini
+     * dan bukan tanggal saat input.
+     *
+     * Contoh yang diminta: SOP diset 26, pemakaian Juni 2026 ->
+     * TANGGAL AKHIR 26 Juni 2026, jatuh tempo 26 Juli 2026.
+     *
+     * `batas_tagihan` dan `toleransi_tunggakan` sengaja diisi angka yang sama
+     * karena `SopController` memang menulis keduanya dari satu input.
+     */
+    #[Test]
+    public function tanggal_akhir_mengikuti_angka_tanggal_di_sop(): void
+    {
+        Sanctum::actingAs($this->admin, ['*'], 'sanctum');
+
+        Setting::create([
+            'key' => 'sop',
+            'batas_tagihan' => 26,
+            'toleransi_tunggakan' => 26,
+        ]);
+
+        $package = $this->makePaket();
+        $customer = $this->makeCustomer($package);
+
+        $this->postJson('/api/meter-readings', [
+            'customer_id' => $customer->id,
+            'meter_value' => 129,
+            'reading_month' => 6,
+            'reading_year' => 2026,
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $reading = MeterReading::where('customer_id', $customer->id)
+            ->where('reading_year', 2026)
+            ->where('reading_month', 6)
+            ->firstOrFail();
+
+        $this->assertSame(
+            '2026-06-26',
+            Carbon::parse($reading->recorded_at)->toDateString(),
+            'TANGGAL AKHIR = angka SOP (26) di bulan pemakaian (Juni).'
+        );
+
+        $bill = MonthlyBill::where('customer_id', $customer->id)
+            ->where('billing_period_year', 2026)
+            ->where('billing_period_month', 6)
+            ->firstOrFail();
+
+        $this->assertSame(
+            '2026-07-26',
+            $bill->due_date->toDateString(),
+            'Jatuh tempo = angka SOP yang sama di bulan tagihan (Juli).'
+        );
+    }
+
+    /**
+     * Jalur EDIT yang harus membuat `MeterReading` baru (tagihan sudah ada,
+     * meternya belum) juga memakai akhir periode pemakaian -- bukan `now()`.
+     *
+     * Inilah inkonsistensi yang diperbaiki: periode yang sama bisa punya
+     * "TANGGAL AKHIR" berbeda tergantung dicatat lewat halaman input atau
+     * lewat halaman edit.
+     */
+    #[Test]
+    public function edit_yang_membuat_reading_baru_memakai_tanggal_akhir_periode(): void
+    {
+        Sanctum::actingAs($this->admin, ['*'], 'sanctum');
+
+        $package = $this->makePaket();
+        $customer = $this->makeCustomer($package);
+
+        $periode = now()->subMonthsNoOverflow(5);
+        $tahun = (int) $periode->year;
+        $bulan = (int) $periode->month;
+
+        // Simulasikan tagihan yang sudah digenerate duluan, sementara
+        // pencatatan meternya belum ada.
+        $jatuhTempo = Carbon::create($tahun, $bulan, 1)->addMonthNoOverflow();
+        $jatuhTempo->setDay(min(27, $jatuhTempo->daysInMonth));
+
+        MonthlyBill::create([
+            'customer_id' => $customer->id,
+            'billing_period_year' => $tahun,
+            'billing_period_month' => $bulan,
+            'meter_reading_start' => 119,
+            'meter_reading_end' => 129,
+            'usage_m3' => 10,
+            'usage_charge' => 20_000,
+            'abodemen' => 15_000,
+            'penalty_amount' => 0,
+            'total_amount' => 35_000,
+            'status' => 'unpaid',
+            'due_date' => $jatuhTempo->toDateString(),
+        ]);
+
+        $this->assertSame(
+            0,
+            MeterReading::where('customer_id', $customer->id)->count(),
+            'Sanity check: belum ada pencatatan meter untuk periode ini.'
+        );
+
+        $this->putJson('/api/monthly-bills/usage', [
+            'customer_id' => $customer->id,
+            'month' => $bulan,
+            'year' => $tahun,
+            'meter_value' => 139,
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $reading = MeterReading::where('customer_id', $customer->id)
+            ->where('reading_year', $tahun)
+            ->where('reading_month', $bulan)
+            ->firstOrFail();
+
+        $akhirPeriode = Carbon::create($tahun, $bulan, 1);
+        $akhirPeriode->setDay(min(27, $akhirPeriode->daysInMonth));
+
+        $this->assertSame(
+            $akhirPeriode->toDateString(),
+            Carbon::parse($reading->recorded_at)->toDateString(),
+            'Edit pemakaian tidak boleh menyimpan recorded_at hari ini.'
+        );
     }
 }

@@ -805,14 +805,41 @@ unpaid tersisa = 0, tiket dikembalikan ke `completed`.
 ### 7.4 `recorded_at`
 
 ```php
-// backend/app/Http/Controllers/MeterReadingController.php:222-238
-$recordedAt = Carbon::create($tahun, $bulan, 1)
-    ->setDay(min($batasTagihan, Carbon::create($tahun, $bulan, 1)->daysInMonth))
-    ->setTimeFrom(now());
+// backend/app/Services/BillingDueDate.php
+public static function inUsageMonth(int $year, int $month, int $day): Carbon
+{
+    $usage = Carbon::create($year, $month, 1);            // bulan PEMAKAIAN
+    $effectiveDay = min(max($day, 1), $usage->daysInMonth);
+
+    return $usage->setDay($effectiveDay)->startOfDay();
+}
 ```
 
 `recorded_at` = hari `batas_tagihan` **di dalam bulan pemakaian** (bukan bulan
 tagihan) — frontend memakainya sebagai "tanggal akhir pemakaian".
+
+Rumus ini sekarang dipakai **semua** jalur yang menulis `meter_readings`:
+`MeterReadingController::store()` (input meter), `MonthlyBillController::updateUsage()`
+(cabang yang membuat reading baru karena tagihannya sudah digenerate duluan), dan
+`SeedTenantPelangganCommand` (data demo). Jam pencatatan boleh ditimpa pemanggil
+(`setTimeFrom(now())`), tapi tanggalnya tidak boleh dihitung ulang.
+
+Sebelum dipusatkan, tiap jalur punya rumus sendiri dan hasilnya bisa berbeda:
+`store()` memakai `setTimeFrom(now())`, `updateUsage()` memakai `now()` mentah
+(tanggalnya bisa jatuh di bulan yang sama sekali lain), dan seed memakai jam
+09:00. Akibatnya satu periode yang sama bisa menampilkan "TANGGAL AKHIR" berbeda
+tergantung jalur penyimpanannya.
+
+Tanggal 29-31 dijepit ke hari terakhir bulan pemakaian (Februari → 28/29).
+Tanggal 0/negatif dijepit ke tanggal 1 — `Carbon::setDay(0)` berarti hari terakhir
+bulan **sebelumnya**, jadi tanpa penjepitan ini `recorded_at` bisa mundur satu bulan.
+
+> `recorded_at` sengaja **bukan** `due_date`. `due_date` berada di bulan tagihan
+> (pemakaian + 1); `recorded_at` tetap di bulan pemakaian. Lihat §8.7.
+
+Di UI, field "TANGGAL AKHIR" pada modal edit pemakaian bersifat **read-only**
+(diturunkan dari SOP). Sebelumnya field itu bisa dipilih, tetapi nilainya tidak
+pernah dikirim oleh `handleSaveEdit()` — jadi pilihan user dibuang diam-diam.
 
 ---
 
@@ -1350,19 +1377,24 @@ dipakai sebagai: (1) tanggal generate piutang, (2) ambang piutang mundur dari ha
 run, (3) ambang deteksi advance payment, dan (4) batas tagihan unpaid sebelum
 suspend.
 
-**Sekarang: makna (1)–(3) digabung jadi SATU angka, dan (4) pindah ke kolom
-sendiri.**
+**Sekarang: makna (1) dan (3) digabung jadi SATU angka, (2) dihapus, dan (4)
+pindah ke kolom sendiri.**
 
 | # | Makna | Satuan | Accessor | Sumber | Pemakai |
 |---|---|---|---|---|---|
 | 1 | Tanggal generate piutang dalam bulan | hari 1–31 | `generateDay()` / `effectiveGenerateDay()` | `settings.batas_tagihan` | `ReceivableGenerator` |
-| 2 | Ambang piutang mundur dari hari run | **jumlah hari** | `graceDays()` | `settings.batas_tagihan` | `GenerateOverdueTransactions` |
+| 2 | Ambang pengakuan piutang (= tanggal jatuh tempo sudah tercapai) | tanggal (hari generate itu sendiri) | `piutangBerlakuPada()` | argumen `--tanggal` / `now()`, **bukan** setting | `GenerateOverdueTransactions` |
 | 3 | Ambang deteksi advance payment | tanggal di bulan tagihan | `advanceDayOfMonth()` | `settings.batas_tagihan` | `MonthlyBillController::pay()` |
 | 4 | Batas tagihan unpaid sebelum suspend | **jumlah bulan** | `unpaidBillLimit()` | `settings.billing_unpaid_limit` | `MeterReadingController::store()` |
 
-Ketiganya satuan dan maknanya sama: "hari ke berapa dalam bulan". Dua input untuk
-satu satuan yang sama bikin admin mengira ada dua aturan terpisah, padahal
-tujuannya satu. Halaman SOP sekarang hanya punya SATU input tanggal.
+Makna (1) dan (3) tetap memakai satuan dan makna yang sama: "hari ke berapa dalam
+bulan". Dua input untuk satu satuan yang sama bikin admin mengira ada dua aturan
+terpisah, padahal tujuannya satu. Halaman SOP sekarang hanya punya SATU input
+tanggal.
+
+Makna **(2) dihapus** karena satuannya memang tidak pernah cocok: angka 1–31 itu
+"tanggal", bukan "jumlah hari". Selama dibaca sebagai jumlah hari, ambang piutang
+selalu jatuh di akhir bulan sebelumnya — lihat [§9.5](#95-threshold-jurnal-piutang).
 
 ```php
 // backend/app/Services/BillingTolerance.php
@@ -1430,26 +1462,84 @@ public function invoiceGraceMonths(): int
 ### 9.5 Threshold jurnal piutang
 
 ```php
-// backend/app/Console/Commands/GenerateOverdueTransactions.php:26-48
+// backend/app/Console/Commands/GenerateOverdueTransactions.php
 $today = $this->option('tanggal') ?: now()->toDateString();
-$toleransi = app(BillingTolerance::class)->graceDays();
-$thresholdDate = date('Y-m-d', strtotime("$today -$toleransi days"));
+$today = date('Y-m-d', strtotime($today));
+
+$thresholdDate = app(BillingTolerance::class)
+    ->piutangBerlakuPada(Carbon::parse($today)->startOfDay());
 
 $overdueBills = MonthlyBill::where('status', 'unpaid')
-    ->where('due_date', '<', $thresholdDate)
+    ->where('due_date', '<=', $thresholdDate)
     ->with(['customer.user'])->get();
 ```
 
-**Rumus: `due_date < (hari generate − graceDays() hari)`** (strict), dan
-`graceDays()` = tanggal SOP (`batas_tagihan`) yang sama.
+**Rumus: `due_date <= tanggal generate`** (inklusif). `piutangBerlakuPada()`
+mengembalikan tanggal generate itu sendiri — tidak ada lagi pengurangan
+sejumlah hari.
 
-Contoh `toleransi = 3`, hari generate 28:
+**Bug yang diperbaiki.** Versi lama memakai:
+
+```php
+$toleransi = app(BillingTolerance::class)->graceDays(); // = settings.batas_tagihan
+$thresholdDate = date('Y-m-d', strtotime("$today -$toleransi days"));
+->where('due_date', '<', $thresholdDate);               // strict
+```
+
+`graceDays()` membaca angka yang sama dengan tanggal jatuh tempo (mis. 27) lalu
+memakainya sebagai **jumlah hari**. Karena generate juga hanya jalan pada tanggal
+itu, ambangnya selalu jatuh di **akhir bulan sebelumnya**:
 
 ```
-threshold = 28 Juli − 3 hari = 25 Juli
-Tagihan dengan due_date < 25 Juli → dijurnalkan
-Tagihan dengan due_date = 25 Juli → BELUM (strict <)
+Hari generate : 27 September   (batas_tagihan = 27)
+threshold lama: 27 September − 27 hari = 31 Agustus
+→ hanya tagihan dengan due_date < 31 Agustus yang dijurnal
+→ tagihan periode Agustus (due_date 27 September) BELUM tercatat
 ```
+
+Akibatnya tagihan periode M baru dijurnalkan pada generate bulan **M+2** — satu
+bulan lebih lambat dari aturan bisnis dan dari aplikasi lama
+(`$usage->tgl_akhir <= $date`).
+
+**Timeline setelah perbaikan.** Tagihan periode Agustus jatuh tempo
+27 September, generate berjalan 27 September:
+
+```
+Periode tagihan        : Agustus 2026
+due_date               : 27 September 2026
+Generate 27 September  : due_date <= 27 September  → 27 Sep <= 27 Sep  ✅ dicatat
+Generate 27 Oktober    : sudah tercatat, tidak dobel (dedup per bill + akun kredit)
+```
+
+Jika generate tanggal 27 September terlewat (mis. server mati), tagihan itu tetap
+tercatat pada generate berikutnya karena `due_date`-nya sudah lewat ambang —
+tidak ada baris yang hilang, hanya bergeser tanggal jurnalnya.
+
+Contoh hari generate 27, dengan beberapa tagihan:
+
+```
+threshold = 27 September
+due_date 27 Agustus  → dicatat (sudah lewat)
+due_date 27 September → dicatat (jatuh tempo HARI INI, inklusif)
+due_date 27 Oktober   → BELUM (jatuh tempo belum tercapai)
+```
+
+**Kenapa inklusif (`<=`) dan bukan strict (`<`).** Tanpa `=`, tagihan yang jatuh
+tempo tepat pada tanggal generate tidak ikut dibukukan, dan karena generate hanya
+jalan sekali sebulan, tagihan itu baru tercatat bulan berikutnya — bug yang sama
+muncul satu bulan lebih lambat.
+
+**Kenapa tidak ada "toleransi N hari".** Generate hanya jalan satu hari dalam
+bulan, dan tanggal jalannya sama dengan tanggal jatuh tempo. Toleransi > 0 justru
+menggeser pengakuan ke bulan berikutnya, jadi tidak ada nilai toleransi yang
+benar.
+
+**Beda dengan definisi "menunggak".** `UnpaidMonths` dan daftar Arsip Piutang
+tetap memakai `due_date < hari ini` (strict): tagihan yang jatuh tempo hari ini
+sudah boleh **dibukukan** sebagai piutang, tapi belum dianggap **menunggak**
+sampai besok. Ringkasan run (`total_overdue`) memakai `due_date <= hari ini`
+supaya konsisten dengan himpunan yang diproses: `diproses ⊆ total_overdue ⊆
+total_unpaid`.
 
 ### 9.6 Jurnal per komponen
 
@@ -2453,7 +2543,7 @@ Image frontend sudah built di dalam image (bukan runtime `npm install`).
 
 | Tool | Fungsi |
 |---|---|
-| `tools/bersihkan-db-uji.php` | Hapus database uji — **wajib `--dry-run` dulu** |
+| `tools/bersihkan-db-uji.php` | Hapus database uji — **wajib `--dry-run` dulu** (`--yatim` juga hapus DB yatim) |
 | `tools/tambah-host-tenant.bat` | Tambah subdomain ke hosts file |
 | `tools/ukur-cetak-form.mjs` | Ukur tinggi baris laporan (headless Chrome) |
 | `tools/cek-halaman.mjs` | Cek halaman |
@@ -2531,14 +2621,15 @@ seperti PostgreSQL — perlu workaround).
 **P1-4 — Pisahkan makna `toleransi_tunggakan`.** ✅ **SELESAI (bentuk berbeda
 dari usulan awal).**
 
-Usulan awal: pecah jadi 4 kolom terpisah. Yang dikerjakan: makna 1–3
-(tanggal generate, ambang piutang, ambang advance) digabung jadi **satu** kolom
-tanggal, karena ketiganya satuan dan maknanya sama — "hari ke berapa dalam
-bulan" — dan tiga input terpisah justru membingungkan admin. Sumbernya
-`settings.batas_tagihan`, dengan `settings.toleransi_tunggakan` tetap ada
-sebagai salinan (dipakai import legacy). Makna 4 (batas tagihan menunggak
-sebelum suspend) dipisah ke `settings.billing_unpaid_limit` dengan satuan
-**JUMLAH BULAN**.
+Usulan awal: pecah jadi 4 kolom terpisah. Yang dikerjakan: makna 1 dan 3
+(tanggal generate, ambang advance) digabung jadi **satu** kolom tanggal, karena
+keduanya satuan dan maknanya sama — "hari ke berapa dalam bulan" — dan tiga input
+terpisah justru membingungkan admin. Sumbernya `settings.batas_tagihan`, dengan
+`settings.toleransi_tunggakan` tetap ada sebagai salinan (dipakai import legacy).
+Makna 2 (ambang piutang) **dihapus** dan diganti tanggal generate itu sendiri
+(`BillingTolerance::piutangBerlakuPada()`), karena angka tanggal tidak boleh
+dibaca sebagai jumlah hari. Makna 4 (batas tagihan menunggak sebelum suspend)
+dipisah ke `settings.billing_unpaid_limit` dengan satuan **JUMLAH BULAN**.
 
 Perilaku lama dipertahankan: `billing_unpaid_limit` kosong dibaca sebagai 3,
 dan baris dengan `batas_tagihan` = 0 masih punya jadwal generate lewat

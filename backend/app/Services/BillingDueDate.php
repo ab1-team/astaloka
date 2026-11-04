@@ -103,4 +103,56 @@ class BillingDueDate
 
         return $billing->setDay($effectiveDay)->startOfDay();
     }
+
+    /**
+     * Tanggal akhir PERIODE PEMAKAIAN untuk satu bulan pemakaian.
+     *
+     * Ini pasangan `inBillingMonth()`: kalau `inBillingMonth()` menjawab
+     * "kapan tagihannya jatuh tempo", method ini menjawab "kapan periode
+     * pemakaiannya berakhir". Angka `batas_tagihan`-nya sama, bulan yang
+     * dipakai berbeda satu:
+     *
+     *   batas_tagihan = 27, pemakaian Juni 2026
+     *     inUsageMonth()   -> 2026-06-27  (akhir periode pemakaian)
+     *     inBillingMonth() -> 2026-07-27  (jatuh tempo pembayaran)
+     *
+     * Dipakai untuk mengisi `meter_readings.recorded_at`. Frontend
+     * menampilkan kolom itu sebagai "TANGGAL AKHIR" pemakaian (lihat
+     * `usePemakaianAir.js`), jadi nilainya HARUS tetap di bulan pemakaian
+     * -- tidak boleh ikut bergeser ke bulan tagihan seperti `due_date`.
+     *
+     * KENAPA DI PUSATKAN DI SINI
+     * --------------------------
+     * Sebelumnya rumus ini disalin di tiga tempat dengan tiga hasil berbeda:
+     * `MeterReadingController::store` memakai `setTimeFrom(now())`,
+     * `MonthlyBillController::updateUsage` memakai `now()` apa adanya
+     * (sehingga tanggalnya bisa jatuh di bulan yang sama sekali lain), dan
+     * `SeedTenantPelangganCommand` memakai jam 09:00. Akibatnya satu periode
+     * yang sama bisa punya "TANGGAL AKHIR" berbeda tergantung jalur
+     * penyimpanannya.
+     *
+     * PENJEPITAN TANGGAL
+     * ------------------
+     * Tanggal 29-31 dijepit ke hari terakhir bulan pemakaian (Februari ->
+     * 28/29). Tanggal 0 atau negatif dijepit ke tanggal 1: `Carbon::setDay(0)`
+     * berarti "hari terakhir bulan SEBELUMNYA", jadi tanpa penjepitan ini
+     * `recorded_at` bisa mundur satu bulan dari periodenya.
+     *
+     * Jamnya selalu 00:00 supaya nilai ini murni tanggal periode. Pemanggil
+     * yang ingin menyimpan jam pencatatan boleh menimpanya sendiri
+     * (`setTimeFrom(now())`), tapi tanggalnya tidak boleh dihitung ulang.
+     *
+     * @param  int  $year  tahun pemakaian
+     * @param  int  $month  bulan pemakaian, 1-12
+     * @param  int  $day  tanggal akhir periode (1-31) dari SOP
+     */
+    public static function inUsageMonth(int $year, int $month, int $day = self::DEFAULT_BATAS_TAGIHAN): Carbon
+    {
+        // Bulan PEMAKAIAN -- sengaja tidak di-addMonth seperti di atas.
+        $usage = Carbon::create($year, $month, 1);
+
+        $effectiveDay = min(max($day, 1), $usage->daysInMonth);
+
+        return $usage->setDay($effectiveDay)->startOfDay();
+    }
 }

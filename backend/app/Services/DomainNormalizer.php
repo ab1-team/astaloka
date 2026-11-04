@@ -200,6 +200,31 @@ final class DomainNormalizer
         }
 
         /*
+         * Kolom legacy ikut diperiksa.
+         *
+         * Lokasi yang dibuat lewat `tenancy:make` versi lama hanya punya
+         * `tenants.domain` dan tidak punya baris di `tenant_domains`. Kalau
+         * pemeriksaan ini hanya melihat tabel baru, host itu bisa didaftarkan
+         * ke lokasi lain lewat halaman Domain -- dan resolver, yang mencari
+         * `tenant_domains` lebih dulu, langsung memindahkan seluruh request
+         * ke lokasi kedua.
+         *
+         * `$isWildcard` tidak mengubah pemeriksaan legacy: kolom lama tidak
+         * pernah menyimpan wildcard yang benar-benar berfungsi (resolver
+         * mencocokkannya persis), jadi hanya tabrakan persis yang relevan.
+         */
+        $legacy = Tenant::query()
+            ->where('id', '!=', $tenantId)
+            ->where(function ($q) use ($host) {
+                $q->where('domain', $host)->orWhere('domain_alternatif', $host);
+            })
+            ->first();
+
+        if ($legacy) {
+            return [false, "Domain `{$host}` masih tercatat sebagai domain lama {$legacy->label()}. Lepaskan dulu dari lokasi itu sebelum dipakai di sini."];
+        }
+
+        /*
          * Tabrakan dengan domain PUSAT.
          *
          * Yang dicek: host pusat itu sendiri, dan host pusat sebagai subdomain
@@ -425,13 +450,50 @@ final class DomainNormalizer
      */
     public static function syncPrimary(Tenant $tenant): void
     {
-        $utama = $tenant->activeDomains()->where('is_primary', true)->orderBy('id')->first();
+        /*
+         * Hanya domain persis. Wildcard `*.x.test` tidak punya host yang bisa
+         * dibuka atau dicetak di kop laporan -- menuliskannya ke kolom legacy
+         * membuat `settings.domain` berisi string yang tidak pernah bisa
+         * dipakai, dan `punyaDomain()` menganggap lokasi itu punya alamat.
+         */
+        $utama = $tenant->activeDomains()
+            ->where('is_wildcard', false)
+            ->where('is_primary', true)
+            ->orderBy('id')
+            ->first();
 
         if (! $utama) {
-            $utama = $tenant->activeDomains()->orderBy('id')->first();
+            $utama = $tenant->activeDomains()
+                ->where('is_wildcard', false)
+                ->orderBy('id')
+                ->first();
         }
 
-        $host = $utama?->host ?? $tenant->domain;
+        $host = $utama?->host;
+
+        if ($host === null) {
+            /*
+             * Tidak ada domain persis yang aktif. Kolom legacy hanya boleh
+             * dipertahankan kalau host itu memang belum pernah dikelola di
+             * `tenant_domains` -- kalau barisnya ada tapi nonaktif, host itu
+             * sudah "dimatikan" dan tidak boleh hidup lagi lewat fallback
+             * resolver.
+             *
+             * Wildcard sisa versi lama juga dilepas di sini: nilai seperti
+             * `*.x.test` tidak pernah bisa dipakai sebagai host persis.
+             */
+            $legacy = $tenant->domain;
+
+            if (is_string($legacy)) {
+                if (str_starts_with($legacy, '*.') || $legacy === '') {
+                    $legacy = null;
+                } elseif ($tenant->domains()->where('host', $legacy)->exists()) {
+                    $legacy = null;
+                }
+            }
+
+            $host = $legacy;
+        }
 
         // Tidak ada yang berubah -> berhenti sebelum menyentuh database lokasi.
         //

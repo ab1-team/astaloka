@@ -7,11 +7,10 @@ use App\Http\Controllers\Concerns\GeneratesSafeUploadNames;
 use App\Models\Customer;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
-use App\Models\Setting;
+use App\Services\BillingDueDate;
 use App\Services\BillingService;
 use App\Services\BillingTolerance;
 use App\Services\UnpaidMonths;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -220,8 +219,17 @@ class MeterReadingController extends Controller
             ? $this->storeUploadedImage($request->file('photo'), 'meter-readings')
             : null;
 
-        $settings = Setting::first();
-        $batasTagihan = (int) ($settings?->batas_tagihan ?? 27);
+        // Satu angka TANGGAL dari SOP dipakai untuk dua tanggal sekaligus:
+        // akhir periode pemakaian (`recorded_at`) dan jatuh tempo
+        // (`due_date`). `BillingTolerance::tanggal()` yang memutuskan
+        // angkanya -- termasuk saat `batas_tagihan` masih 0 karena SOP belum
+        // pernah disimpan. Dulu controller ini membaca kolomnya langsung dan
+        // menganggap 0 sebagai tanggal sah, padahal 0 berarti "belum diisi".
+        $batasTagihan = app(BillingTolerance::class)->tanggal();
+
+        if ($batasTagihan === 0) {
+            $batasTagihan = BillingDueDate::DEFAULT_BATAS_TAGIHAN;
+        }
 
         // Waktu pencatatan meter = hari `batas_tagihan` di dalam bulan
         // PEMAKAIAN, bukan bulan tagihannya.
@@ -234,8 +242,12 @@ class MeterReadingController extends Controller
         //
         // Meter dibaca di sekitar hari `batas_tagihan` bulan berjalan, lalu
         // tagihannya dibayar pada bulan berikutnya.
-        $recordedAt = Carbon::create($tahun, $bulan, 1)
-            ->setDay(min($batasTagihan, Carbon::create($tahun, $bulan, 1)->daysInMonth))
+        //
+        // Rumus tanggalnya ada di `BillingDueDate::inUsageMonth()` supaya
+        // jalur lain yang juga membuat `MeterReading` (edit pemakaian, seed
+        // data demo) menghasilkan tanggal yang sama. Jam di bawah tetap jam
+        // pencatatan sebenarnya -- yang dipakai frontend hanya tanggalnya.
+        $recordedAt = BillingDueDate::inUsageMonth($tahun, $bulan, $batasTagihan)
             ->setTimeFrom(now());
 
         $result = DB::transaction(function () use ($request, $customer, $bulan, $tahun, $fileName, $recordedAt, $batasTagihan) {

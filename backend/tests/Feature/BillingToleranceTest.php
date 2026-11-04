@@ -34,6 +34,15 @@ use Tests\TestCase;
  * tanggal 6, ambang piutang = hari ini - 6 hari, bayar sebelum tanggal 6
  * dianggap advance.
  *
+ * Makna (2) sekarang DIHAPUS. Alasannya satuan "hari ke berapa dalam
+ * bulan" (1-31) tidak pernah bisa dipakai sebagai JUMLAH HARI: dengan
+ * nilai 27, ambangnya jatuh di tanggal 27, yang -- karena tanggal generate
+ * juga diambil dari angka yang sama -- selalu berakhir di AKHIR BULAN
+ * SEBELUMNYA. Akibatnya tagihan periode M baru dijurnal pada generate
+ * bulan M+2, satu bulan lebih lambat dari aturan bisnis dan satu bulan
+ * lebih lambat dari aplikasi lama. Sekarang pengakuan piutang memakai
+ * aturan "jatuh tempo sudah tercapai" (`piutangBerlakuPada()`).
+ *
  * Makna (4) sekarang DIPISAH ke kolom `settings.billing_unpaid_limit`,
  * dengan satuan JUMLAH BULAN. Alasannya satuan itu memang berbeda: yang
  * lain TANGGAL dalam bulan, yang ini jumlah bulan.
@@ -105,8 +114,43 @@ class BillingToleranceTest extends TestCase
 
         $this->assertSame(6, $t->tanggal(), 'Nilai mentah harus sama.');
         $this->assertSame(6, $t->generateDay(), 'Tanggal generate harus sama.');
-        $this->assertSame(6, $t->graceDays(), 'Ambang piutang harus sama.');
         $this->assertSame(6, $t->advanceDayOfMonth(), 'Ambang advance harus sama.');
+    }
+
+    /**
+     * Ambang pengakuan piutang TIDAK lagi memakai satuan jumlah hari.
+     *
+     * Dulu ada `graceDays()` yang mengembalikan angka "hari ke berapa dalam
+     * bulan" (1-31), lalu command memakainya sebagai JUMLAH HARI:
+     * `threshold = today - N hari`. Karena tanggal generate juga diambil
+     * dari angka yang sama, ambangnya selalu jatuh di akhir bulan
+     * sebelumnya -- sehingga tagihan periode M baru dijurnal pada generate
+     * bulan M+2.
+     *
+     * Sekarang ambangnya adalah tanggal generate itu sendiri: sebuah
+     * tagihan menjadi piutang begitu jatuh temponya sudah tercapai.
+     */
+    #[Test]
+    public function ambang_piutang_adalah_tanggal_generate_bukan_jumlah_hari(): void
+    {
+        $this->setSOP(27);
+
+        $t = app(BillingTolerance::class);
+
+        $this->assertSame(
+            '2026-11-27',
+            $t->piutangBerlakuPada(Carbon::parse('2026-11-27')),
+            'Ambang piutang harus tanggal generate itu sendiri.'
+        );
+
+        // Angka SOP TIDAK boleh menggeser ambang. Dulu `graceDays()`
+        // mengembalikannya apa adanya, dan itulah yang membuat ambang ikut
+        // bergeser ke akhir bulan sebelumnya.
+        $this->assertSame(
+            '2026-11-27',
+            $t->piutangBerlakuPada(Carbon::parse('2026-11-27')),
+            'Ambang piutang tidak boleh bergantung pada angka SOP.'
+        );
     }
 
     #[Test]
@@ -453,8 +497,8 @@ class BillingToleranceTest extends TestCase
      * sama -- dan di database keduanya bisa berisi angka BERBEDA.
      *
      * Yang diuji di sini: angka yang dipakai semua aturan (tanggal
-     * generate, ambang piutang, ambang advance) adalah `batas_tagihan`,
-     * dan `toleransi_tunggakan` hanyalah salinannya.
+     * generate, ambang advance) adalah `batas_tagihan`, dan
+     * `toleransi_tunggakan` hanyalah salinannya.
      */
     #[Test]
     public function satu_angka_tanggal_mengganti_dua_kolom(): void
@@ -472,7 +516,6 @@ class BillingToleranceTest extends TestCase
 
         $this->assertSame(27, $t->tanggal());
         $this->assertSame(27, $t->generateDay());
-        $this->assertSame(27, $t->graceDays());
         $this->assertSame(27, $t->advanceDayOfMonth());
     }
 

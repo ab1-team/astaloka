@@ -46,7 +46,15 @@ export const TENANT_SLUG_KEY = 'tenant_slug'
 export function simpanTenantSlug(slug) {
   const bersih = typeof slug === 'string' ? slug.trim().toLowerCase() : ''
 
-  if (!bersih) return
+  /*
+   * Nilai kosong bukan "tidak ada yang berubah" -- itu perintah untuk
+   * melepas lokasi lama. Tanpa ini, login pusat setelah sesi lokasi masih
+   * membawa `X-Tenant-Slug` milik lokasi sebelumnya.
+   */
+  if (!bersih) {
+    hapusTenantSlug()
+    return
+  }
 
   try {
     localStorage.setItem(TENANT_SLUG_KEY, bersih)

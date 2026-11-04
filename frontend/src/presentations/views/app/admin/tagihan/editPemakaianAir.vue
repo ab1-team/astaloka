@@ -142,11 +142,25 @@
                   <div
                     class="grid! md:grid-cols-2! gap-3! md:gap-4! p-4! md:p-6! bg-slate-50/50! border! border-slate-100! rounded-2xl! md:rounded-3xl!"
                   >
+                    <!--
+                      TANGGAL AKHIR = hari `batas_tagihan` di bulan
+                      pemakaian. Nilainya DITURUNKAN dari SOP periode itu,
+                      bukan dipilih manual: `MeterReadingController::store`
+                      dan `updateUsage` sama-sama memakai
+                      `BillingDueDate::inUsageMonth()`.
+
+                      Dulu date picker ini aktif, tapi nilainya tidak pernah
+                      dikirim oleh `handleSaveEdit()` -- user bisa memilih
+                      tanggal dan menekan Simpan, lalu tanggalnya tetap yang
+                      lama. Sekarang dikunci supaya tidak menjanjikan sesuatu
+                      yang tidak disimpan.
+                    -->
                     <AppDatePicker
                       v-model="localData.tanggalAkhir"
-                      label="TANGGAL AKHIR"
+                      label="TANGGAL AKHIR (OTOMATIS)"
                       class="usage-input"
                       no-margin
+                      disabled
                     />
                     <BaseInput
                       v-model="localData.meterAwal"
