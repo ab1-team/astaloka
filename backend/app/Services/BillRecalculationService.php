@@ -29,8 +29,8 @@ use Illuminate\Support\Facades\Log;
  *
  * KONSISTENSI ANGKA (penting untuk multi-tenant)
  * ------------------------------------------------
- * Rumus tarif progresif di sini WAJIB identik dengan
- * `BillingService::calculateProgressiveCharge()` dan
+ * Rumus tarif di sini WAJIB identik dengan
+ * `BillingService::calculateUsageCharge()` dan
  * `MonthlyBillService::calculateTariff()`. Ketiganya membaca blok tarif
  * dari paket yang sama, jadi selisih sekecil apa pun akan terlihat oleh
  * klien sebagai "tagihan berbeda antar lokasi".
@@ -81,7 +81,7 @@ class BillRecalculationService
             : (int) ($bill->meter_reading_end ?? $startMeter);
 
         $usageM3 = max(0, $endMeter - $startMeter);
-        $usageCharge = $this->billingService->calculateProgressiveCharge($package, $usageM3);
+        $usageCharge = $this->billingService->calculateUsageCharge($package, $usageM3);
 
         $abodemen = round((float) $package->monthly_abodemen);
 

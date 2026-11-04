@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Providers\AppServiceProvider;
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Console\Scheduling\ScheduleRunCommand;
@@ -18,7 +17,7 @@ use Throwable;
  * ==============
  *
  * `schedule:run` dipanggil setiap menit oleh Task Scheduler. Sebelum
- * menjalankan job apa pun, framework melakukan DUA hal yang butuh cache:
+ * menjalankan job apa pun, framework melakukan TIGA hal yang butuh cache:
  *
  *   1. Membaca flag pause:
  *
@@ -26,8 +25,10 @@ use Throwable;
  *
  *   2. Mengambil mutex `withoutOverlapping()` untuk setiap job.
  *
- * Keduanya reading CACHE -- bukan data aplikasi. Tapi cache di aplikasi ini
- * memakai store `database`, dan store itu menunjuk ke database PUSAT. Jadi:
+ *   3. Mengecek flag interrupt.
+ *
+ * Cache di aplikasi ini memakai store `database`, dan store itu menunjuk ke
+ * database PUSAT. Jadi:
  *
  *   - kalau MySQL sedang mati, atau belum selesai start, atau sedang
  *     di-restart, query cache itu melempar
@@ -87,15 +88,37 @@ use Throwable;
  *     ke log, dan exit code-nya bukan 0. Yang dicegah di sini adalah
  *     "crash SEBELUM job dicek", bukan "menyembunyikan kegagalan job".
  *
+ * KENAPA OVERRIDE `schedule:pause` DAN `schedule:resume` JUGA
+ * ========================================================
+ *
+ * Perintah bawaan itu menulis flag pause ke cache DEFAULT:
+ *
+ *     $cache->forever('illuminate:schedule:paused', true);
+ *
+ * `Cache` yang di-resolve dari container adalah store default -- yaitu
+ * `database` di aplikasi ini. Tapi command INI membaca flag dari store
+ * `file`. Dua store berbeda, dua kunci berbeda: flag yang ditulis
+ * `schedule:pause` TIDAK PERNAH dibaca scheduler.
+ *
+ * Gejalanya: `schedule:pause` mencetak "Scheduled task processing has been
+ * paused." -- lalu scheduler tetap menjalankan job terus-terusan, tanpa
+ * error apa pun. Perintah itu berbohong.
+ *
+ * Karena itu kedua perintah itu ikut di-override supaya menulis dan
+ * membaca di store yang SAMA. Lihat {@see SchedulePauseResilient} dan
+ * {@see ScheduleResumeResilient}.
+ *
  * Kenapa overriding, bukan mengubah framework
  * ==========================================
  *
  * Mengubah file di `vendor/` tidak bisa dilakukan: `composer install` akan
  * menimpanya kembali, dan perbedaannya hilang tanpa jejak. Overriding lewat
- * `Artisan::starting` membuat perbedaannya menetap di repo ini dan terlihat
+ * `ArtisanStarting` membuat perbedaannya menetap di repo ini dan terlihat
  * saat review kode.
  *
- * @see AppServiceProvider::registerSchedulerCommandOverride()
+ * @see SchedulePauseResilient
+ * @see ScheduleResumeResilient
+ * @see App\Providers\AppServiceProvider::registerSchedulerCommandOverride()
  */
 class ScheduleRunResilient extends ScheduleRunCommand
 {
@@ -105,11 +128,9 @@ class ScheduleRunResilient extends ScheduleRunCommand
      * Mengambil `cache.schedule_store` (default `file`) supaya scheduler
      * tidak bergantung pada database sama sekali.
      */
-    private function scheduleCache(): Repository
+    protected function scheduleCache(): Repository
     {
-        $store = config('cache.schedule_store');
-
-        return app('cache')->store($store);
+        return app('cache')->store(config('cache.schedule_store'));
     }
 
     /**
@@ -137,37 +158,18 @@ class ScheduleRunResilient extends ScheduleRunCommand
     }
 
     /**
-     * Ambil mutex job tanpa pernah melempar exception.
+     * Jalankan scheduler.
      *
-     * Mengembalikan `true` berarti "job ini SEDANG jalan di proses lain,
-     * jadi lewati". Mengembalikan `false` berarti "jalankan jobnya".
+     * Ganti cache yang di-resolve DIAMATERI dengan store scheduler, jadi
+     * pembacaan flag pause dan flag interrupt sama-sama tidak menyentuh
+     * database.
      *
-     * Di sini kita sengaja mengembalikan `false` saat lock GAGAL diambil
-     * karena masalah infrastruktur -- supaya job tetap jalan. Lihat
-     * penjelasan di docblock class.
-     */
-    public function shouldSkipDueToOverlapping(): bool
-    {
-        try {
-            return parent::shouldSkipDueToOverlapping();
-        } catch (Throwable $e) {
-            report($e);
-
-            return false;
-        }
-    }
-
-    /**
-     * Cek apakah scheduler diinterupsi sejak waktu tertentu.
-     *
-     * Method ini ada di `Schedule` (bukan di command), dan ia membaca flag
-     * `illuminate:schedule:interrupt` dari cache. Cache itu -- kalau store
-     * default dipakai -- menunjuk ke database, jadi di situation yang sama
-     * (MySQL mati) pemanggilannya juga akan melempar exception.
-     *
-     * Karena `Schedule` di-resolve dari container, override-nya dipasang di
-     * container juga. Lihat
-     * {@see AppServiceProvider::registerSchedulerCommandOverride()}.
+     * Catatan: `parent::handle()` mengembalikan `void`, jadi exit code-nya
+     * selalu 0. Kegagalan job yang benar-benar butuh database TETAP
+     * terlihat -- errornya ditulis ke log oleh exception handler, dan
+     * `Last Result` di Task Scheduler tetap 0 karena `schedule:run` sendiri
+     * tidak gagal. Yang dicegah di sini adalah crash scheduler, bukan
+     * kegagalan job.
      */
     public function handle(
         Schedule $schedule,
@@ -175,9 +177,6 @@ class ScheduleRunResilient extends ScheduleRunCommand
         Repository $cache,
         ExceptionHandler $handler,
     ) {
-        // Ganti cache yang di-resolve DIAMATERI dengan store scheduler, jadi
-        // `isPaused()` bawaan (yang di-override di atas) dan
-        // `hasBeenInterruptedSince()` sama-sama tidak menyentuh database.
         $this->cache = $this->scheduleCache();
 
         parent::handle($schedule, $dispatcher, $cache, $handler);

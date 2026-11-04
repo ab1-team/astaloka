@@ -534,9 +534,16 @@ function setTerpilih(jabatan, set) {
  * `selected` server. Setelah ada yang dicentang, angka yang benar untuk
  * ditunjukkan ke superadmin adalah pilihannya yang sekarang, bukan keadaannya
  * sebelum halaman ini dibuka.
+ *
+ * Menu `hidden` tidak ikut dihitung. Ia memang TIDAK tampil sebagai
+ * checkbox (lihat `groupMenu()`), jadi memasukkannya membuat lencana
+ * menulis angka yang tidak bisa dicocokkan dengan apa pun di layar --
+ * mis. teknisi yang hanya punya dua entri terlihat "4 menu diizinkan".
  */
 function jumlahDiizinkan(jabatan) {
-  return terpilih(jabatan).size
+  const tampil = new Set((jabatan.menu ?? []).filter((m) => !m.hidden).map((m) => m.key))
+
+  return [...terpilih(jabatan)].filter((key) => tampil.has(key)).length
 }
 
 /**
@@ -596,13 +603,33 @@ const groupMenu = (jabatan) => {
     byGroup.get(nama).push({
       ...item,
       bisaDiubah,
+      /*
+       * Keterangan = kenapa checkbox ini yang berbentuk seperti ini.
+       *
+       * `tanpa_sidebar` dan `hidden` bedanya penting untuk yang membaca
+       * daftar ini:
+       *
+       *   - `hidden`          : tidak tampil di sidebar DAN TIDAK bisa
+       *                         dicentang di sini -- jadi tidak bisa
+       *                         dicabut dari panel pusat.
+       *   - `tanpa_sidebar`   : tidak tampil di sidebar, tapi TETAP bisa
+       *                         dicentang di sini. Jadi endpointnya masih
+       *                         bisa ditutup per jabatan.
+       *
+       * Menu role non-admin yang `tanpa_sidebar` (mis. "Daftar Survey"
+       * milik surveyor) tetap wajib tampil di daftar ini -- kalau
+       * disembunyikan, superadmin tidak akan pernah bisa mencabut hak
+       * aksesnya.
+       */
       keterangan: item.locked
         ? 'wajib terbuka'
         : item.role_mismatch
           ? `bukan untuk role ${(item.roles || []).join(', ')}`
-          : item.hidden
-            ? 'tanpa entri di sidebar'
-            : '',
+          : item.tanpa_sidebar
+            ? 'dibuka dari dashboard, bukan menu'
+            : item.hidden
+              ? 'tanpa entri di sidebar'
+              : '',
     })
   }
 

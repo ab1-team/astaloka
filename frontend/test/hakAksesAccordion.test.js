@@ -198,9 +198,7 @@ before(async () => {
   setActivePinia = pinia.setActivePinia
 
   DataTable = await komponen('presentations/components/ui/DataTable.vue')
-  CentralHakAksesIndex = await komponen(
-    'presentations/views/central/CentralHakAksesIndex.vue',
-  )
+  CentralHakAksesIndex = await komponen('presentations/views/central/CentralHakAksesIndex.vue')
 })
 
 after(async () => {
@@ -268,9 +266,7 @@ function mountHalaman() {
  *   dengan `expandable`: 1 baris, 2 `td` per baris
  */
 function barisData(wrapper) {
-  return wrapper
-    .findAll('tbody > tr')
-    .filter((tr) => tr.findAll('td[colspan]').length === 0)
+  return wrapper.findAll('tbody > tr').filter((tr) => tr.findAll('td[colspan]').length === 0)
 }
 
 /** Tombol chevron pembuka accordion pada baris data ke-`n`. */
@@ -314,7 +310,10 @@ describe('DataTable memberi tahu pemanggil saat baris di-expand', () => {
     // memaksa setiap halaman mencocokkan `id` sendiri di dalam closure.
     const wrapper = mount(DataTable, {
       props: {
-        data: [{ id: 7, nama: 'Kiri' }, { id: 9, nama: 'Kanan' }],
+        data: [
+          { id: 7, nama: 'Kiri' },
+          { id: 9, nama: 'Kanan' },
+        ],
         columns: [{ key: 'nama', title: 'Lokasi' }],
         expandable: true,
       },
@@ -514,7 +513,15 @@ describe('halaman hak akses menampilkan peran jabatan', () => {
         configured: true,
         total_user: 1,
         role: 'surveyor',
-        menu: [{ key: 'survey.daftar', label: 'Daftar Survey', group: 'Survey', selected: true, locked: false }],
+        menu: [
+          {
+            key: 'survey.daftar',
+            label: 'Daftar Survey',
+            group: 'Survey',
+            selected: true,
+            locked: false,
+          },
+        ],
       },
     ])
 
@@ -537,7 +544,15 @@ describe('halaman hak akses menampilkan peran jabatan', () => {
         configured: true,
         total_user: 1,
         role: 'teknisi',
-        menu: [{ key: 'teknisi.daftar-tagihan', label: 'Daftar Tagihan', group: 'Pusat Teknis', selected: true, locked: false }],
+        menu: [
+          {
+            key: 'teknisi.daftar-tagihan',
+            label: 'Daftar Tagihan',
+            group: 'Pusat Teknis',
+            selected: true,
+            locked: false,
+          },
+        ],
       },
       {
         id: 2,
@@ -545,7 +560,15 @@ describe('halaman hak akses menampilkan peran jabatan', () => {
         configured: true,
         total_user: 1,
         role: 'teknisi',
-        menu: [{ key: 'teknisi.daftar-tagihan', label: 'Daftar Tagihan', group: 'Pusat Teknis', selected: true, locked: false }],
+        menu: [
+          {
+            key: 'teknisi.daftar-tagihan',
+            label: 'Daftar Tagihan',
+            group: 'Pusat Teknis',
+            selected: true,
+            locked: false,
+          },
+        ],
       },
     ])
 
@@ -563,6 +586,93 @@ describe('halaman hak akses menampilkan peran jabatan', () => {
     )
   })
 
+  it('menu `hidden` tidak muncul di daftar centang teknisi', async () => {
+    /*
+     * "Daftar Tagihan" dan "Hasil Instalasi" dibuka dari KARTU di dashboard
+     * teknisi, bukan dari entri sidebar. Backend mengirimnya `hidden`, dan
+     * halaman ini harus menyaringnya -- kalau tidak, superadmin melihat
+     * checkbox untuk menu yang tidak pernah tampil sebagai menu.
+     *
+     * Yang diuji sekaligus: group yang SELURUH isinya hidden ikut hilang
+     * (tidak boleh tersisa kartu kosong), dan lencana "N menu diizinkan"
+     * hanya menghitung menu yang benar-benar tampil.
+     */
+    pakaiJabatan([
+      {
+        id: 1,
+        nama: 'Teknisi',
+        configured: true,
+        total_user: 1,
+        role: 'teknisi',
+        menu: [
+          {
+            key: 'instalasi.pemakaian',
+            label: 'Input Pemakaian Air',
+            group: 'Master Instalasi',
+            selected: true,
+            locked: false,
+            hidden: false,
+          },
+          {
+            key: 'teknisi.dashboard',
+            label: 'Dashboard',
+            group: 'Utama',
+            selected: true,
+            locked: true,
+            hidden: false,
+          },
+          {
+            key: 'teknisi.hasil-instalasi',
+            label: 'Hasil Instalasi',
+            group: 'Pusat Teknis',
+            selected: true,
+            locked: false,
+            hidden: true,
+          },
+          {
+            key: 'teknisi.daftar-tagihan',
+            label: 'Daftar Tagihan',
+            group: 'Pusat Teknis',
+            selected: true,
+            locked: true,
+            hidden: true,
+          },
+        ],
+      },
+    ])
+
+    const wrapper = mountHalaman()
+
+    await bukaJabatan(wrapper)
+
+    const teks = wrapper.text()
+
+    assert.match(teks, /Input Pemakaian Air/, 'menu yang tampil harus tetap ada')
+    assert.match(teks, /Dashboard/, 'Dashboard tetap tampil sebagai menu wajib terbuka')
+
+    assert.doesNotMatch(
+      teks,
+      /Daftar Tagihan/,
+      '"Daftar Tagihan" tidak boleh muncul di daftar centang -- halamannya dibuka dari dashboard.',
+    )
+    assert.doesNotMatch(
+      teks,
+      /Hasil Instalasi/,
+      '"Hasil Instalasi" tidak boleh muncul di daftar centang.',
+    )
+    assert.doesNotMatch(
+      teks,
+      /Pusat Teknis/,
+      'group yang seluruh isinya hidden tidak boleh tersisa sebagai kartu kosong.',
+    )
+
+    assert.match(
+      teks,
+      /2 menu diizinkan/,
+      'lencana hanya boleh menghitung menu yang benar-benar tampil.',
+    )
+  })
+
   it('tidak menampilkan catatan peran untuk jabatan admin', async () => {
     pakaiJabatan([
       {
@@ -571,7 +681,15 @@ describe('halaman hak akses menampilkan peran jabatan', () => {
         configured: false,
         total_user: 0,
         role: 'admin',
-        menu: [{ key: 'master.pelanggan', label: 'Pelanggan', group: 'Basis Data', selected: true, locked: false }],
+        menu: [
+          {
+            key: 'master.pelanggan',
+            label: 'Pelanggan',
+            group: 'Basis Data',
+            selected: true,
+            locked: false,
+          },
+        ],
       },
     ])
 

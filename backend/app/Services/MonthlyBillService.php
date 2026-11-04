@@ -3,10 +3,10 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Models\InstallationPackage;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
 use App\Models\Setting;
-use App\Models\WaterTariffBlock;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -85,7 +85,7 @@ class MonthlyBillService
 
             $package = $customer->ticket->package;
 
-            $usage_charge = $this->calculateTariff($usage, $package->id);
+            $usage_charge = $this->calculateTariff($usage, $package);
 
             $abodemen = $package->monthly_abodemen;
 
@@ -149,64 +149,28 @@ class MonthlyBillService
         ];
     }
 
-    private function calculateTariff($usage, $package_id)
+    /**
+     * Hitung biaya pemakaian.
+     *
+     * RUMUSNYA FLAT: `pemakaian × harga paket per m³` -- sama dengan
+     * aplikasi LAMA (dibuktikan dari 25.569 baris pemakaian yang dihitung
+     * aplikasi di `pamsides_dump.usages`, di mana rumus flat cocok 25.540
+     * baris (99,89%) sedangkan rumus progresif hanya 11.832 baris (46,27%)).
+     *
+     * Blok tarif dipakai untuk MEMILIH harga per m³, bukan untuk membagi
+     * pemakaian jadi beberapa bagian dengan harga berbeda. Blok pertama
+     * yang batas atasnya (inklusif) sudah >= pemakaian yang dipakai.
+     *
+     * CATATAN KONSISTENSI: rumus ini memanggil
+     * `BillingService::calculateUsageCharge()` -- bukan menyalin logikanya.
+     * Dulu logika ini ditulis ulang (disalin) di sini, dan dua salinan itu
+     * bisa saja berbeda satu rupiah tanpa ada yang sadar. Sekarang ada
+     * SATU tempat yang menentukan rumusnya, jadi "tagihan berbeda antar
+     * lokasi" tidak mungkin terjadi karena salinan yang tidak sinkron.
+     */
+    private function calculateTariff($usage, InstallationPackage $package): float
     {
-        $blocks = WaterTariffBlock::where('package_id', $package_id)
-            ->orderBy('usage_min_m3')
-            ->get();
-
-        if ($blocks->isEmpty()) {
-            return 0;
-        }
-
-        $remaining = $usage;
-        $total = 0;
-
-        foreach ($blocks as $index => $block) {
-            if ($remaining <= 0) {
-                break;
-            }
-
-            $min = (int) $block->usage_min_m3;
-
-            // Panjang rentang blok, dengan aturan yang SAMA dengan
-            // `BillingService::calculateProgressiveCharge()`:
-            //
-            //   - Blok tak terbatas (`usage_max_m3` null) → pakai sisa.
-            //   - Blok berurutan tanpa jeda (mis. `1-10` lalu `11-...`) →
-            //     batas atas inklusif, panjang = `max - min + 1`
-            //     (1..10 = 10 m3).
-            //   - Blok berjarak / tumpang tindih (mis. `0-10` lalu `10-20`) →
-            //     panjang = `max - min`.
-            //
-            // Kenapa dibedakan: blok tarif di database ditulis sebagai rentang
-            // inklusif (`1-10 m3` = 10 m3). Kalau selalu pakai `max - min`,
-            // 1 m3 terakhir terlewat dan masuk blok berikutnya yang lebih
-            // mahal — tagihan jadi 500 lebih mahal per pelanggan.
-            //
-            // CATATAN KONSISTENSI: rumus ini WAJIB sama persis dengan
-            // `BillingService::calculateProgressiveCharge()`. Keduanya menghitung
-            // tagihan dari sumber yang sama (blok tarif paket), jadi selisih
-            // sekecil apa pun akan terlihat oleh klien sebagai "tagihan
-            // berbeda antar lokasi".
-            if ($block->usage_max_m3 === null) {
-                $range = $remaining;
-            } else {
-                $max = (int) $block->usage_max_m3;
-                $nextMin = $blocks[$index + 1]->usage_min_m3 ?? null;
-
-                $range = ($nextMin !== null && (int) $nextMin === $max + 1)
-                    ? $max - $min + 1
-                    : max(0, $max - $min);
-            }
-
-            $used = min($remaining, $range);
-
-            $total += $used * (float) $block->price_per_m3;
-            $remaining -= $used;
-        }
-
-        return $total;
+        return app(BillingService::class)->calculateUsageCharge($package, (float) $usage);
     }
 
     private function calculatePenalty($customer_id, $bulan, $tahun, $package)

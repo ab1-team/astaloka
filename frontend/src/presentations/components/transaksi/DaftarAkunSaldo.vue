@@ -10,11 +10,16 @@
         </div>
       </div>
       <div class="relative! w-full! lg:w-80!">
+        <span
+          class="absolute! left-3! top-1/2! -translate-y-1/2! text-sm! text-slate-400! pointer-events-none!"
+        >
+          <font-awesome-icon icon="search" />
+        </span>
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="🔍 Cari kode atau nama akun..."
-          class="w-full! h-10! pl-3! pr-3! bg-white! border! border-slate-200! rounded-lg! text-sm! text-slate-700! transition-all! focus:outline-none! focus:border-blue-500! focus:ring-2! focus:ring-blue-500/10!"
+          placeholder="Cari kode atau nama akun..."
+          class="w-full! h-10! pl-9! pr-3! bg-white! border! border-slate-200! rounded-lg! text-sm! text-slate-700! transition-all! focus:outline-none! focus:border-blue-500! focus:ring-2! focus:ring-blue-500/10!"
         />
       </div>
     </div>

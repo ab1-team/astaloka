@@ -53,7 +53,19 @@ export const sopService = {
 
   /**
    * Sistem Tagihan
-   * Payload: { batasTagihan, toleransiTunggakan }
+   *
+   * Payload: { toleransiTunggakan, batasTagihan, batasBulanTunggakan }
+   *
+   * - `toleransiTunggakan`  : TANGGAL (1-31) untuk semua aturan berbasis
+   *                            tanggal -- jatuh tempo tagihan bulanan,
+   *                            generate piutang tiap bulan, ambang piutang,
+   *                            dan deteksi advance payment.
+   * - `batasTagihan`        : alias lama dari `toleransiTunggakan`. Kalau
+   *                            dikirim, HARUS sama dengan
+   *                            `toleransiTunggakan`, kalau tidak backend
+   *                            menolak dengan 422.
+   * - `batasBulanTunggakan` : JUMLAH BULAN tunggakan yang boleh ditoleransi
+   *                            sebelum sambungan pelanggan diputus (0-24).
    */
   async saveSistemTagihan(payload) {
     const response = await api.post('/settings/sop/sistem-tagihan', payload)

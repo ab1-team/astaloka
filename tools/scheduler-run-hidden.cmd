@@ -55,16 +55,19 @@ set "OUT_FILE=%LOG_DIR%\scheduler-out-%STAMP%.txt"
 
 REM --- Jalankan scheduler -------------------------------------------------
 REM `--whisper` menahan pesan "No scheduled commands are ready to run."
-REM `--no-ansi` supaya file log tidak berisi kode escape warna.
-cd /d "%BACKEND_DIR%"
-
-REM --- Jalankan scheduler -------------------------------------------------
-REM `--whisper` menahan pesan "No scheduled commands are ready to run."
 REM yang tanpa itu muncul SETIAP menit.
 REM
 REM `--no-ansi` TIDAK dipakai: Artisan masih bisa mencetak kode escape
 REM warna dari tabel/box yang ia gambar sendiri, dan kode itu jadi sampah
-REM di file log. Semua yang ditulis ke log sudah ASCII.
+REM di file log.
+REM
+REM `chcp 65001` menyetel code page UTF-8 untuk pesan-pesan cmd sendiri.
+REM Catatan: ini BUKAN yang membuat isi file log jadi UTF-8 -- PHP menulis
+REM byte UTF-8 langsung ke stream yang dialihkan, tanpa melewati code page
+REM konsol. Bytes-nya sudah UTF-8 sejak awal; kalau file itu terlihat
+REM kacau, itu karena dibaca dengan pembaca yang salah encoding, bukan
+REM karena cmd salah set code page.
+chcp 65001 >nul 2>&1
 cd /d "%BACKEND_DIR%"
 
 "%PHP_EXE%" "%BACKEND_DIR%\artisan" schedule:run --whisper > "%OUT_FILE%" 2>&1
@@ -85,7 +88,33 @@ if "%OUT_SIZE%"=="0" (
 REM --- Gabungkan ke log utama ---------------------------------------------
 REM File log ditulis dari sini, BUKAN dari VBS, supaya tidak ada dua
 REM penulis ke satu file (VBS membacanya sebelum cmd selesai = terkunci).
+REM
+REM Yang ditulis HANYA kalau ada masalah:
+REM   - exit code bukan 0, atau
+REM   - output-nya menandakan ada error.
+REM
+REM Run yang sukses dan tidak menghasilkan output TIDAK ditulis sama sekali.
+REM Alasannya: `schedule:run` yang sukses tetap mencetak baris "Running
+REM [...] DONE" untuk setiap job yang jalan, dan job `migrasi:bersihkan`
+REM jalan tiap 10 menit -- jadi log akan penuh baris sukses yang tidak
+REM pernah dibaca siapa pun, dan baris error yang SESUNGGUHNYA jadi
+REM sulit ditemukan di antaranya.
+REM
+REM Deteksi error pakai kata "error"/"exception" (case-insensitive) --
+REM output Artisan selalu memakai kata-kata itu saat ada yang gagal.
 set "LOG_FILE=%LOG_DIR%\scheduler-run.log"
+
+set "IS_ERROR=0"
+if not "%EXIT_CODE%"=="0" set "IS_ERROR=1"
+
+findstr /i /c:"error" /c:"exception" /c:"failed" "%OUT_FILE%" >nul 2>&1
+if not errorlevel 1 set "IS_ERROR=1"
+
+if "%IS_ERROR%"=="0" (
+    del /q "%OUT_FILE%" >nul 2>&1
+    goto :selesai
+)
+
 >> "%LOG_FILE%" echo --- %DATE% %TIME% exit_code=%EXIT_CODE% ---
 type "%OUT_FILE%" >> "%LOG_FILE%"
 del /q "%OUT_FILE%" >nul 2>&1

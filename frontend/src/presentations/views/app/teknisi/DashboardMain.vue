@@ -90,7 +90,7 @@
             <font-awesome-icon icon="tachometer-alt" />
           </div>
           <h3 class="text-lg! font-black! text-white! mb-1!">Catat Meter Bulanan</h3>
-          <p class="text-xs! text-cyan-100! font-medium!">Pencatatan pemakaian per bulan</p>
+          <p class="text-xs! text-cyan-100! font-medium!">Pencatatan pemakaian air per bulan</p>
           <div
             class="mt-4! flex! items-center! gap-2! text-white! text-[10px]! font-bold! uppercase! tracking-widest!"
           >

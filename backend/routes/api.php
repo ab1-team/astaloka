@@ -202,6 +202,25 @@ Route::middleware(['auth:sanctum', 'role:admin,surveyor,teknisi'])->group(functi
     // Hanya relevan untuk admin yang mengisi formulir registrasi.
     Route::middleware('role:admin')->group(function () {
         Route::get('installation-tickets/register-dropdown', [InstallationTicketController::class, 'registerDropdown']);
+
+        /*
+         * Ekspor Excel daftar status instalasi (tombol "Export Excel" di
+         * `/app/instalasi/status`).
+         *
+         * Harus SEBELUM wildcard `installation-tickets/{installationTicket}`
+         * di bawah. Kalau tidak, path "export-status" diperlakukan sebagai
+         * nilai id dan request berakhir 404 - bukan 403 - sehingga tombolnya
+         * terlihat berfungsi tapi tidak pernah menghasilkan file.
+         *
+         * Dipakai `role:admin` karena halamannya (`/app/instalasi/status`)
+         * juga admin-only: tidak ada gunanya membiarkan role lain mengunduh
+         * daftar yang tidak bisa mereka buka.
+         *
+         * `menu_access.php` sudah mencakup path ini: prefix polos
+         * `installation-tickets` menguasai SELURUH turunannya, termasuk
+         * `/installation-tickets/export-status`.
+         */
+        Route::get('installation-tickets/export-status', [InstallationTicketController::class, 'exportStatusExcel']);
     });
 
     // Teknisi butuh detail tiket untuk mengisi Hasil Instalasi. Sebelumnya

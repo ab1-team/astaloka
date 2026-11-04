@@ -188,7 +188,7 @@ class LoginGeneratePiutangTest extends TestCase
         // Tanggal generate = hari ini (15), supaya generate HARUS boleh jalan.
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -227,7 +227,7 @@ class LoginGeneratePiutangTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -262,7 +262,7 @@ class LoginGeneratePiutangTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 11,
             'toleransi_tunggakan' => 11,
         ]);
 
@@ -299,7 +299,7 @@ class LoginGeneratePiutangTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 28,
             'toleransi_tunggakan' => 28,
         ]);
 
@@ -320,7 +320,7 @@ class LoginGeneratePiutangTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -362,7 +362,7 @@ class LoginGeneratePiutangTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -423,7 +423,7 @@ class LoginGeneratePiutangTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -469,7 +469,7 @@ class LoginGeneratePiutangTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 15,
             'toleransi_tunggakan' => 15,
         ]);
 
@@ -500,7 +500,7 @@ class LoginGeneratePiutangTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 15,
             'toleransi_tunggakan' => 15,
         ]);
 

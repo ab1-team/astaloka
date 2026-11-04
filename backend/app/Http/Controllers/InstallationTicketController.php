@@ -8,11 +8,14 @@ use App\Models\InstallationTicket;
 use App\Models\Payment;
 use App\Models\Setting;
 use App\Models\User;
-use Illuminate\Support\Facades\Hash;
+use App\Models\Village;
+use App\Services\StatusInstalasiExcelExport;
 use App\StateMachines\TicketStateMachine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class InstallationTicketController extends Controller
 {
@@ -134,8 +137,12 @@ class InstallationTicketController extends Controller
 
                     $tickets = $items->map(function ($item) {
                         $missing = [];
-                        if (! $item->package) $missing[] = 'package';
-                        if (! $item->village) $missing[] = 'village';
+                        if (! $item->package) {
+                            $missing[] = 'package';
+                        }
+                        if (! $item->village) {
+                            $missing[] = 'village';
+                        }
                         if ($missing) {
                             // incomplete relation detected (log was removed)
                         }
@@ -293,6 +300,61 @@ class InstallationTicketController extends Controller
         ]);
     }
 
+    /**
+     * Ekspor daftar status instalasi ke file Excel (.xlsx) bergaya kop surat.
+     *
+     * Dipakai tombol "Export Excel" di halaman `/app/instalasi/status`.
+     *
+     * QUERY PARAMETER
+     * ---------------
+     *   `kategori` - salah satu dari: permohonan, pasang_baru, aktif,
+     *                blokir, cabut. Kosong = semua kategori.
+     *   `search`   - kata kunci pencarian (sama dengan kotak pencarian di
+     *                halaman: nama, kode instalasi, alamat).
+     *
+     * Kenapa filter dilakukan di server, bukan frontend yang sudah punya
+     * datanya: supaya file yang diunduh benar-benar mencerminkan filter
+     * yang sedang aktif, dan supaya pemetaan kategori -> status hidup di
+     * satu tempat yang sama dengan halaman (lihat
+     * `StatusInstalasiExcelExport::KATEGORI_STATUS`).
+     *
+     * CATATAN ROUTE: route ini harus terdaftar SEBELUM wildcard
+     * `installation-tickets/{installationTicket}`. Kalau tidak, path
+     * `export-status` diperlakukan sebagai nilai id dan request berakhir
+     * 404.
+     */
+    public function exportStatusExcel(Request $request, StatusInstalasiExcelExport $exporter)
+    {
+        $kategori = (string) $request->query('kategori', '');
+
+        if ($kategori !== '' && ! array_key_exists($kategori, StatusInstalasiExcelExport::KATEGORI_STATUS)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kategori status instalasi tidak dikenal.',
+            ], 422);
+        }
+
+        $search = (string) $request->query('search', '');
+
+        try {
+            $file = $exporter->build($kategori, $search);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat file Excel. Silakan coba lagi.',
+            ], 500);
+        }
+
+        return response($file['body'], 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
+            'Content-Length' => strlen($file['body']),
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+        ]);
+    }
+
     public function show(Request $request, InstallationTicket $installationTicket)
     {
         // Endpoint ini mengembalikan data tagihan & pemakaian milik pelanggan
@@ -325,11 +387,11 @@ class InstallationTicketController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => array_merge($ticket->toArray(), [
-                'total_fee'  => (float) $ticket->total_fee,
-                'paid'       => (float) $ticket->paid_amount,
-                'remaining'  => (float) $ticket->remaining,
-                'is_paid_off'=> (bool) $ticket->is_fully_paid,
+            'data' => array_merge($ticket->toArray(), [
+                'total_fee' => (float) $ticket->total_fee,
+                'paid' => (float) $ticket->paid_amount,
+                'remaining' => (float) $ticket->remaining,
+                'is_paid_off' => (bool) $ticket->is_fully_paid,
             ]),
         ]);
     }
@@ -343,30 +405,30 @@ class InstallationTicketController extends Controller
             ->get()
             ->map(function ($ticket) {
                 $confirmedTotal = (float) $ticket->payments->where('status', 'confirmed')->sum('amount');
-                $pendingTotal   = (float) $ticket->payments->where('status', 'pending')->sum('amount');
-                $totalFee       = (float) $ticket->total_fee;
+                $pendingTotal = (float) $ticket->payments->where('status', 'pending')->sum('amount');
+                $totalFee = (float) $ticket->total_fee;
 
                 return [
-                    'id'              => $ticket->id,
-                    'applicant_name'  => $ticket->applicant_name,
-                    'nik'             => $ticket->nik,
-                    'phone'           => $ticket->phone,
-                    'address'         => $ticket->address,
-                    'village'         => $ticket->village?->village_name ?? $ticket->village?->name ?? '-',
-                    'package'         => $ticket->package?->name ?? '-',
-                    'status'          => $ticket->status,
-                    'order_date'      => $ticket->order_date,
-                    'total_fee'       => $totalFee,
-                    'paid'            => $confirmedTotal,
-                    'pending'         => $pendingTotal,
-                    'total_paid'      => $confirmedTotal + $pendingTotal,
-                    'remaining'       => max(0, $totalFee - $confirmedTotal - $pendingTotal),
-                    'is_paid_off'     => $confirmedTotal >= $totalFee,
-                    'has_pending'     => $pendingTotal > 0,
-                    'payments'        => $ticket->payments->map(fn ($p) => [
-                        'id'     => $p->id,
+                    'id' => $ticket->id,
+                    'applicant_name' => $ticket->applicant_name,
+                    'nik' => $ticket->nik,
+                    'phone' => $ticket->phone,
+                    'address' => $ticket->address,
+                    'village' => $ticket->village?->village_name ?? $ticket->village?->name ?? '-',
+                    'package' => $ticket->package?->name ?? '-',
+                    'status' => $ticket->status,
+                    'order_date' => $ticket->order_date,
+                    'total_fee' => $totalFee,
+                    'paid' => $confirmedTotal,
+                    'pending' => $pendingTotal,
+                    'total_paid' => $confirmedTotal + $pendingTotal,
+                    'remaining' => max(0, $totalFee - $confirmedTotal - $pendingTotal),
+                    'is_paid_off' => $confirmedTotal >= $totalFee,
+                    'has_pending' => $pendingTotal > 0,
+                    'payments' => $ticket->payments->map(fn ($p) => [
+                        'id' => $p->id,
                         'amount' => (float) $p->amount,
-                        'paid_at'=> $p->paid_at,
+                        'paid_at' => $p->paid_at,
                         'status' => $p->status,
                     ]),
                 ];
@@ -376,7 +438,7 @@ class InstallationTicketController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $tickets,
+            'data' => $tickets,
         ]);
     }
 
@@ -386,22 +448,22 @@ class InstallationTicketController extends Controller
 
         if ($isRegistration) {
             $request->validate([
-                'package_id'    => 'required|exists:installation_packages,id',
-                'village_id'    => 'required|exists:villages,id',
-                'lat'           => 'required|numeric|between:-90,90',
-                'lng'           => 'required|numeric|between:-180,180',
-                'order_date'    => 'required|date',
-                'nominal'       => 'nullable|numeric|min:0',
-                'ticket_id'     => 'nullable|exists:installation_tickets,id',
-                'user_id'       => 'nullable|exists:users,id',
-                'rt'            => 'nullable|string|max:10',
-                'rw'            => 'nullable|string|max:10',
+                'package_id' => 'required|exists:installation_packages,id',
+                'village_id' => 'required|exists:villages,id',
+                'lat' => 'required|numeric|between:-90,90',
+                'lng' => 'required|numeric|between:-180,180',
+                'order_date' => 'required|date',
+                'nominal' => 'nullable|numeric|min:0',
+                'ticket_id' => 'nullable|exists:installation_tickets,id',
+                'user_id' => 'nullable|exists:users,id',
+                'rt' => 'nullable|string|max:10',
+                'rw' => 'nullable|string|max:10',
             ], [
                 'package_id.required' => 'Paket instalasi wajib dipilih.',
-                'package_id.exists'   => 'Paket instalasi tidak ditemukan.',
+                'package_id.exists' => 'Paket instalasi tidak ditemukan.',
                 'village_id.required' => 'Desa wajib dipilih.',
-                'lat.required'        => 'Koordinat latitude wajib diisi.',
-                'lng.required'        => 'Koordinat longitude wajib diisi.',
+                'lat.required' => 'Koordinat latitude wajib diisi.',
+                'lng.required' => 'Koordinat longitude wajib diisi.',
                 'order_date.required' => 'Tanggal order wajib diisi.',
             ]);
 
@@ -435,32 +497,32 @@ class InstallationTicketController extends Controller
                     if ($oldTicket->status !== 'draft') {
                         $targetTicket = InstallationTicket::create([
                             'applicant_name' => $oldTicket->applicant_name,
-                            'address'        => $oldTicket->address,
-                            'nik'            => $oldTicket->nik,
-                            'rt'             => $oldTicket->rt,
-                            'rw'             => $oldTicket->rw,
-                            'phone'          => $oldTicket->phone,
-                            'gender'         => $oldTicket->gender,
-                            'birth_place'    => $oldTicket->birth_place,
-                            'birth_date'     => $oldTicket->birth_date,
-                            'package_id'     => $request->package_id,
-                            'user_id'        => $request->user_id,
-                            'order_date'     => date('Y-m-d', strtotime($request->order_date)),
-                            'village_id'     => $request->village_id,
-                            'lat'            => $request->lat,
-                            'lng'            => $request->lng,
-                            'status'         => 'pending',
-                            'created_by'     => $userId ?: $oldTicket->created_by,
+                            'address' => $oldTicket->address,
+                            'nik' => $oldTicket->nik,
+                            'rt' => $oldTicket->rt,
+                            'rw' => $oldTicket->rw,
+                            'phone' => $oldTicket->phone,
+                            'gender' => $oldTicket->gender,
+                            'birth_place' => $oldTicket->birth_place,
+                            'birth_date' => $oldTicket->birth_date,
+                            'package_id' => $request->package_id,
+                            'user_id' => $request->user_id,
+                            'order_date' => date('Y-m-d', strtotime($request->order_date)),
+                            'village_id' => $request->village_id,
+                            'lat' => $request->lat,
+                            'lng' => $request->lng,
+                            'status' => 'pending',
+                            'created_by' => $userId ?: $oldTicket->created_by,
                         ]);
                     } else {
                         $oldTicket->update([
                             'package_id' => $request->package_id,
-                            'user_id'    => $request->user_id,
+                            'user_id' => $request->user_id,
                             'order_date' => date('Y-m-d', strtotime($request->order_date)),
                             'village_id' => $request->village_id,
-                            'lat'        => $request->lat,
-                            'lng'        => $request->lng,
-                            'status'     => 'pending',
+                            'lat' => $request->lat,
+                            'lng' => $request->lng,
+                            'status' => 'pending',
                             'created_by' => $userId ?: $oldTicket->created_by,
                         ]);
                         $targetTicket = $oldTicket;
@@ -468,44 +530,44 @@ class InstallationTicketController extends Controller
                 } else {
                     $request->validate([
                         'applicant_name' => 'required|string|max:255',
-                        'nik'            => 'required|string|max:20',
-                        'address'        => 'required|string',
+                        'nik' => 'required|string|max:20',
+                        'address' => 'required|string',
                     ]);
 
                     $targetTicket = InstallationTicket::create([
                         'applicant_name' => $request->applicant_name,
-                        'nik'            => $request->nik,
-                        'address'        => $request->address,
-                        'rt'             => $request->rt,
-                        'rw'             => $request->rw,
-                        'phone'          => $request->phone,
-                        'gender'         => $request->gender,
-                        'birth_place'    => $request->birth_place,
-                        'birth_date'     => $request->birth_date,
-                        'package_id'     => $request->package_id,
-                        'user_id'        => $request->user_id,
-                        'order_date'     => date('Y-m-d', strtotime($request->order_date)),
-                        'village_id'     => $request->village_id,
-                        'lat'            => $request->lat,
-                        'lng'            => $request->lng,
-                        'status'         => 'pending',
-                        'created_by'     => $userId,
+                        'nik' => $request->nik,
+                        'address' => $request->address,
+                        'rt' => $request->rt,
+                        'rw' => $request->rw,
+                        'phone' => $request->phone,
+                        'gender' => $request->gender,
+                        'birth_place' => $request->birth_place,
+                        'birth_date' => $request->birth_date,
+                        'package_id' => $request->package_id,
+                        'user_id' => $request->user_id,
+                        'order_date' => date('Y-m-d', strtotime($request->order_date)),
+                        'village_id' => $request->village_id,
+                        'lat' => $request->lat,
+                        'lng' => $request->lng,
+                        'status' => 'pending',
+                        'created_by' => $userId,
                     ]);
                 }
 
                 if ($paymentAmount > 0) {
                     Payment::create([
-                        'ticket_id'    => $targetTicket->id,
-                        'amount'       => $paymentAmount,
-                        'type'         => 'installation_fee',
-                        'status'       => $paymentStatus,
+                        'ticket_id' => $targetTicket->id,
+                        'amount' => $paymentAmount,
+                        'type' => 'installation_fee',
+                        'status' => $paymentStatus,
                         'confirmed_by' => $paymentStatus === 'confirmed' ? $userId : null,
-                        'paid_at'      => $paymentStatus === 'confirmed' ? now() : null,
+                        'paid_at' => $paymentStatus === 'confirmed' ? now() : null,
                     ]);
                 }
 
                 if (! $targetTicket->customer()->exists()) {
-                    $customerCode = \App\Models\Village::generateCustomerCodeForVillageId(
+                    $customerCode = Village::generateCustomerCodeForVillageId(
                         $targetTicket->village_id
                     );
 
@@ -514,24 +576,24 @@ class InstallationTicketController extends Controller
                         ->first();
 
                     if (! $pelanggan) {
-                        $pelangganEmail = \Illuminate\Support\Str::slug($targetTicket->applicant_name).'_'.$targetTicket->nik.'@ASTALOKA.local';
+                        $pelangganEmail = Str::slug($targetTicket->applicant_name).'_'.$targetTicket->nik.'@ASTALOKA.local';
                         $pelanggan = User::firstOrCreate(
                             ['email' => $pelangganEmail],
                             [
-                                'name'     => $targetTicket->applicant_name,
+                                'name' => $targetTicket->applicant_name,
                                 'password' => Hash::make('password'),
-                                'role'     => 'pelanggan',
+                                'role' => 'pelanggan',
                             ]
                         );
                     }
 
                     Customer::create([
-                        'ticket_id'             => $targetTicket->id,
-                        'user_id'               => $pelanggan->id,
-                        'customer_code'         => $customerCode,
+                        'ticket_id' => $targetTicket->id,
+                        'user_id' => $pelanggan->id,
+                        'customer_code' => $customerCode,
                         'initial_meter_reading' => 0,
-                        'meter_photo_url'       => null,
-                        'activated_at'          => null,
+                        'meter_photo_url' => null,
+                        'activated_at' => null,
                     ]);
                 }
 
@@ -544,7 +606,7 @@ class InstallationTicketController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => $responseMsg,
-                    'data'    => $targetTicket->load(['package', 'payments']),
+                    'data' => $targetTicket->load(['package', 'payments']),
                 ], 200);
             } catch (\Exception $e) {
                 return response()->json([
@@ -557,31 +619,31 @@ class InstallationTicketController extends Controller
         // Draft mode (tanpa data registrasi lengkap)
         $validator = Validator::make($request->all(), [
             'applicant_name' => 'required|string|max:255',
-            'nik'            => 'required|string|max:20',
-            'address'        => 'required|string',
-            'lat'            => 'nullable|numeric|between:-90,90',
-            'lng'            => 'nullable|numeric|between:-180,180',
-            'package_id'     => 'nullable|exists:installation_packages,id',
-            'village_id'     => 'nullable|exists:villages,id',
-            'phone'          => 'nullable|string|max:20',
-            'gender'         => 'nullable|in:male,female',
-            'birth_place'    => 'nullable|string|max:255',
-            'birth_date'     => 'nullable|date',
-            'order_date'     => 'nullable|date',
+            'nik' => 'required|string|max:20',
+            'address' => 'required|string',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'package_id' => 'nullable|exists:installation_packages,id',
+            'village_id' => 'nullable|exists:villages,id',
+            'phone' => 'nullable|string|max:20',
+            'gender' => 'nullable|in:male,female',
+            'birth_place' => 'nullable|string|max:255',
+            'birth_date' => 'nullable|date',
+            'order_date' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => $validator->errors()->first(),
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         $ticket = InstallationTicket::create(array_merge(
             $validator->validated(),
             [
-                'status'     => 'draft',
+                'status' => 'draft',
                 'created_by' => auth()->id(),
             ]
         ));
@@ -589,7 +651,7 @@ class InstallationTicketController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tiket berhasil dibuat (status: draft).',
-            'data'    => $ticket->load('package'),
+            'data' => $ticket->load('package'),
         ], 201);
     }
 
@@ -641,7 +703,7 @@ class InstallationTicketController extends Controller
                 }
 
                 // GENERATE CUSTOMER CODE (berdasarkan village.code)
-                $customerCode = \App\Models\Village::generateCustomerCodeForVillageId(
+                $customerCode = Village::generateCustomerCodeForVillageId(
                     $installationTicket->village_id
                 );
 
@@ -651,13 +713,13 @@ class InstallationTicketController extends Controller
                     ->first();
 
                 if (! $pelanggan) {
-                    $pelangganEmail = \Illuminate\Support\Str::slug($installationTicket->applicant_name).'_'.$installationTicket->nik.'@ASTALOKA.local';
+                    $pelangganEmail = Str::slug($installationTicket->applicant_name).'_'.$installationTicket->nik.'@ASTALOKA.local';
                     $pelanggan = User::firstOrCreate(
                         ['email' => $pelangganEmail],
                         [
-                            'name'     => $installationTicket->applicant_name,
+                            'name' => $installationTicket->applicant_name,
                             'password' => Hash::make('password'),
-                            'role'     => 'pelanggan',
+                            'role' => 'pelanggan',
                         ]
                     );
                 }
@@ -730,11 +792,11 @@ class InstallationTicketController extends Controller
             ], 422);
         }
 
-        $totalFee      = (float) ($installationTicket->package?->installation_fee ?? 0);
+        $totalFee = (float) ($installationTicket->package?->installation_fee ?? 0);
         $confirmedPaid = (float) $installationTicket->payments()
             ->where('status', 'confirmed')
             ->sum('amount');
-        $pendingPaid   = (float) $installationTicket->payments()
+        $pendingPaid = (float) $installationTicket->payments()
             ->where('status', 'pending')
             ->sum('amount');
 
@@ -759,6 +821,7 @@ class InstallationTicketController extends Controller
                 $message = 'Pembayaran masih menunggu konfirmasi. Tiket masuk tahap Pembayaran (Unpaid).';
             } else {
                 DB::rollBack();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Belum ada pembayaran. Mohon input pembayaran terlebih dahulu di menu Tagihan Instalasi.',
@@ -769,25 +832,26 @@ class InstallationTicketController extends Controller
 
             $fresh = $installationTicket->fresh();
             $newConfirmedTotal = (float) $fresh->payments()->where('status', 'confirmed')->sum('amount');
-            $newPendingTotal   = (float) $fresh->payments()->where('status', 'pending')->sum('amount');
+            $newPendingTotal = (float) $fresh->payments()->where('status', 'pending')->sum('amount');
             $newRemaining = max(0, $totalFee - $newConfirmedTotal - $newPendingTotal);
 
             return response()->json([
                 'success' => true,
                 'message' => $message,
-                'data'    => [
-                    'ticket'       => $fresh->load(['package', 'payments']),
-                    'status'       => $newStatus,
-                    'total_fee'    => $totalFee,
-                    'paid'         => $newConfirmedTotal,
-                    'pending'      => $newPendingTotal,
-                    'total_paid'   => $newConfirmedTotal + $newPendingTotal,
-                    'remaining'    => $newRemaining,
-                    'is_paid_off'  => $newConfirmedTotal >= $totalFee,
+                'data' => [
+                    'ticket' => $fresh->load(['package', 'payments']),
+                    'status' => $newStatus,
+                    'total_fee' => $totalFee,
+                    'paid' => $newConfirmedTotal,
+                    'pending' => $newPendingTotal,
+                    'total_paid' => $newConfirmedTotal + $newPendingTotal,
+                    'remaining' => $newRemaining,
+                    'is_paid_off' => $newConfirmedTotal >= $totalFee,
                 ],
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memproses tahap: '.$e->getMessage(),

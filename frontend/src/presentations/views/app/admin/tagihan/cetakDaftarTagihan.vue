@@ -101,11 +101,36 @@ import { useRoute } from 'vue-router'
 import ReportView from '@/presentations/views/app/admin/tagihan/partials/ReportCetakDaftarTagihan.vue'
 import { usePemakaianAir } from '@/composables/usePemakaianAir'
 import { usePdfPreview, THUMB_RENDER_BUFFER } from '@/composables/usePdfPreview'
+import { useSettingsStore } from '@/stores/settingsStore.js'
 import { PER_PAGE_ROWS, FIRST_PAGE_ROWS } from '@/utils/reportConfig'
 
 const route = useRoute()
 const { filter, refreshData, groupedData, resolveTeknisiLabel, isTechnician, currentUserLabel } =
   usePemakaianAir()
+const settingsStore = useSettingsStore()
+
+/**
+ * Tanggal jatuh tempo tagihan (hari ke berapa dalam bulan).
+ *
+ * Dipakai untuk kop "Tgl Akhir Pembayaran" saat daftar belum punya tagihan.
+ *
+ * `settingsStore.toleransiTunggakan` adalah sumbernya, tapi endpoint
+ * `GET /settings/sop` itu `role:admin` -- jadi TEKNISI selalu kena 403 dan
+ * store-nya tidak pernah ter-load. Nilai bawaan store (10) bukan tanggal
+ * jatuh tempo yang sebenarnya; backend memakai 27
+ * (`BillingDueDate::DEFAULT_BATAS_TAGIHAN`), jadi angka itu yang ditulis
+ * eksplisit di sini.
+ *
+ * Tanpa ini, laporan yang dicetak teknisi menulis tanggal akhir bayar yang
+ * salah -- dan gejalanya tidak kelihatan, karena kop tetap tercetak rapi.
+ */
+const toleransiTunggakan = computed(() => {
+  if (!settingsStore.isLoaded) return 27
+
+  const nilai = Number(settingsStore.toleransiTunggakan)
+
+  return nilai >= 1 && nilai <= 31 ? nilai : 27
+})
 
 const PAGE_CONFIG = { paper_size: 'A4', orientation: 'portrait' }
 
@@ -206,6 +231,9 @@ const buildPages = () => {
       dusun: chunk.dusun,
       items: chunk.items,
       filter: { ...filter.value },
+      // Tanggal bayar (jatuh tempo tagihan) untuk kop "Tgl Akhir
+      // Pembayaran" saat daftar belum punya tagihan.
+      toleransiTunggakan: toleransiTunggakan.value,
       lembaga: defaultLembaga(),
       startIndex: chunk.startIndex,
       showMeta: chunk.startIndex === 0,
@@ -274,6 +302,10 @@ onMounted(async () => {
     }
 
     document.title = `Cetak Daftar Tagihan`
+
+    // Settings dipakai untuk "Tgl Akhir Pembayaran" saat fallback hitung
+    // tanggal bayar dari periode pemakaian.
+    await settingsStore.loadSettings()
 
     await refreshData()
     buildPages()

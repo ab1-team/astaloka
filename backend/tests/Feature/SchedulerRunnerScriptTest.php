@@ -129,6 +129,45 @@ class SchedulerRunnerScriptTest extends TestCase
         );
     }
 
+    public function test_cmd_hanya_menulis_log_saat_ada_error(): void
+    {
+        $cmd = $this->readScript('scheduler-run-hidden.cmd');
+
+        // Run yang sukses harus TIDAK masuk log. Alasannya: `schedule:run`
+        // yang sukses tetap mencetak "Running [...] DONE" untuk setiap job
+        // yang jalan, dan `migrasi:bersihkan` jalan tiap 10 menit -- jadi
+        // log akan penuh baris sukses yang tidak pernah dibaca, dan baris
+        // error yang SESUNGGUHNYA jadi sulit ditemukan di antaranya.
+        $this->assertStringContainsString(
+            'IS_ERROR',
+            $cmd,
+            'Skrip harus membedakan run sukses dan run yang bermasalah.'
+        );
+
+        // Deteksi error harus berbasis isi output, bukan cuma exit code:
+        // `schedule:run` mengembalikan 0 bahkan kalau job-nya gagal --
+        // job yang gagal dilaporkan lewat exception handler, bukan lewat
+        // exit code scheduler.
+        $this->assertMatchesRegularExpression(
+            '/findstr[^\n]*(error|exception|failed)/i',
+            $cmd,
+            'Isi output harus diperiksa untuk mendeteksi error.'
+        );
+    }
+
+    public function test_cmd_tidak_menggandakan_blok_jalankan(): void
+    {
+        $cmd = $this->readScript('scheduler-run-hidden.cmd');
+
+        // Dua `cd /d` berarti salah satunya duplikat sisa penulisan --
+        // bukan bug fatal, tapi tanda skripnya belum dirapikan.
+        $this->assertSame(
+            1,
+            substr_count($cmd, 'cd /d "%BACKEND_DIR%"'),
+            'Perintah cd ke folder backend hanya boleh muncul sekali.'
+        );
+    }
+
     public function test_cmd_menghapus_file_output_kosong(): void
     {
         $cmd = $this->readScript('scheduler-run-hidden.cmd');

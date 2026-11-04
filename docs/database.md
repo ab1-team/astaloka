@@ -55,7 +55,11 @@ Master data paket instalasi. Setiap paket memiliki biaya pasang, abodemen bulana
 
 ## 3. `water_tariff_blocks`
 
-Blok tarif progresif per paket. Satu paket memiliki beberapa blok range pemakaian dengan harga berbeda.
+Blok tarif per paket. Satu paket memiliki beberapa blok range pemakaian dengan harga berbeda.
+
+Blok dipakai untuk **memilih harga per m³** (rumus FLAT: `pemakaian × harga paket per m³`),
+bukan untuk membagi pemakaian menjadi beberapa bagian dengan harga berbeda. Lihat
+[§8.4](roadmap.md#84-rumus-tarif-flat) di roadmap.
 
 | Kolom | Tipe | Keterangan |
 |---|---|---|
@@ -191,7 +195,7 @@ Tagihan bulanan pelanggan. Satu baris = satu tagihan untuk satu bulan tertentu.
 | `meter_reading_start` | `int` | Angka meter awal periode |
 | `meter_reading_end` | `int` | Angka meter akhir periode |
 | `usage_m3` | `int` | Total pemakaian (end - start) |
-| `usage_charge` | `decimal(12,2)` | Biaya pemakaian (hasil kalkulasi progresif) |
+| `usage_charge` | `decimal(12,2)` | Biaya pemakaian (hasil kalkulasi tarif FLAT) |
 | `abodemen` | `decimal(12,2)` | Biaya abodemen bulan ini (snapshot dari paket) |
 | `penalty_amount` | `decimal(12,2)` | Total denda dari tagihan sebelumnya yang terlambat |
 | `total_amount` | `decimal(12,2)` | Total tagihan (usage_charge + abodemen + penalty_amount) |

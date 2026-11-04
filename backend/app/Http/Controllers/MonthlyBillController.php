@@ -1357,8 +1357,8 @@ class MonthlyBillController extends Controller
      * CATATAN KONSISTENSI ANGKA
      * --------------------------
      * Perhitungan tagihan di sini memakai `BillRecalculationService`, yang
-     * rumus tarif progresifnya WAJIB identik dengan
-     * `BillingService::calculateProgressiveCharge()`. Kalau keduanya berbeda,
+     * rumus tarifnya WAJIB identik dengan
+     * `BillingService::calculateUsageCharge()`. Kalau keduanya berbeda,
      * klien akan melihat "tagihan edited di halaman A tapi angkanya beda di
      * halaman B" — dan di antar lokasi yang berbeda.
      */

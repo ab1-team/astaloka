@@ -68,6 +68,42 @@ class MenuAccessService
         return (array) config('menu_access.always', []);
     }
 
+    /**
+     * Key menu yang TIDAK PERNAH bisa dicabut, untuk satu role.
+     *
+     * Bedanya dengan `always`: `always` bersifat GLOBAL -- semua role
+     * mendapatkannya. Yang di sini bersifat PER ROLE, dan ditandai di
+     * katalog dengan flag `terkunci`.
+     *
+     * Kenapa perlu bentuk per-role: "Dashboard" milik teknisi adalah halaman
+     * tujuan setelah login, sama seperti "Beranda". Kalau dimasukkan lewat
+     * `always`, ia akan ikut diizinkan untuk admin dan pelanggan --
+     * padahal entri itu milik role `teknisi` saja, dan
+     * `catalogForRole()` tidak akan pernah menampilkannya ke mereka.
+     * Efeknya berdua: daftar allowed memuat key yang tidak ada di katalog
+     * role itu, dan `hasFullAccess()` (yang membandingkan jumlah key dengan
+     * jumlah katalog) tidak bisa lagi dipakai sebagai penentu akses penuh.
+     *
+     * Menu terkunci juga yang membuat situations berikut mustahil:
+     * `allowsPath()` menolak `/app/teknisi`, router guard mengarahkan ke
+     * `getDashboardRoute('teknisi')` yang juga `/app/teknisi`, dan hasilnya
+     * redirect ke dirinya sendiri.
+     *
+     * @return array<int, string>
+     */
+    public function lockedKeysForRole(?string $role): array
+    {
+        $keys = [];
+
+        foreach ($this->catalogForRole($role) as $item) {
+            if ((bool) ($item['terkunci'] ?? false)) {
+                $keys[] = (string) $item['key'];
+            }
+        }
+
+        return $keys;
+    }
+
     /** @return array<int, string> */
     public function enforceRoles(): array
     {
@@ -158,6 +194,19 @@ class MenuAccessService
         // Aturan 2: menu yang tidak bisa dikunci.
         $selalu = $this->alwaysAllowedKeys();
 
+        /*
+         * Menu terkunci milik role ini (flag `terkunci` di katalog).
+         *
+         * Ditambahkan di sini, BUKAN hanya di `menuForJabatanWithFlags()`,
+         * karena yang menentukan boleh/tidaknya sebuah path adalah
+         * `allowedKeysFor()` -- kalau terkuncinya tidak ikut di daftar itu,
+         * `allowsPath('/app/teknisi')` akan menolak, dan router guard akan
+         * mengarahkan teknisi ke `/app/teknisi` juga.
+         *
+         * Bentuknya per-role, jadi tidak bocor ke role lain.
+         */
+        $terkunci = $this->lockedKeysForRole((string) $user->role);
+
         // Aturan 3: user tanpa jabatan -> semua.
         //
         // Berlaku untuk SEMUA role sekarang, bukan hanya admin: user
@@ -196,7 +245,7 @@ class MenuAccessService
 
         $tersimpan = array_values(array_intersect($tersimpan, $bolehMilik));
 
-        return array_values(array_unique(array_merge($selalu, $tersimpan)));
+        return array_values(array_unique(array_merge($selalu, $terkunci, $tersimpan)));
     }
 
     /**
@@ -318,20 +367,46 @@ class MenuAccessService
         $tersimpan = $this->storedKeysForJabatan($jabatanId);
         $terpilih = $tersimpan === null ? null : array_flip($tersimpan);
         $selalu = $this->alwaysAllowedKeys();
+        $terkunci = $this->lockedKeysForRole($role);
 
         $out = [];
 
         foreach ($this->catalogForRole($role) as $item) {
             $key = (string) $item['key'];
 
+            /*
+             * Menu terkunci TIDAK PERNAH bisa dicabut, jadi centangannya
+             * selalu benar -- baik Jabatan itu belum pernah disetel, maupun
+             * sudah disetel tanpa memuat key ini.
+             *
+             * Tanpa ini, `saveForJabatan()` (yang menimpa daftar secara utuh)
+             * akan menghapus key terkunci begitu superadmin menekan Simpan,
+             * dan checkbox-nya yang mati akan terlihat seperti hilang.
+             */
+            $terkunciIni = in_array($key, $terkunci, true);
+
             $out[] = [
-                'key'         => $key,
-                'label'       => (string) $item['label'],
-                'group'       => (string) ($item['group'] ?? ''),
-                'icon'        => (string) ($item['icon'] ?? ''),
-                'path'        => (string) ($item['path'] ?? ''),
-                'hidden'      => (bool) ($item['hidden'] ?? false),
-                'roles'       => (array) ($item['roles'] ?? []),
+                'key' => $key,
+                'label' => (string) $item['label'],
+                'group' => (string) ($item['group'] ?? ''),
+                'icon' => (string) ($item['icon'] ?? ''),
+                'path' => (string) ($item['path'] ?? ''),
+                'hidden' => (bool) ($item['hidden'] ?? false),
+                /*
+                 * `tanpa_sidebar`: halaman tetap boleh dibuka dan tetap
+                 * bisa dicentang di sini, tapi tidak jadi entri sidebar.
+                 *
+                 * Berbeda dari `hidden`, yang juga disembunyikan dari daftar
+                 * centang ini -- jadi menu `hidden` tidak bisa dicabut dari
+                 * panel pusat sama sekali. Yang ini tetap bisa.
+                 *
+                 * Dan `top_level`: menunya berdiri sendiri, bukan anak
+                 * group-nya. Yang di panel pusat ini cuma informasi group
+                 * untuk pengelompokan tampilan.
+                 */
+                'tanpa_sidebar' => (bool) ($item['tanpa_sidebar'] ?? false),
+                'top_level' => (bool) ($item['top_level'] ?? false),
+                'roles' => (array) ($item['roles'] ?? []),
                 /*
                  * Tidak pernah menyala lagi di katalog yang sudah ditamping,
                  * tapi tetap dikirim: frontend membaca kolom ini saat
@@ -355,8 +430,16 @@ class MenuAccessService
                  * `$selalu` tidak perlu digabung di sini: `saveForJabatan()`
                  * sudah menulisnya ke tabel, jadi `$terpilih` memuatnya.
                  */
-                'selected' => $terpilih === null ? true : isset($terpilih[$key]),
-                'locked'   => in_array($key, $selalu, true),
+                'selected' => $terkunciIni || $terpilih === null ? true : isset($terpilih[$key]),
+                /*
+                 * `locked` = menu ini tidak bisa dicabut dari panel pusat.
+                 *
+                 * Dua sumbernya: daftar `always` (global) dan flag `terkunci`
+                 * di katalog (per role). Keduanya menghasilkan hal yang sama
+                 * di layar: checkbox-nya mati dan keterangannya "wajib
+                 * terbuka".
+                 */
+                'locked' => in_array($key, $selalu, true) || $terkunciIni,
             ];
         }
 
@@ -399,7 +482,7 @@ class MenuAccessService
 
             $rows[$key] = [
                 'jabatan_id' => $jabatanId,
-                'menu_key'   => $key,
+                'menu_key' => $key,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -426,7 +509,7 @@ class MenuAccessService
             if (! isset($rows[$key])) {
                 $rows[$key] = [
                     'jabatan_id' => $jabatanId,
-                    'menu_key'   => $key,
+                    'menu_key' => $key,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
@@ -456,7 +539,7 @@ class MenuAccessService
         if ($rows === []) {
             $rows[''] = [
                 'jabatan_id' => $jabatanId,
-                'menu_key'   => '',
+                'menu_key' => '',
                 'created_at' => now(),
                 'updated_at' => now(),
             ];

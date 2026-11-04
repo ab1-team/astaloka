@@ -1,31 +1,28 @@
 <template>
   <div class="flex flex-col gap-6! py-2!">
-    <div class="relative! p-1! bg-slate-50/50! border! border-slate-100! rounded-3xl! shadow-sm!">
+    <!-- Dua aturan, dua kolom: kiri tanggal, kanan jumlah bulan. -->
+    <div class="grid grid-cols-1! md:grid-cols-2! gap-4!">
       <div
-        class="grid grid-cols-1 md:grid-cols-2! divide-y! md:divide-y-0! md:divide-x! divide-slate-100!"
+        class="relative! p-1! bg-slate-50/50! border! border-slate-100! rounded-3xl! shadow-sm! h-full!"
       >
-        <div
-          class="p-5! hover:bg-white! transition-colors! first:rounded-t-3xl! md:first:rounded-tr-none! md:first:rounded-l-3xl!"
-        >
-          <div class="flex! flex-col! gap-3!">
+        <div class="p-5! hover:bg-white! transition-colors! rounded-3xl! h-full!">
+          <div class="flex! flex-col! gap-3! h-full!">
             <div class="flex! items-center! gap-2.5!">
               <div
                 class="w-8! h-8! rounded-lg! bg-amber-500! text-white! flex! items-center! justify-center! text-xs! shadow-lg! shadow-amber-100!"
               >
                 <font-awesome-icon icon="calendar-day" />
               </div>
-              <div class="flex-1!">
-                <h4 class="text-xs! font-black! text-slate-800! leading-tight!">
-                  Batas Tagihan Bulanan
-                </h4>
-                <p class="text-[10px]! text-slate-400!">
-                  Tanggal jatuh tempo. Pemakaian bulan ini ditagih di bulan depan, jadi tagihan
-                  pemakaian Juni dengan batas 26 jatuh tempo 26 Juli.
-                </p>
-              </div>
+              <h4 class="text-xs! font-black! text-slate-800! leading-tight!">
+                Toleransi Menunggak
+              </h4>
             </div>
+            <p class="text-[10px]! text-slate-400!">
+              Tanggal (1-31) untuk semua aturan tagihan: jatuh tempo tagihan bulanan sekaligus
+              tanggal generate jurnal piutang.
+            </p>
             <BaseInput
-              v-model="form.batasTagihan"
+              v-model="form.toleransiTunggakan"
               placeholder="Tanggal"
               type="number"
               :min="1"
@@ -33,80 +30,102 @@
               size="md"
               prefix-icon="calendar"
               :no-margin="true"
-              class="w-full!"
+              class="w-full! mt-auto!"
             />
           </div>
         </div>
+      </div>
 
-        <div
-          class="p-5! hover:bg-white! transition-colors! last:rounded-b-3xl! md:last:rounded-bl-none! md:last:rounded-r-3xl!"
-        >
-          <div class="flex! flex-col! gap-3!">
+      <div
+        class="relative! p-1! bg-slate-50/50! border! border-slate-100! rounded-3xl! shadow-sm! h-full!"
+      >
+        <div class="p-5! hover:bg-white! transition-colors! rounded-3xl! h-full!">
+          <div class="flex! flex-col! gap-3! h-full!">
             <div class="flex! items-center! gap-2.5!">
               <div
-                class="w-8! h-8! rounded-lg! bg-rose-500! text-white! flex! items-center! justify-center! text-xs! shadow-lg! shadow-rose-100!"
+                class="w-8! h-8! rounded-lg! bg-violet-500! text-white! flex! items-center! justify-center! text-xs! shadow-lg! shadow-violet-100!"
               >
-                <font-awesome-icon icon="history" />
+                <font-awesome-icon icon="calendar-xmark" />
               </div>
-              <div class="flex-1!">
-                <h4 class="text-xs! font-black! text-slate-800! leading-tight!">
-                  Toleransi Menunggak
-                </h4>
-                <p class="text-[10px]! text-slate-400!">
-                  Tanggal generate piutang tiap bulan (1-31). Generate hanya jalan pada tanggal itu
-                  saja.
-                </p>
-              </div>
+              <h4 class="text-xs! font-black! text-slate-800! leading-tight!">
+                Batas Tagihan Bulanan
+              </h4>
             </div>
+            <p class="text-[10px]! text-slate-400!">
+              Berapa bulan tunggakan yang masih ditoleransi sebelum sambungan pelanggan diputus.
+            </p>
             <BaseInput
-              v-model="form.toleransiTunggakan"
-              placeholder="1-31"
+              v-model="form.batasBulanTunggakan"
+              placeholder="3"
               type="number"
-              :min="1"
-              :max="31"
+              :min="0"
+              :max="24"
               size="md"
-              prefix-icon="history"
+              prefix-icon="calendar-xmark"
               :no-margin="true"
-              class="w-full!"
+              class="w-full! mt-auto!"
             />
+            <p class="text-[10px]! text-slate-400!">
+              Isi <strong class="text-slate-600!">0</strong> bila sambungan tidak boleh diputus
+              otomatis sama sekali.
+            </p>
           </div>
         </div>
       </div>
     </div>
 
-    <div
-      class="p-5! bg-linear-to-r! from-indigo-900/5! to-blue-900/5! border! border-indigo-100! rounded-2xl! relative! overflow-hidden!"
-    >
+    <!-- Penjelasan singkat, juga dua kolom. -->
+    <div class="grid grid-cols-1! md:grid-cols-2! gap-4!">
       <div
-        class="absolute! -top-8! -right-8! w-32! h-32! bg-indigo-600/5! rounded-full! blur-3xl!"
-      ></div>
-
-      <div class="flex! items-start! gap-4! relative! z-10!">
+        class="p-5! bg-linear-to-r! from-indigo-900/5! to-blue-900/5! border! border-indigo-100! rounded-2xl! relative! overflow-hidden!"
+      >
         <div
-          class="w-10! h-10! rounded-xl! bg-indigo-600! flex! items-center! justify-center! text-white! shadow-lg! shadow-indigo-100! shrink-0!"
-        >
-          <font-awesome-icon icon="robot" class="text-lg!" />
+          class="absolute! -top-8! -right-8! w-32! h-32! bg-indigo-600/5! rounded-full! blur-3xl!"
+        ></div>
+
+        <div class="flex! items-start! gap-4! relative! z-10!">
+          <div
+            class="w-10! h-10! rounded-xl! bg-indigo-600! flex! items-center! justify-center! text-white! shadow-lg! shadow-indigo-100! shrink-0!"
+          >
+            <font-awesome-icon icon="robot" class="text-lg!" />
+          </div>
+          <div>
+            <h4 class="text-xs! font-black! text-indigo-900! uppercase! tracking-widest! mb-1!">
+              Generate Piutang Otomatis
+            </h4>
+            <p class="text-[11px]! font-medium! text-slate-500! leading-relaxed!">
+              Jurnal piutang (abodemen, pemakaian, denda) dibuat otomatis setiap kali ada staff
+              login <strong class="text-indigo-700!">pada tanggal Toleransi Menunggak</strong>.
+              Tanggal 29-31 berjalan di hari terakhir bulan.
+            </p>
+          </div>
         </div>
-        <div>
-          <h4 class="text-xs! font-black! text-indigo-900! uppercase! tracking-widest! mb-1!">
-            Otomatisasi Generate Piutang
-          </h4>
-          <p class="text-[11px]! font-medium! text-slate-500! leading-relaxed!">
-            Nilai <strong class="text-indigo-700!">Toleransi Menunggak</strong> di atas adalah
-            <strong>tanggal</strong> (1-31) di setiap bulan yang dijadwalkan sistem untuk
-            <strong>generate jurnal piutang</strong> (abodemen, pemakaian, dan denda) secara
-            background.
-            <br />
-            <strong class="text-slate-600!">Pemicunya login.</strong> Generate berjalan otomatis
-            setiap kali ada staff yang login <strong>pada tanggal tersebut saja</strong>, dan
-            ringkasannya ditampilkan. Tanggal 29, 30, dan 31 berjalan pada hari terakhir bulan, jadi
-            di Februari menjadi tanggal 28.
-            <br />
-            Nilai yang sama juga dipakai sebagai <strong>jumlah tagihan</strong> yang boleh
-            menunggak. Instalasi <span class="text-indigo-600! font-bold!">AKTIF</span> yang
-            melewati batas tersebut akan diubah menjadi
-            <span class="text-rose-600! font-bold!">BLOKIR</span> hingga seluruh tunggakan dilunasi.
-          </p>
+      </div>
+
+      <div
+        class="p-5! bg-linear-to-r! from-violet-900/5! to-blue-900/5! border! border-violet-100! rounded-2xl! relative! overflow-hidden!"
+      >
+        <div
+          class="absolute! -top-8! -right-8! w-32! h-32! bg-violet-600/5! rounded-full! blur-3xl!"
+        ></div>
+
+        <div class="flex! items-start! gap-4! relative! z-10!">
+          <div
+            class="w-10! h-10! rounded-xl! bg-violet-600! flex! items-center! justify-center! text-white! shadow-lg! shadow-violet-100! shrink-0!"
+          >
+            <font-awesome-icon icon="bolt" class="text-lg!" />
+          </div>
+          <div>
+            <h4 class="text-xs! font-black! text-violet-900! uppercase! tracking-widest! mb-1!">
+              Pemutusan Sambung Otomatis
+            </h4>
+            <p class="text-[11px]! font-medium! text-slate-500! leading-relaxed!">
+              Dihitung setiap kali teknisi mencatat meter. Pelanggan yang menunggak melewati batas
+              bulan di atas berstatus
+              <span class="text-rose-600! font-bold!">SUSPENDED (BLOKIR)</span> sampai tunggakan
+              lunas.
+            </p>
+          </div>
         </div>
       </div>
     </div>

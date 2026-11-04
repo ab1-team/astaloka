@@ -4,8 +4,10 @@ Selamat datang di repositori **ASTALOKA**. Ikuti langkah-langkah di bawah ini un
 
 ## 📖 Dokumentasi Proyek
 
-- [🚀 Roadmap Proyek](docs/roadmap.md)
+- [🗺️ Peta Proyek Lengkap](docs/roadmap.md) — status tiap modul, arsitektur multi-tenant, dan **spesifikasi perhitungan** (tarif progresif, pengakuan piutang, jurnal pembayaran, tutup buku) sampai ke level rumus
 - [🗄️ Struktur Database](docs/database.md)
+- [🔌 Referensi API Backend](docs/api_backend.md)
+- [🔀 Perbandingan dengan Aplikasi Lama](docs/perbedaan-apk-lama-baru.md)
 
 ## 🛠 Prasyarat (Prerequisites)
 

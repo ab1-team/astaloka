@@ -8,8 +8,16 @@ import sopService from '@/services/sop.service.js'
  * setiap komponen harus memanggil API sendiri.
  *
  * Saat ini menyimpan data Sistem Tagihan:
- * - batasTagihan: batas hari jatuh tempo tagihan (default 10)
- * - toleransiTunggakan: jumlah bulan toleransi tunggakan (default 0)
+ * - toleransiTunggakan: TANGGAL untuk semua aturan berbasis tanggal
+ *   (jatuh tempo tagihan, generate piutang, ambang piutang, advance
+ *   payment) -- default 10
+ * - batasTagihan: SALINAN dari `toleransiTunggakan` dengan nilai yang
+ *   sama. Ada karena dua komponen masih membaca nama lama ini:
+ *   `ReportCetakDaftarTagihan.vue` (fallback "Tgl Akhir Pembayaran")
+ *   dan `BillingForm.vue` (pratinjau advance payment). Keduanya harus
+ *   melihat angka yang sama dengan yang dipakai backend.
+ * - batasBulanTunggakan: JUMLAH BULAN tunggakan yang boleh ditoleransi
+ *   sebelum sambungan pelanggan diputus (default 3)
  *
  * Dan pengaturan pencatatan meteran:
  * - autoOpenMeterCamera: kamera scan langsung terbuka saat popup input
@@ -18,7 +26,8 @@ import sopService from '@/services/sop.service.js'
 export const useSettingsStore = defineStore('settings', () => {
   // State - Sistem Tagihan
   const batasTagihan = ref(10)
-  const toleransiTunggakan = ref(0)
+  const toleransiTunggakan = ref(10)
+  const batasBulanTunggakan = ref(3)
 
   /*
    * Kamera scan pada popup "Input Pemakaian".
@@ -60,8 +69,19 @@ export const useSettingsStore = defineStore('settings', () => {
       if (!data) return
 
       if (data.sistemTagihan) {
-        batasTagihan.value = Number(data.sistemTagihan.batasTagihan ?? 10)
-        toleransiTunggakan.value = Number(data.sistemTagihan.toleransiTunggakan ?? 0)
+        /*
+         * SATU angka tanggal. Backend mengirim `toleransiTunggakan` dan
+         * `batasTagihan` dengan nilai yang sama; yang dipakai di sini
+         * adalah `toleransiTunggakan`, dengan `batasTagihan` sebagai
+         * fallback kalau backend versi lama tidak mengirimkannya.
+         */
+        const tanggal = Number(
+          data.sistemTagihan.toleransiTunggakan ?? data.sistemTagihan.batasTagihan ?? 10,
+        )
+
+        toleransiTunggakan.value = tanggal
+        batasTagihan.value = tanggal
+        batasBulanTunggakan.value = Number(data.sistemTagihan.batasBulanTunggakan ?? 3)
       }
       if (data.lembaga?.nama) {
         lembagaName.value = data.lembaga.nama
@@ -73,7 +93,7 @@ export const useSettingsStore = defineStore('settings', () => {
       isLoaded.value = true
     } catch (err) {
       // Jangan lempar error agar komponen lain tidak crash.
-      // Biarkan nilai default (batasTagihan=10, toleransiTunggakan=0).
+      // Biarkan nilai default (batasTagihan=10, toleransiTunggakan=10).
       console.error('[settingsStore] loadSettings error:', err)
     } finally {
       isLoading.value = false
@@ -110,13 +130,26 @@ export const useSettingsStore = defineStore('settings', () => {
   /**
    * Update nilai toleransiTunggakan secara lokal (mis. setelah save dari
    * halaman SOP) tanpa harus refetch semua data.
+   *
+   * `batasTagihan` ikut diperbarui dengan nilai yang sama -- keduanya
+   * sekarang cuma salinan dari satu angka tanggal.
    */
   const setToleransiTunggakan = (val) => {
-    toleransiTunggakan.value = Number(val ?? 0)
+    const angka = Number(val ?? 10)
+
+    toleransiTunggakan.value = angka
+    batasTagihan.value = angka
   }
 
   const setBatasTagihan = (val) => {
-    batasTagihan.value = Number(val ?? 10)
+    setToleransiTunggakan(val)
+  }
+
+  /**
+   * Update batas tunggakan (jumlah bulan) secara lokal.
+   */
+  const setBatasBulanTunggakan = (val) => {
+    batasBulanTunggakan.value = Number(val ?? 3)
   }
 
   /**
@@ -132,7 +165,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const reset = () => {
     batasTagihan.value = 10
-    toleransiTunggakan.value = 0
+    toleransiTunggakan.value = 10
+    batasBulanTunggakan.value = 3
     autoOpenMeterCamera.value = false
     lembagaName.value = ''
     isLoaded.value = false
@@ -143,6 +177,7 @@ export const useSettingsStore = defineStore('settings', () => {
     // state
     batasTagihan,
     toleransiTunggakan,
+    batasBulanTunggakan,
     autoOpenMeterCamera,
     lembagaName,
     isLoading,
@@ -152,6 +187,7 @@ export const useSettingsStore = defineStore('settings', () => {
     loadPemakaianAir,
     setToleransiTunggakan,
     setBatasTagihan,
+    setBatasBulanTunggakan,
     setAutoOpenMeterCamera,
     reset,
   }

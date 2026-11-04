@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Console\Commands\MigrateCentral;
+use App\Console\Commands\SchedulePauseResilient;
+use App\Console\Commands\ScheduleResumeResilient;
 use App\Console\Commands\ScheduleRunResilient;
 use App\Listeners\BridgeConsoleCommandEvents;
 use App\Listeners\GuardCentralDatabaseWrites;
@@ -107,14 +109,22 @@ class AppServiceProvider extends ServiceProvider
      * diset ke `file` (lihat `config/cache.php`), dan command ini memastikan
      * command yang membacanya memakai store itu.
      *
+     * `schedule:pause` dan `schedule:resume` juga di-override, karena
+     * perintah bawaan menulis flag pause ke cache DEFAULT (`database`) --
+     * sedangkan scheduler membacanya dari store `file`. Dua store berbeda,
+     * dua kunci berbeda: flag yang ditulis `schedule:pause` tidak pernah
+     * dibaca scheduler, jadi perintahnya menganggur tanpa error.
+     *
      * Kenapa overriding, bukan mengubah `vendor/`
      * ==========================================
      *
      * `composer install` menimpa file di `vendor/`, jadi perubahan di sana
-     * hilang tanpa jejak. Overriding lewat `Artisan::starting` membuat
+     * hilang tanpa jejak. Overriding lewat `ArtisanStarting` membuat
      * perbedaannya menetap di repo ini dan terlihat saat review kode.
      *
      * @see ScheduleRunResilient
+     * @see SchedulePauseResilient
+     * @see ScheduleResumeResilient
      */
     private function registerSchedulerCommandOverride(): void
     {
@@ -125,7 +135,11 @@ class AppServiceProvider extends ServiceProvider
                 return;
             }
 
-            $artisan->resolveCommands([ScheduleRunResilient::class]);
+            $artisan->resolveCommands([
+                ScheduleRunResilient::class,
+                SchedulePauseResilient::class,
+                ScheduleResumeResilient::class,
+            ]);
         });
     }
 

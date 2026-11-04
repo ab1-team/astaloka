@@ -699,6 +699,29 @@ label {
   }
 }
 
+/*
+ * Layar HP: blok pemasaran disembunyikan.
+ *
+ * Yang perlu dikerjakan orang yang membuka halaman ini di HP cuma SATU:
+ * mengisi email dan sandi lalu menekan tombol masuk. Paragraf deskripsi
+ * dan dua chip "Kualitas Terjamin / Respon Cepat" tidak menambah informasi
+ * apa pun -- keduanya kalimat pemasaran generik, sama di setiap lokasi.
+ *
+ * Yang mereka lakukan adalah mendorong form ke bawah fold: di layar
+ * 360x640, badge + headline sudah memakan sebagian besar tinggi layar
+ * sebelum kolom email siquiera terlihat. Efeknya user harus menggulir
+ * dulu untuk sampai ke form -- dan banyak yang mengira form-nya hilang.
+ *
+ * Badge dan judul TIDAK ikut disembunyikan: keduanya adalah nama
+ * lokasi, dan di aplikasi multi-tenant itu justru informasi yang paling
+ * penting (user harus yakin ia login ke lokasi yang benar).
+ */
+@media (max-width: 640px) {
+  .desc-group {
+    display: none;
+  }
+}
+
 @keyframes slideInUp {
   from {
     opacity: 0;
@@ -813,6 +836,44 @@ label {
   }
   .quick-btn:hover .q-icon {
     transform: rotate(10deg);
+  }
+
+  /*
+   * Target sentuh kolom isian.
+   *
+   * `font-size` sudah 16px (lihat aturan dasar) supaya iOS tidak
+   * auto-membesarkan tampilan halaman saat field difokuskan. Padding
+   * vertikalnya dinaikkan supaya tinggi kolomnya jadi 48px -- di HP,
+   * kolom setinggi 40px itu target sentuh yang terlalu sempit untuk
+   * jari yang sedang memegang meteran atau buku catat.
+   */
+  .input-wrap input {
+    padding-top: 0.95rem;
+    padding-bottom: 0.95rem;
+  }
+
+  /*
+   * Tombol "Masuk Sekarang".
+   *
+   * Tingginya 48px: sama dengan target minimum yang comfortable untuk
+   * ditekuk dengan satu ibu jari, dan ini tombol yang paling sering
+   * ditekan di halaman ini.
+   */
+  .btn-submit {
+    padding: 0.9rem 1rem;
+    margin-top: 0.6rem;
+  }
+
+  /*
+   * Blok "AKSES CEPAT" disembunyikan di layar paling sempit.
+   *
+   * Kedua tombolnya masih placeholder (tidak ada handler-nya), jadi
+   * di HP -- tempat ruang paling mahal -- keduanya cuma menambah tinggi
+   * layar tanpa menambah kemampuan apa pun. Di layar 320x568, blok ini
+   * mendorong tombol utama ke bawah fold.
+   */
+  .quick {
+    display: none;
   }
 }
 

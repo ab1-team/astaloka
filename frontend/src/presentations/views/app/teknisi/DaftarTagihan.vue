@@ -2,12 +2,12 @@
   <div class="daftar-tagihan-root">
     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4! mb-6!">
       <div class="flex-1!">
-        <h1 class="text-xl md:text-2xl font-bold text-slate-900! tracking-tight mb-1!">
+        <h1 class="text-xl md:text-2xl font-bold text-cyan-600! tracking-tight mb-1!">
           Daftar Tagihan Tertunggak (Belum Lunas)
         </h1>
         <p class="text-xs md:text-sm text-slate-500! leading-relaxed!">
-          Menampilkan seluruh tagihan pelanggan yang belum dilunasi. Anda dapat mencari pelanggan
-          secara instan dan mengirim pengingat WhatsApp atau mencetak invoice.
+          Menampilkan seluruh tagihan air pelanggan yang belum dilunasi. Anda dapat mencari
+          pelanggan secara instan dan mengirim pengingat WhatsApp atau mencetak invoice.
         </p>
       </div>
 
@@ -54,7 +54,7 @@
         <template #column-customer="{ row }">
           <div class="flex items-center gap-3!">
             <div
-              class="w-9! h-9! rounded-xl! bg-linear-brand! flex! items-center! justify-center! text-white! text-xs! font-bold! shrink-0! shadow-sm!"
+              class="w-9! h-9! rounded-xl! bg-gradient-to-br! from-cyan-500! to-blue-600! flex! items-center! justify-center! text-white! text-xs! font-bold! shrink-0! shadow-sm!"
             >
               {{ getInitials(row) }}
             </div>
@@ -81,11 +81,11 @@
         <template #column-meter="{ row }">
           <div class="flex items-center gap-2! font-semibold! text-xs!">
             <span class="text-slate-400! font-normal!">
-              {{ row.meter_reading_start?.toLocaleString('id-ID') || 0 }}
+              {{ formatNumber(row.meter_reading_start) }}
             </span>
             <span class="text-slate-300!">→</span>
             <span class="text-cyan-600! font-bold!">
-              {{ row.meter_reading_end?.toLocaleString('id-ID') || 0 }}
+              {{ formatNumber(row.meter_reading_end) }}
             </span>
           </div>
         </template>
@@ -100,25 +100,13 @@
         <template #column-total="{ row }">
           <div class="flex flex-col!">
             <span class="text-sm! font-extrabold! text-slate-800!">
-              Rp.
-              {{
-                Number(row.total_amount || 0).toLocaleString('id-ID', {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                })
-              }}
+              Rp. {{ formatCurrency(row.total_amount) }}
             </span>
             <span
               v-if="Number(row.penalty_amount || 0) > 0"
               class="text-[9px]! text-rose-500! font-bold!"
             >
-              Termasuk Denda Rp.
-              {{
-                Number(row.penalty_amount || 0).toLocaleString('id-ID', {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                })
-              }}
+              Termasuk Denda Rp. {{ formatCurrency(row.penalty_amount) }}
             </span>
           </div>
         </template>
@@ -176,11 +164,46 @@ const showDetailModal = ref(false)
 let inFlightToken = 0
 let searchDebounce = null
 
+/**
+ * Nama bulan untuk judul kolom "PERIODE / INVOICE".
+ *
+ * Dipakai `getMonthName()` di bawah. Daftar ini satu sumber -- dipakai juga
+ * oleh `formatDueDate()` untuk tanggal jatuh tempo.
+ */
+const bulanOptions = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
+
+/** Angka Meter dengan pemisah ribuan gaya Indonesia. */
+const formatNumber = (val) => {
+  const n = Number(val || 0)
+  return n.toLocaleString('id-ID')
+}
+
+/** Nominal rupiah tanpa desimal -- sama seperti format tagihan di halaman lain. */
+const formatCurrency = (val) => {
+  return Number(val || 0).toLocaleString('id-ID', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })
+}
+
 const tableColumns = [
   { key: 'customer', title: 'PELANGGAN / ID' },
   { key: 'period', title: 'PERIODE / INVOICE' },
   { key: 'meter', title: 'STAND METER' },
-  { key: 'usage', title: 'VOLUME' },
+  { key: 'usage', title: 'VOLUME AIR' },
   { key: 'total', title: 'TOTAL TAGIHAN' },
   { key: 'due_date', title: 'JATUH TEMPO' },
 ]
@@ -326,27 +349,17 @@ const getCustomerName = (row) => {
 
 const getMonthName = (monthNum) => {
   if (!monthNum) return '-'
-  const months = [
-    'Januari',
-    'Februari',
-    'Maret',
-    'April',
-    'Mei',
-    'Juni',
-    'Juli',
-    'Agustus',
-    'September',
-    'Oktober',
-    'November',
-    'Desember',
-  ]
-  return months[monthNum - 1] || '-'
+  return bulanOptions[monthNum - 1] || '-'
 }
 
 const formatDueDate = (dateStr) => {
   if (!dateStr) return '-'
   try {
     const d = new Date(dateStr)
+    // Tanggal yang tidak bisa dibaca harus tampil apa adanya, bukan
+    // "NaN NaN NaN". `new Date('bukan tanggal')` tidak melempar error --
+    // dia cuma menghasilkan `Invalid Date`, jadi penjaga ini yang wajib ada.
+    if (Number.isNaN(d.getTime())) return dateStr
     const months = [
       'Jan',
       'Feb',
@@ -371,6 +384,10 @@ const getOverdueDays = (dateStr) => {
   if (!dateStr) return ''
   try {
     const due = new Date(dateStr)
+    // Sama seperti `formatDueDate`: `Invalid Date` tidak melempar, dan
+    // tanpa penjaga ini selisih hari jadi `NaN` -- yang tampil sebagai
+    // "Terlambat NaN hari".
+    if (Number.isNaN(due.getTime())) return ''
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     due.setHours(0, 0, 0, 0)

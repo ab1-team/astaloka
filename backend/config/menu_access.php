@@ -214,10 +214,22 @@ return [
     |          `admin` hanya melihat entri bertanda `admin`; jabatan Teknisi
     |          hanya melihat entri bertanda `teknisi`.
     |
-    | `hidden` Tampil di halaman Hak Akses (supaya bisa dicentang), tapi
-    |          tidak dirender sebagai entri menu baru di sidebar. Dipakai
-    |          untuk halaman yang sudah ada di router dan diakses dari
-    |          dashboard, seperti Arsip.
+    | `hidden` TIDAK tampil di sidebar DAN TIDAK tampil di daftar centang
+    |          Hak Akses -- jadi tidak bisa dicabut dari panel pusat. Dipakai
+    |          untuk halaman yang tetap hidup tapi tidak boleh jadi pilihan.
+    |
+    |          Bandingkan dengan `tanpa_sidebar`: yang itu tidak tampil di
+    |          sidebar, TETAP tampil di daftar centang, dan tetap bisa
+    |          dicabut -- jadi endpointnya masih bisa ditutup per jabatan.
+    |          Perbedaannya bukan soal tampilan, tapi soal APAKAH hak aksesnya
+    |          masih bisa dicabut.
+    |
+    | `terkunci` berarti menu ini TIDAK PERNAH bisa dicabut, dan checkbox-nya
+    |          mati di panel pusat. Dipakai untuk "Dashboard" milik teknisi:
+    |          halaman tujuan setelah login, sama seperti "Beranda". Kalau
+    |          boleh dicabut, `allowsPath()` akan menolak `/app/teknisi` dan
+    |          router guard akan mengarahkan ke `/app/teknisi` juga -- redirect
+    |          ke dirinya sendiri.
     |
     */
     'items' => [
@@ -389,7 +401,7 @@ return [
          *   - `/app/instalasi/teknisiPemakaianAir` (menu ini), tanpa
          *     filter cater, jadi admin yang sebenarnya mau menilai
          *     satu cater saja harus tahu lebih dulu dia pencatat yang mana.
-         *   - `/app/instalasi/pemakaian-air` (`tagihan.input` di bawah),
+         *   - `/app/instalasi/pemakaian` (`tagihan.input` di bawah),
          *     yang memang punya filter "Pilih Teknisi" dan menolak memuat
          *     data sebelum cater dipilih.
          *
@@ -398,17 +410,30 @@ return [
          * berdasarkan `roles`, jadi admin tidak lagi melihat entri ini
          * tanpa perlu menyentuh halamannya sama sekali.
          *
-         * `label` juga diubah ke "Input Pemakaian": kata "Air" dihapus
-         * karena ASTALOKA dipakai lintas jenis usaha -- air minum,
-         * internet, sampah -- dan label sidebar yang mengunci satu
-         * jenis usaha bikin menu ini tidak cocok untuk lokasi lain.
-         * "Input Pemakaian" juga hanya berdampingan dengan "Input
-         * Tagihan" milik admin -- yang buat orang membacanya jadi dua
-         * menu yang terdengar sama.
+         * LABEL: "Input Pemakaian Air" -- mengikuti desain role teknisi
+         * yang memakai warna cyan (lihat `views/app/teknisi/*`).
+         *
+         * Dahulu labelnya "Input Pemakaian" dengan alasan "air" mengunci
+         * satu jenis usaha. Alasan itu benar untuk TEKS UMUM, tapi menu ini
+         * adalah menu TEKNISI: halaman-halaman teknisi semuanya berlabel
+         * "air" dan berwarna cyan (Pencatatan Pemakaian Air, Daftar Tagihan
+         * Air, Laporan Hasil Instalasi). Menu yang kehilangan kata "air"
+         * sementara halaman-halamannya masih memakainya = satu role dengan
+         * dua bahasa.
+         *
+         * `group` juga dikembalikan ke "Master Instalasi" supaya SUSUNAN
+         * sidebar teknisi sama persis dengan desain per-role yang diminta:
+         * group "Master Instalasi" berisi satu anak.
+         *
+         * `group_tetap` mempertahankan group itu apa adanya. Tanpa flag
+         * itu, `SidebarView` mem-flatten group satu-anak menjadi link
+         * langsung -- hasilnya "Input Pemakaian Air" sebagai menu tingkat
+         * atas. Itu BEDA dari desain per-role, di mana teknisi membuka
+         * group "Master Instalasi" lalu memilih anaknya.
          */
         [
             'key' => 'instalasi.pemakaian',
-            'label' => 'Input Pemakaian',
+            'label' => 'Input Pemakaian Air',
             'group' => 'Master Instalasi',
             'icon' => 'faucet',
             'path' => '/app/instalasi/teknisiPemakaianAir',
@@ -417,6 +442,7 @@ return [
             // ikut tertutup bersama menu ini.
             'api' => ['meter-readings'],
             'roles' => ['teknisi'],
+            'group_tetap' => true,
         ],
 
         /*
@@ -457,6 +483,21 @@ return [
          * dan tidak ada masalah -- tapi itulah sebabnya `always` diperiksa
          * lebih dulu di middleware.
          */
+        /*
+         * `survey.daftar` -- TIDAK tampil sebagai entri sidebar.
+         *
+         * Desain per-role surveyor hanya punya SATU menu: "Buat Survey
+         * Baru". Daftar tiket yang sedang disurvei dibuka dari dashboard
+         * surveyor (`/app/surveyor`), bukan dari sidebar. Jadi menu ini
+         * memakai `tanpa_sidebar` -- bukan `hidden`.
+         *
+         * Bedanya penting: `hidden` berarti "tidak tampil di sidebar DAN
+         * tidak bisa dicentang di panel pusat Hak Akses". Yang ini hanya
+         * tidak tampil di sidebar -- checkbox-nya di panel pusat tetap ada
+         * dan masih bisa dicabut, jadi endpointnya tetap bisa ditutup per
+         * jabatan. Kalau pakai `hidden`, superadmin tidak akan pernah bisa
+         * mencabut hak akses menu ini.
+         */
         [
             'key' => 'survey.daftar',
             'label' => 'Daftar Survey',
@@ -466,12 +507,25 @@ return [
             // `DashboardMain` mengambil tiket `pending` dan `surveyed`.
             'api' => ['installation-tickets*'],
             'roles' => ['surveyor'],
+            'tanpa_sidebar' => true,
         ],
+        /*
+         * `survey.create` -- menu yang BENAR-BENAR terlihat di sidebar
+         * surveyor, dan labelnya harus persis seperti desain per-role:
+         * "Buat Survey Baru" (bukan "Input Survey").
+         *
+         * `top_level` membuat ia dirender sebagai link TINGKAT ATAS, di luar
+         * group "Survey" -- persis seperti desain pamsides-v2, di mana
+         * "Buat Survey Baru" berdiri sendiri dan bukan anak sebuah group.
+         *
+         * `group` tetap "Survey" supaya panel pusat Hak Akses masih
+         * mengelompokkannya bersama "Daftar Survey" (yang `tanpa_sidebar`).
+         */
         [
             'key' => 'survey.create',
-            'label' => 'Input Survey',
+            'label' => 'Buat Survey Baru',
             'group' => 'Survey',
-            'icon' => 'map-location-dot',
+            'icon' => 'plus-circle',
             'path' => '/app/survey/create',
             // Dua prefix, dan keduanya wajib:
             //   - `installation-tickets*` : daftar tiket `pending` yang
@@ -481,6 +535,7 @@ return [
             //     wildcard-nya tidak mungkin menabrak halaman lain.
             'api' => ['installation-tickets*', 'installation-tickets/*/survey'],
             'roles' => ['surveyor'],
+            'top_level' => true,
         ],
 
         /*
@@ -491,9 +546,105 @@ return [
          * melihat daftar centang yang PERSIS SAMA dan tidak bisa memakai
          * hak akses yang berbeda satu sama lain.
          *
+         * DUA entri di bawah, dan itulah daftar lengkap yang boleh dilihat
+         * superadmin untuk jabatan Teknisi/Cater di panel pusat Hak Akses:
+         *
+         *   1. "Dashboard"           (`teknisi.dashboard`)
+         *   2. "Input Pemakaian Air" (`instalasi.pemakaian`, di atas)
+         *
+         * "Hasil Instalasi" (`teknisi.hasil-instalasi`) dan "Daftar Tagihan"
+         * (`teknisi.daftar-tagihan`) TIDAK termasuk: keduanya `hidden`, jadi
+         * tidak muncul di daftar centang. Alasannya sama -- keduanya dibuka
+         * dari tombol/kartu di DASHBOARD teknisi, bukan dari entri sidebar
+         * mana pun, jadi tidak ada "menu" yang bisa dicentang atau dicabut.
+         *
+         * Di SIDEBAR, desain per-role teknisi cuma punya satu menu: group
+         * "Master Instalasi" -> "Input Pemakaian Air". "Dashboard" tetap
+         * halaman milik teknisi, tapi entri sidebarnya adalah "Beranda" --
+         * item TETAP yang ditambahkan `SidebarView.vue` di luar katalog --
+         * jadi ia memakai `tanpa_sidebar`.
+         *
+         * `tanpa_sidebar` BUKAN `hidden`: `hidden` berarti menu tidak tampil
+         * di sidebar DAN tidak bisa dicentang di panel pusat Hak Akses.
+         * `tanpa_sidebar` hanya tidak tampil di sidebar -- checkbox-nya di
+         * panel pusat tetap ada dan masih bisa dicabut, jadi endpointnya
+         * tetap bisa ditutup per jabatan.
+         *
          * Prefix `installation-tickets` + wildcard + `installation-result`
          * adalah POST dari InstallationResult.vue. Wildcard-nya satu segmen
          * disengaja: bentuknya `installation-tickets/{id}/...`.
+         */
+        /*
+         * `teknisi.dashboard` -- "Dashboard", halaman TUJUAN teknisi.
+         *
+         * Dahulu "Beranda" sengaja TIDAK ada di katalog: `/app` dianggap
+         * halaman tujuan setelah login, bukan pekerjaan yang bisa dikunci.
+         *
+         * Untuk role teknisi, keputusan itu berubah. Di desain per-role
+         * pamsides-v2 sidebar teknisi MEMUAT "Beranda" sebagai entri
+         * pertamanya -- jadi "Dashboard" bukan lagi sekadar tempat login,
+         * tapi menu yang benar. Panel pusat Hak Akses harus mencerminkan itu:
+         * daftar centang teknisi yang tidak memuat "Dashboard" tidak akan
+         * pernah cocok dengan tampilan yang dilihat teknisi setiap hari.
+         *
+         * Group "Utama" dipakai supaya entri ini berdiri sendiri, terpisah
+         * dari "Master Instalasi" (tempat "Input Pemakaian Air").
+         *
+         * `path` menunjuk dashboard teknisi, BUKAN kosong, dan alasannya
+         * teknis: `allowsPath()` dipakai router guard untuk menolak halaman
+         * yang haknya sudah dicabut. Kalau `path`-nya kosong, entri ini TIDAK
+         * pernah dipadankan -- dan centangnya jadi tidak berarti apa pun.
+         *
+         * Yang membuatnya aman: `terkunci` di bawah. Menu terkunci selalu
+         * diizinkan (`allowedKeysFor()`), jadi `allowsPath('/app/teknisi')`
+         * tidak akan pernah menolak -- dan tidak akan pernah terjadi
+         * redirect ke dirinya sendiri.
+         *
+         * `tanpa_sidebar` karena "Beranda" di sidebar adalah item TETAP
+         * yang ditambahkan `SidebarView.vue` di luar katalog. Kalau entri
+         * ini tidak memakai flag itu, sidebar teknisi akan punya dua
+         * entri yang menunjuk halaman yang sama.
+         *
+         * `terkunci` memastikan entri ini tidak PERNAH bisa dicabut, jadi
+         * daftar teknisi di panel pusat selalu punya "Dashboard" sebagai
+         * salah satu dari DUA menu -- persis seperti yang diminta.
+         */
+        [
+            'key' => 'teknisi.dashboard',
+            'label' => 'Dashboard',
+            'group' => 'Utama',
+            'icon' => 'home',
+            'path' => '/app/teknisi',
+            // Tidak ada prefix API milik sendiri.
+            //
+            // Endpoint dashboard (`dashboard/statistics`) dipakai SEMUA role
+            // dan sudah ada di `always_allowed_api`. Kalau entri ini
+            // mengklaimnya, maka mencabut "Dashboard" akan ikut menutup
+            // dashboard admin -- dan `allowedKeysFor()` membuang menu milik
+            // role lain, jadi admin yang jabatan-nya dibatasi kehilangan
+            // kemampuan itu. Gejalanya: dashboard admin kosong.
+            //
+            // Endpoint lain yang dipakai dashboard teknisi
+            // (`meter-readings/pending`, `monthly-bills`) sudah dimiliki
+            // menu lain, jadi ikut tertutup bersama menu itu.
+            'api' => [],
+            'roles' => ['teknisi'],
+            'tanpa_sidebar' => true,
+            'terkunci' => true,
+        ],
+        /*
+         * `teknisi.hasil-instalasi` -- "hidden".
+         *
+         * `hidden` berarti: tidak tampil di sidebar, DAN tidak tampil di
+         * daftar centang Hak Akses. Yang KEDUA untuk teknisi -- Dashboard
+         * dan Input Pemakaian Air -- sudah ada di atas, dan halaman ini
+         * bukan salah satunya: ini bagian dari pekerjaan Dashboard (tombol
+         * tugas di kartu), bukan pekerjaan terpisah.
+         *
+         * `hidden` TIDAK membuat halamannya mati. Prefix API-nya tetap di
+         * katalog, jadi `EnforceMenuAccess` tetap memblokir endpointnya
+         * kalau jabatan tidak punya key-nya. Yang hilang cuma tempatnya
+         * untuk dicentang.
          */
         [
             'key' => 'teknisi.hasil-instalasi',
@@ -519,16 +670,41 @@ return [
             // sendiri (menu admin yang menyebut `installation-tickets`).
             'api' => ['installation-tickets/*', 'installation-tickets/*/installation-result'],
             'roles' => ['teknisi'],
+            'hidden' => true,
         ],
+        /*
+         * `teknisi.daftar-tagihan` -- "hidden", sama seperti "Hasil
+         * Instalasi".
+         *
+         * Halaman ini dibuka dari KARTU "Daftar Tagihan" di dashboard
+         * teknisi (`teknisi/DashboardMain.vue`), bukan dari entri sidebar.
+         * Karena tidak ada menu yang bisa dicentang, ia tidak boleh muncul
+         * di daftar centang panel pusat: superadmin akan melihat checkbox
+         * untuk sesuatu yang tidak pernah tampil sebagai menu.
+         *
+         * Dua flag, dan keduanya perlu:
+         *
+         *   - `hidden`    : tidak tampil di sidebar DAN tidak bisa dicentang
+         *                   di panel pusat Hak Akses.
+         *
+         *   - `terkunci`  : endpointnya (`monthly-bills*`) SELALU diizinkan
+         *                   untuk role teknisi. Tanpa ini, jabatan yang
+         *                   sudah dikonfigurasi tanpa key ini akan mendapat
+         *                   403 di halaman yang justru dibuka dari
+         *                   dashboard -- dan karena checkbox-nya sudah
+         *                   tidak ada, tidak ada cara memperbaikinya dari
+         *                   panel. (Persis alasan `teknisi.dashboard` juga
+         *                   `terkunci`.)
+         */
         [
             'key' => 'teknisi.daftar-tagihan',
             'label' => 'Daftar Tagihan',
             'group' => 'Pusat Teknis',
             'icon' => 'receipt',
             'path' => '/app/teknisi/daftar-tagihan',
-            // `DaftarTagihan.vue` memanggil `getAllBills()` yang ber-paging
-            // ke `monthly-bills`. Prefix-nya `monthly-bills*`, bukan
-            // `bills`: `bills` dipakai `tagihan.daftar` milik admin dan
+            // `DaftarTagihan.vue` memanggil `billingService.getBills()` yang
+            // ber-paging ke `monthly-bills`. Prefix-nya `monthly-bills*`,
+            // bukan `bills`: `bills` dipakai `tagihan.daftar` milik admin dan
             // tidak pernah dipanggil dari halaman teknisi.
             //
             // Bentuk `monthly-bills*` (wildcard di akhir) penting: ia hanya
@@ -545,6 +721,8 @@ return [
             // harus menyebutnya.
             'api' => ['monthly-bills*', 'whatsapp/*'],
             'roles' => ['teknisi'],
+            'hidden' => true,
+            'terkunci' => true,
         ],
 
         /*
@@ -619,12 +797,40 @@ return [
         ],
 
         // ---- Pencatatan Tagihan ------------------------------------------
+        /*
+         * `tagihan.input` -- "Input Tagihan", halaman milik ADMIN.
+         *
+         * `roles` TIDAK lagi memuat `teknisi`. Sebelumnya memuat, dan itu
+         * membuat sidebar teknisi punya DUA menu input meter:
+         *
+         *   - "Input Pemakaian Air" (`instalasi.pemakaian`) -- halaman
+         *     MILIK teknisi, tanpa filter teknisi.
+         *   - "Input Tagihan" (`tagihan.input` ini) -- halaman dengan
+         *     filter "Pilih Teknisi", milik admin.
+         *
+         * Desain per-role teknisi hanya punya yang pertama. Teknisi
+         * mencatat meter untuk pelanggan yang ia tangani; halaman berfilter
+         * teknisi milik admin yang mau menilai satu teknisi saja.
+         *
+         * `roles` adalah BATAS ATAS, jadi teknisi masih boleh memakai
+         * halamannya lewat URL (`/app/instalasi/pemakaian` -- route
+         * itu memang mengizinkan `admin` dan `teknisi`, lihat `ROLE_GUARDS`
+         * di router) dan `CheckRole` tetap mengizinkan endpoint-nya. Yang
+         * dicabut hanya ENTRI MENUNYA, supaya sidebar teknisi persis sama
+         * dengan desain pamsides-v2.
+         *
+         * Satu-satunya efek samping yang perlu diketahui: `meter-readings`
+         * ikut dikuasai menu ini, dan `instalasi.pemakaian` (teknisi) juga
+         * memegangnya -- jadi mencabut `tagihan.input` dari jabatan teknisi
+         * tidak membuat endpoint meter tertutup, karena `instalasi.pemakaian`
+         * masih memegangnya. Itu memang yang dikehendaki.
+         */
         [
             'key' => 'tagihan.input',
             'label' => 'Input Tagihan',
             'group' => 'Pencatatan Tagihan',
             'icon' => 'pen-to-square',
-            'path' => '/app/instalasi/pemakaian-air',
+            'path' => '/app/instalasi/pemakaian',
             // `monthly-bills/generate` hanya milik menu ini -- endpoint
             // pembuatan tagihan bulanan, bukan milik daftar tagihan.
             //
@@ -632,7 +838,7 @@ return [
             // input meter) dan `PemakaianAir.vue` (teknisi), jadi keduanya
             // ikut tertutup bersama menu ini.
             'api' => ['monthly-bills/generate', 'meter-readings'],
-            'roles' => ['admin', 'teknisi'],
+            'roles' => ['admin'],
         ],
         [
             'key' => 'tagihan.daftar',

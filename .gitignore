@@ -35,3 +35,6 @@ frontend/clean_views.cjs
 
 # Screenshot hasil ukur layout cetakan (tools/ukur-cetak-form.mjs)
 tools/*.png
+
+# Script debug sekali pakai (dipakai saat menyelidiki tampilan cetak)
+frontend/debug-tmp.mjs

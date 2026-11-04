@@ -11,7 +11,7 @@
           @click.stop
         >
           <div
-            class="px-6! py-4! bg-linear-brand! text-white! flex! items-center! justify-between! shrink-0!"
+            class="px-6! py-4! bg-gradient-to-r! from-cyan-600! to-cyan-800! text-white! flex! items-center! justify-between! shrink-0!"
           >
             <div class="flex! items-center! gap-3!">
               <div
@@ -58,7 +58,7 @@
                   <div class="space-y-4!">
                     <div class="flex! items-center! gap-3.5! pb-4! border-b! border-slate-100!">
                       <div
-                        class="w-12! h-12! rounded-xl! bg-linear-brand! text-white! flex! items-center! justify-center! text-base! font-bold! shadow-sm!"
+                        class="w-12! h-12! rounded-xl! bg-gradient-to-br! from-cyan-500! to-blue-600! text-white! flex! items-center! justify-center! text-base! font-bold! shadow-sm!"
                       >
                         {{ getInitials }}
                       </div>
@@ -142,7 +142,7 @@
                   class="text-xs! font-black! text-slate-400! uppercase! tracking-widest! flex! items-center! gap-2! mb-0!"
                 >
                   <font-awesome-icon icon="file-alt" class="text-cyan-600!" />
-                  Rincian Tagihan Bulanan
+                  Rincian Rekening Air Bulanan
                 </h4>
 
                 <div
@@ -199,7 +199,7 @@
                         <div
                           class="flex! items-center! justify-between! py-1! pt-3! border-t! border-dashed! border-slate-100!"
                         >
-                          <span class="text-slate-500! font-medium!">Biaya Penggunaan</span>
+                          <span class="text-slate-500! font-medium!">Biaya Penggunaan Air</span>
                           <span class="font-bold! text-slate-800!">
                             Rp.
                             {{
@@ -519,8 +519,8 @@ const handlePrint = () => {
 </style></head>
 <body>
   <div class="header">
-    <h1>INVOICE TAGIHAN</h1>
-    <p>ASTALOKA - Sistem Manajemen Layanan</p>
+    <h1>INVOICE TAGIHAN AIR</h1>
+    <p>ASTALOKA - Sistem Manajemen Air Bersih</p>
     <p style="margin-top:6px">No: INV-${props.bill.id} · ${month} ${year}</p>
   </div>
   <div class="row"><span class="label">Pelanggan</span><span>${customer}</span></div>
@@ -553,10 +553,10 @@ watch(
 
       // Pratinjau diambil saat modal dibuka, bukan saat `bill` berubah.
       //
-      // `bill` di halaman induk di-update DUA kali:先是 baris ringkas
+      // `bill` di halaman induk di-update DUA kali: pertama baris ringkas
       // dari tabel, lalu detail lengkap dari `getBillDetail()`. Kalau
-      // pratinjau ikut Depends on `bill`, dia	request dua kali untuk
-      // data yang sama.
+      // pratinjau ikut bergantung pada `bill`, dia akan request dua kali
+      // untuk data yang sama.
       loadPreview()
     } else {
       document.removeEventListener('keydown', handleEscKey)

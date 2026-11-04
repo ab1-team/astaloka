@@ -375,7 +375,7 @@ Response:
 - `force` opsional, default `false`. Jika `true`, hapus jurnal tunggakan lama untuk bill yang sama (`reverence_type='overdue_bill'`, `reverence_id=`) sebelum insert baru. Default idempotent: skip bill yang sudah punya jurnal.
 
 **Logika:**
-- Loop `MonthlyBill` dengan `status='unpaid'` dan `due_date < (tanggal - toleransi)`. `toleransi` = `settings.toleransi_tunggakan` (default `0`).
+- Loop `MonthlyBill` dengan `status='unpaid'` dan `due_date < (tanggal - toleransi)`. `toleransi` = `BillingTolerance::graceDays()` = **JUMLAH HARI** mundur dari `tanggal`, dan angka itu sama dengan tanggal SOP (`settings.batas_tagihan`). Kalau tanggal SOP belum diisi (0), toleransi 0 dan ambangnya jatuh tempo itu sendiri.
 - Untuk tiap bill:
   - Insert 1 baris jurnal ke `transactions` (`account_debet='1.1.03.01'` Piutang, `account_kredit='4.1.01.02'` Abodemen, `saldo = bill.abodemen`) jika `bill.abodemen > 0`.
   - Insert 1 baris jurnal (`account_kredit='4.1.01.03'` Pemakaian, `saldo = bill.usage_charge`) jika `bill.usage_charge > 0`.
@@ -424,7 +424,7 @@ php artisan billing:generate-overdue-transactions --tanggal=2026-07-25
 php artisan billing:generate-overdue-transactions --force
 ```
 
-**Catatan migrasi/config:** tidak ada migration baru. Toleransi baca dari `settings.toleransi_tunggakan` (kolom sudah ada sejak `2026_06_10_000001_add_company_fields_to_settings_table.php`).
+**Catatan migrasi/config:** tidak ada migration baru untuk endpoint ini. Toleransi dibaca lewat `App\Services\BillingTolerance` dari `settings.batas_tagihan` (dengan fallback ke `settings.toleransi_tunggakan` kalau `batas_tagihan` belum diisi), dan kedua kolom itu disamakan nilainya oleh migration tenant `2026_10_31_000002_sync_toleransi_tunggakan_with_batas_tagihan`.
 
 #### Pengaturan/SOP
 | Method | Endpoint | Controller | Respons |
@@ -436,6 +436,93 @@ php artisan billing:generate-overdue-transactions --force
 | POST | `/api/settings/sop/pemakaian-air` | SopController | Perbarui pengaturan pemakaian |
 | POST | `/api/settings/sop/logo` | SopController | Perbarui logo |
 | POST | `/api/settings/sop/whatsapp` | SopController | Perbarui whatsapp |
+
+**Sistem Tagihan (`toleransiTunggakan`, `batasBulanTunggakan`)**
+
+Dua angka dengan **satuan berbeda**, jadi masing-masing punya kolom sendiri:
+
+| Field API | Kolom `settings` | Satuan | Arti |
+|---|---|---|---|
+| `toleransiTunggakan` | `batas_tagihan` + `toleransi_tunggakan` | TANGGAL (1-31) | Satu angka untuk jatuh tempo tagihan, generate piutang, ambang piutang, dan deteksi advance payment |
+| `batasBulanTunggakan` | `billing_unpaid_limit` | **JUMLAH BULAN** (0-24) | Batas tunggakan sebelum sambungan pelanggan di-`suspended` |
+
+> **TWO FIELD TANGGAL DIGABUNG JADI SATU.** `batas_tagihan` (jatuh tempo)
+> dan `toleransi_tunggakan` (generate piutang) dulu bisa berisi angka
+> berbeda -- di lokasi demo 27 vs 30 -- padahal satuannya sama: "hari ke
+> berapa dalam bulan". Dua input untuk satu satuan yang sama bikin admin
+> mengira ada dua aturan terpisah. Sekarang halaman SOP hanya punya SATU
+> input tanggal, dan satu angka itu berlaku untuk keempat aturan berbasis
+> tanggal.
+>
+> **Arahnya penting: sumbernya `batas_tagihan`.** `monthly_bills.due_date`
+> yang sudah tersimpan di database dihitung dari `batas_tagihan`. Kalau
+> sumbernya `toleransi_tunggakan` (= 30 di demo), jatuh tempo tagihan BARU
+> bergeser ke tanggal 30 sementara tagihan LAMA tetap tanggal 27 -- satu
+> bulan tagihan yang sama punya dua jatuh tempo berbeda.
+>
+> `settings.toleransi_tunggakan` tidak dihapus: kolomnya tetap ada dan
+> tetap diisi dengan angka yang sama (salinan). Dipakai import legacy dan
+> dilacak lewat banyak query lama. Migration tenant
+> `2026_10_31_000002_sync_toleransi_tunggakan_with_batas_tagihan`
+> menyamakan keduanya (idempoten) tanpa menyentuh `batas_tagihan`.
+>
+> Konsekuensi yang disengaja: ini sekaligus memperbaiki bug advance
+> payment. Dulu ambang advance dibaca dari `toleransi_tunggakan` (30)
+> sementara `due_date` dihitung dari `batas_tagihan` (27), jadi pembayaran
+> pada tanggal 28-30 salah flagged ADVANCE padahal tagihannya belum jatuh
+> tempo. Sekarang keduanya satu angka, jadi bug itu ikut hilang.
+
+**Response `data.sistemTagihan` dari GET `/api/settings/sop`:**
+```json
+{
+    "success": true,
+    "data": {
+        "sistemTagihan": {
+            "batasTagihan": 27,
+            "toleransiTunggakan": 27,
+            "batasBulanTunggakan": 3
+        }
+    }
+}
+```
+
+> GET mengirim `batasTagihan` dan `toleransiTunggakan` dengan nilai yang
+> SAMA. `batasTagihan` dipertahankan sebagai alias supaya consumer lama
+> (`ReportCetakDaftarTagihan.vue` memakai `settingsStore.batasTagihan`)
+> tetap jalan tanpa perubahan.
+
+**Request POST `/api/settings/sop/sistem-tagihan`:**
+```json
+{
+    "toleransiTunggakan": 27,
+    "batasBulanTunggakan": 3
+}
+```
+
+> `toleransiTunggakan` WAJIB diisi, rentang 1-31. `batasBulanTunggakan`
+> WAJIB diisi, rentang 0-24.
+>
+> `batasTagihan` masih diterima sebagai **alias legacy** (opsional). Kalau
+> dikirim, nilainya harus sama dengan `toleransiTunggakan` -- kalau beda,
+> request ditolak dengan `422`. Alasannya: kalau dua input diizinkan
+> berbeda, yang tersimpan hanya satu angka, jadi angka yang "kalah" akan
+> hilang tanpa jejak.
+>
+> Menyimpan lewat endpoint ini menulis kedua kolom `settings` dengan angka
+> yang sama: `batas_tagihan` = `toleransi_tunggakan` = `toleransiTunggakan`.
+>
+> `batasBulanTunggakan` yang kosong di database (`NULL`) dibaca sebagai **3
+> bulan** — bawaan yang sama dengan `SettingsSeeder`, supaya lokasi yang
+> belum pernah menyimpan SOP tetap punya perilaku auto-suspend yang seragam.
+> Nilai `0` berarti "tidak pernah memutus sambungan otomatis".
+>
+> Yang dibandingkan adalah **jumlah bulan** sejak tagihan paling lama
+> unpaid yang jatuh temponya sudah lewat (`App\Services\UnpaidMonths`),
+> **bukan jumlah tagihan**. Pemutusannya tetap di `MeterReadingController::store`
+> (saat cater/teknisi mencatat pemakaian) — tidak ada pemicu baru.
+>
+> `billing_unpaid_limit` nullable tanpa default; migration tenant
+> `2026_10_31_000001_fill_billing_unpaid_limit_default` mengisi `NULL` → 3.
 
 **Pengaturan pemakaian (`autoOpenMeterCamera`)**
 
@@ -611,6 +698,24 @@ otomatis, bukan apakah fitur scan boleh dipakai.
 ---
 
 ## 3. Changelog
+
+### v1.3 (2026-10-31) — Gabung Dua Field Tanggal SOP (Toleransi Menunggak)
+
+**Baru:**
+- Migration tenant `2026_10_31_000002_sync_toleransi_tunggakan_with_batas_tagihan` — menyamakan `settings.toleransi_tunggakan` dengan `settings.batas_tagihan` (idempoten). `batas_tagihan` sendiri tidak pernah disentuh. Baris dengan `batas_tagihan = 0` ("belum diisi") dibiarkan apa adanya.
+
+**Diubah:**
+- `POST /api/settings/sop/sistem-tagihan` — field tanggal jadi SATU: `toleransiTunggakan` (wajib, 1-31). `batasTagihan` diterima sebagai alias legacy opsional, dan kalau dikirim nilainya harus sama dengan `toleransiTunggakan` (selain itu ditolak `422`). `batasBulanTunggakan` tetap wajib (0-24). Penyimpanan menulis kedua kolom `settings` dengan angka yang sama.
+- `GET /api/settings/sop` — `data.sistemTagihan` mengirim `batasTagihan` dan `toleransiTunggakan` dengan nilai yang sama, supaya consumer lama tidak perlu diubah.
+- `App\Services\BillingTolerance` — `legacy()` diganti jadi `tanggal()`. Sekarang membaca `settings.batas_tagihan` (sumber tunggal), dengan fallback ke `settings.toleransi_tunggakan` kalau `batas_tagihan` belum berisi tanggal yang sah (0 / di luar 1-31), supaya baris lama tidak kehilangan jadwal generate. `generateDay()`, `graceDays()`, dan `advanceDayOfMonth()` semuanya memakai angka itu.
+- `App\Services\TenantManager` dan `SettingsSeeder` — baris baru ditulis dengan kedua kolom tanggal bernilai sama (10).
+
+**Perbaikan:**
+- Bug advance payment: ambang advance dibaca dari `toleransi_tunggakan` (30) sementara `due_date` dihitung dari `batas_tagihan` (27). Pembayaran pada tanggal 28-30 salah flagged `ADVANCE` padahal tagihannya belum jatuh tempo. Sekarang ambang advance = tanggal jatuh tempo.
+
+**Catatan migrasi:**
+- Tidak ada perubahan skema. Migration di atas hanya menyamakan nilai data.
+- `settings.toleransi_tunggakan` TIDAK dihapus — kolom ini masih dibaca import legacy dan dilacak lewat banyak query lama.
 
 ### v1.2 (2026-07-25) — Generate Piutang API
 

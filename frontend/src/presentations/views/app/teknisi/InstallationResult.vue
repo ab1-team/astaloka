@@ -9,7 +9,7 @@
           Laporan <span class="text-cyan-500!">Hasil Instalasi</span>
         </h1>
         <p class="text-slate-500! mt-1! font-medium!">
-          Upload foto dan data hasil pemasangan meter pelanggan.
+          Upload foto dan data hasil pemasangan meter air pelanggan.
         </p>
       </div>
     </div>
@@ -164,10 +164,10 @@
 
         <div class="mt-12! pt-8! border-t! border-slate-100!">
           <BaseButton
-            variant="secondary"
+            variant="primary-gradient"
             block
             size="lg"
-            class="rounded-3xl! h-16! font-black! text-lg! shadow-xl! shadow-slate-200!"
+            class="rounded-3xl! h-16! font-black! text-lg! shadow-xl! shadow-cyan-200!"
             @click="submitInstallation"
             :loading="isSubmitting"
             :disabled="!isFormValid"
@@ -309,7 +309,7 @@ const submitInstallation = async () => {
       icon: 'success',
       title: 'Berhasil!',
       text: 'Hasil instalasi berhasil disimpan.',
-      confirmButtonColor: 'var(--color-primary, #3b82f6)',
+      confirmButtonColor: '#06b6d4',
     })
 
     // Kembali ke dashboard TEKNISI. Sebelumnya '/app' yang membuat teknisi

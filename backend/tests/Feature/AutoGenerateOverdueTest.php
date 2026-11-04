@@ -91,9 +91,19 @@ class AutoGenerateOverdueTest extends TestCase
     #[Test]
     public function auto_generate_overdue_tidak_jalan_jika_toleransi_nol(): void
     {
+        /*
+         * Kedua kolom diset 0.
+         *
+         * Setelah penggabungan dua tanggal jadi satu, "tanggal 0" berarti
+         * "SOP belum diisi" untuk SEMUA aturan berbasis tanggal -- jadi
+         * `batas_tagihan` juga harus 0. Kalau hanya `toleransi_tunggakan`
+         * yang 0, `BillingTolerance::tanggal()` akan jatuh ke fallback
+         * kolom itu dan hasilnya tetap 0, tapi test ini jadi menguji
+         * fallback, bukan "SOP belum diisi".
+         */
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 0,
             'toleransi_tunggakan' => 0,
         ]);
 
@@ -116,12 +126,14 @@ class AutoGenerateOverdueTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
             // Tanggal generate = 20, sedangkan "hari ini" = 15.
             //
             // Gate-nya `===`: generate HANYA pada tanggal yang di-set.
             // Angka 20 dipilih eksplisit supaya test ini hasilnya sama
             // terlepas dari kapan pun ia dijalankan.
+            //
+            // Kedua kolom diset 20 karena keduanya sekarang satu angka.
+            'batas_tagihan' => 20,
             'toleransi_tunggakan' => 20,
         ]);
 
@@ -158,8 +170,9 @@ class AutoGenerateOverdueTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
-            // Tanggal generate = hari ini (15), jadi command benar-benar jalan.
+            // Satu angka untuk dua kolom: tanggal generate = hari ini (15),
+            // jadi command benar-benar jalan.
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -207,7 +220,7 @@ class AutoGenerateOverdueTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 15,
             'toleransi_tunggakan' => 15,
         ]);
 
@@ -229,7 +242,7 @@ class AutoGenerateOverdueTest extends TestCase
         // karena frontend memakainya untuk membuka popup di setiap login.
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -257,7 +270,7 @@ class AutoGenerateOverdueTest extends TestCase
         // Endpoint harus tetap return success dengan summary=0.
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -297,7 +310,7 @@ class AutoGenerateOverdueTest extends TestCase
         // wajib agar frontend bisa menampilkan pop up dengan benar.
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 0,
             'toleransi_tunggakan' => 0, // non-trigger
         ]);
 
@@ -323,7 +336,7 @@ class AutoGenerateOverdueTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -457,7 +470,7 @@ class AutoGenerateOverdueTest extends TestCase
         // (lihat Customer->user relasi).
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 

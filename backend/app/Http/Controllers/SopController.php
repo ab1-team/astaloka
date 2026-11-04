@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Calk;
 use App\Models\Setting;
+use App\Services\BillingTolerance;
 use App\Services\HtmlSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +15,16 @@ class SopController extends Controller
     public function index()
     {
         $s = Setting::first();
+
+        /*
+         * Angka TANGGAL yang dipakai semua aturan berbasis tanggal.
+         *
+         * Sumbernya `BillingTolerance::tanggal()` (kolom `batas_tagihan`),
+         * jadi angka yang tampil di halaman SOP persis sama dengan yang
+         * dipakai backend untuk jatuh tempo, generate piutang, ambang
+         * piutang, dan deteksi advance payment.
+         */
+        $tanggal = app(BillingTolerance::class)->tanggal();
 
         $data = [
             'lembaga' => [
@@ -26,8 +37,37 @@ class SopController extends Controller
                 'sk_kemenkumham' => $s?->sk_kemenkumham ?? '',
             ],
             'sistemTagihan' => [
-                'batasTagihan' => $s?->batas_tagihan ?? 27,
-                'toleransiTunggakan' => $s?->toleransi_tunggakan ?? 0,
+                /*
+                 * SATU ANGGAL untuk semua aturan berbasis tanggal.
+                 *
+                 * `batasTagihan` (jatuh tempo) dan `toleransiTunggakan`
+                 * (generate piutang) dulu dua input terpisah, padahal
+                 * satuan dan maknanya sama: "hari ke berapa dalam bulan".
+                 * Sekarang keduanya digabung jadi satu angka yang
+                 * disimpan di `settings.batas_tagihan`, dan
+                 * `settings.toleransi_tunggakan` hanya salinannya.
+                 *
+                 * Field `batasTagihan` sengaja DIKIRIM dengan nilai yang
+                 * sama: ada dua konsumen frontend yang membacanya
+                 * (`ReportCetakDaftarTagihan.vue` untuk "Tgl Akhir
+                 * Pembayaran" dan `BillingForm.vue` untuk pratinjau
+                 * advance payment), dan keduanya harus melihat angka yang
+                 * sama dengan yang dipakai backend.
+                 */
+                'batasTagihan' => $tanggal,
+                'toleransiTunggakan' => $tanggal,
+                /*
+                 * Batas tunggakan dalam BULAN sebelum sambungan diputus.
+                 *
+                 * Satuannya berbeda dari angka di atas: yang ini JUMLAH
+                 * BULAN, sementara `batasTagihan`/`toleransiTunggakan`
+                 * adalah TANGGAL dalam bulan.
+                 *
+                 * `null` di database dibaca sebagai 3 (bawaan), supaya form
+                 * tidak pernah menampilkan kolom kosong -- lihat
+                 * `BillingTolerance::unpaidBillLimit()`.
+                 */
+                'batasBulanTunggakan' => app(BillingTolerance::class)->unpaidBillLimit(),
             ],
             'pasangBaru' => [
                 'statusPembayaran' => (bool) ($s?->status_pembayaran ?? false),
@@ -151,23 +191,16 @@ class SopController extends Controller
         try {
             $data = $request->validate([
                 /*
-                 * Tanggal jatuh tempo tagihan, 1-31.
+                 * SATU TANGGAL untuk semua aturan berbasis tanggal.
                  *
-                 * Angkanya dipakai di bulan TAGIHAN (bulan pemakaian + 1),
-                 * jadi 31 berarti 31 Oktober, 30 di November, dan 28/29 di
-                 * Februari. Nilai di luar 1-31 ditolak di sini supaya
-                 * tidak ada angka yang tidak pernah ada di kalender.
-                 */
-                'batasTagihan' => 'required|integer|min:1|max:31',
-
-                /*
-                 * Rentang `0..31` -- TANGGAL generate piutang tiap bulan.
+                 * Ini menggantikan dua input terpisah yang tadinya ada:
+                 * "Tanggal Jatuh Tempo" (`batasTagihan`) dan "Toleransi
+                 * Menunggak" (`toleransiTunggakan`). Keduanya TANGGAL dalam
+                 * bulan dengan satuan yang sama, jadi BEDA hanya nama
+                 * -- dan dua input untuk satu angka membuat admin mengira
+                 * ada dua aturan yang harus diselaraskan sendiri.
                  *
-                 * Dulu rentangnya `0..120`, warisan pamsides-v2, karena
-                 * kolom ini punya empat arti sekaligus. Dua di antaranya
-                 * memang satuan HARI/JUMLAH, tapi yang dipakai di halaman
-                 * ini adalah makna TANGGAL -- dan tanggal dalam bulan
-                 * maksimal 31.
+                 * Rentang 1-31, sama seperti `BillingTolerance::generateDay()`.
                  *
                  * Kenapa harus dibatasi di sini
                  * --------------------------------
@@ -181,31 +214,79 @@ class SopController extends Controller
                  * yang sudah pernah dilaporkan: "sudah saya set tanggalnya
                  * tapi kok generate tidak jalan?".
                  *
-                 * Jadi penolakan di sini bukan tambahan.strict, tapi
+                 * Jadi penolakan di sini bukan tambahan strict, tapi
                  * memindahkan pesan error dari "tidak jelas" ke "tepat di
                  * tempatnya".
                  *
-                 * NILAI 0 TETAP DITERIMA: artinya "tanggal generate belum
-                 * diset" -- generate tidak berjalan, tapi admin punya
-                 * jalan untuk mengisinya nanti lewat halaman ini.
-                 *
-                 * Catatan: angka yang DISIMPAN di sini dipakai juga sebagai
-                 * ambang piutang (jumlah hari), ambang advance payment, dan
-                 * batas tagihan unpaid sebelum suspend -- lihat
-                 * `BillingTolerance`. Semua konsumen itu membaca kolom
-                 * yang sama dan masing-masing memeriksa rantainya sendiri,
-                 * jadi pembatasan di sini tidak mengubah perilaku mereka.
+                 * `batasTagihan` tetap DITERIMA sebagai alias lama, tapi
+                 * nilainya wajib sama dengan `toleransiTunggakan` kalau
+                 * ikut dikirim. Kalau berbeda, permintaan ditolak -- bukan
+                 * diam-diam salah satu menimpa yang lain, karena itu
+                 * kembali ke persis masalah yang diselesaikan di sini: satu
+                 * settings dengan dua tanggal yang saling bertentangan.
                  */
-                'toleransiTunggakan' => ['required', 'integer', 'min:0', 'max:31'],
+                'toleransiTunggakan' => ['required', 'integer', 'min:1', 'max:31'],
+
+                /*
+                 * Alias lama dari `toleransiTunggakan`.
+                 *
+                 * Opsional. Kalau dikirim, WAJIB sama dengan
+                 * `toleransiTunggakan` -- kalau tidak, ditolak dengan 422.
+                 */
+                'batasTagihan' => ['nullable', 'integer', 'min:1', 'max:31'],
+
+                /*
+                 * Batas tunggakan dalam BULAN sebelum sambungan diputus.
+                 *
+                 * Satuannya JUMLAH BULAN, jadi rangenya jauh lebih kecil
+                 * dari angka tanggal di atas. Batas atas 24 bulan (2 tahun)
+                 * dipilih karena angka yang lebih besar tidak masuk akal
+                 * sebagai toleransi penagihan -- dan supaya nilainya muat
+                 * di kolom `billing_unpaid_limit` (smallint).
+                 *
+                 * NILAI 0 DITERIMA: artinya "tidak pernah memutus sambungan
+                 * otomatis". Ini pilihan yang sah, jadi tidak ditolak.
+                 */
+                'batasBulanTunggakan' => ['required', 'integer', 'min:0', 'max:24'],
             ], [
-                'toleransiTunggakan.max' => 'Tanggal generate piutang harus antara 1 dan 31.',
-                'toleransiTunggakan.min' => 'Tanggal generate piutang harus antara 1 dan 31.',
+                'toleransiTunggakan.max' => 'Tanggal toleransi menunggak harus antara 1 dan 31.',
+                'toleransiTunggakan.min' => 'Tanggal toleransi menunggak harus antara 1 dan 31.',
+                'batasTagihan.max' => 'Tanggal jatuh tempo harus antara 1 dan 31.',
+                'batasTagihan.min' => 'Tanggal jatuh tempo harus antara 1 dan 31.',
+                'batasBulanTunggakan.max' => 'Batas tunggakan maksimal 24 bulan.',
+                'batasBulanTunggakan.min' => 'Batas tunggakan tidak boleh negatif.',
             ]);
+
+            $tanggal = (int) $data['toleransiTunggakan'];
+
+            /*
+             * Alias lama harus sama persis.
+             *
+             * Kalau klien lama masih mengirim `batasTagihan` dengan angka
+             * yang berbeda dari `toleransiTunggakan`, kedua-duanya tidak
+             * bisa berlaku -- dan memilih salah satu diam-diam akan
+             * menghasilkan settings yang tidak konsisten tanpa pesan.
+             * Jadi ditolak eksplisit, dengan pesan yang menyebut kedua
+             * field.
+             */
+            if (array_key_exists('batasTagihan', $data)
+                && $data['batasTagihan'] !== null
+                && (int) $data['batasTagihan'] !== $tanggal) {
+                throw ValidationException::withMessages([
+                    'batasTagihan' => [
+                        'Tanggal jatuh tempo dan tanggal toleransi menunggak harus sama, karena keduanya sekarang memakai satu angka.',
+                    ],
+                ]);
+            }
 
             $s = Setting::firstOrNew([]);
             $s->key = $s->key ?: 'sop';
-            $s->batas_tagihan = (int) $data['batasTagihan'];
-            $s->toleransi_tunggakan = (int) $data['toleransiTunggakan'];
+            // Satu angka, dua kolom: `batas_tagihan` adalah sumbernya
+            // (dipakai seluruh pembaca langsung), `toleransi_tunggakan`
+            // salinannya (dipakai `BillingTolerance` dan pelacak lama).
+            $s->batas_tagihan = $tanggal;
+            $s->toleransi_tunggakan = $tanggal;
+            $s->billing_unpaid_limit = (int) $data['batasBulanTunggakan'];
             $s->save();
 
             return $this->success('Sistem tagihan berhasil disimpan');

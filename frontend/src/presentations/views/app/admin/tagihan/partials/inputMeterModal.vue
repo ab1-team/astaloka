@@ -9,45 +9,57 @@
         class="bg-white! w-full! h-full! md:h-auto! md:max-w-2xl! rounded-none! md:rounded-[2.5rem]! shadow-2xl! relative! flex! flex-col! overflow-hidden! animate-in! slide-in-from-bottom-full! md:fade-in! md:zoom-in-95! duration-300!"
         @click.stop
       >
-        <div class="h-2! bg-linear-brand! w-full! shrink-0!"></div>
+        <div class="h-2! bg-gradient-to-r! from-cyan-500! to-blue-600! w-full! shrink-0!"></div>
 
+        <!--
+          Kepala popup.
+
+          Di HP tombol close dibuat 44px (bukan 40px) supaya pasti kena
+          jari, dan judulnya turun satu tingkat supaya baris ini tetap
+          muat di layar 320px tanpa terpotong.
+        -->
         <div
-          class="px-5! md:px-6! py-4! md:py-5! border-b! border-slate-50! flex! items-center! justify-between! shrink-0!"
+          class="px-4! md:px-6! py-3! md:py-5! border-b! border-slate-50! flex! items-center! justify-between! gap-3! shrink-0!"
         >
-          <div class="flex! items-center! gap-3!">
+          <div class="flex! items-center! gap-3! min-w-0!">
             <div
-              class="w-10! h-10! rounded-xl! bg-cyan-50! flex! items-center! justify-center! text-cyan-600!"
+              class="w-10! h-10! shrink-0! rounded-xl! bg-cyan-50! flex! items-center! justify-center! text-cyan-600!"
             >
               <font-awesome-icon icon="water" class="text-xl!" />
             </div>
-            <div>
-              <h2 class="text-lg! font-black! text-slate-800! leading-none!">Input Pemakaian</h2>
-              <p class="text-[10px]! uppercase! tracking-widest! text-slate-400! mt-0.5!">
-                Instalasi Layanan Umum
+            <div class="min-w-0!">
+              <h2
+                class="text-base! md:text-lg! font-black! text-slate-800! leading-tight! truncate!"
+              >
+                Input Pemakaian
+              </h2>
+              <p class="text-[10px]! uppercase! tracking-widest! text-slate-400! mt-0.5! truncate!">
+                Instalasi Air Bersih
               </p>
             </div>
           </div>
           <button
             @click="closeModal"
-            class="w-10! h-10! rounded-full! bg-slate-50! text-slate-400! flex! items-center! justify-center! hover:bg-red-50! hover:text-red-500! transition-all!"
+            aria-label="Tutup"
+            class="w-11! h-11! md:w-10! md:h-10! shrink-0! rounded-full! bg-slate-50! text-slate-400! flex! items-center! justify-center! hover:bg-red-50! hover:text-red-500! transition-all!"
           >
             <font-awesome-icon icon="times" />
           </button>
         </div>
 
-        <div class="p-4! md:p-5! overflow-y-auto! flex-1! md:max-h-[75vh]!">
+        <div class="p-3.5! md:p-5! overflow-y-auto! flex-1! md:max-h-[75vh]!">
           <div
             class="flex! items-center! gap-2! p-2.5! rounded-2xl! bg-gradient-to-r! from-slate-50! to-blue-50/50! border! border-slate-100! mb-4!"
           >
             <div
-              class="w-8! h-8! rounded-lg! bg-white! flex! items-center! justify-center! text-slate-400! shrink-0!"
+              class="w-8! h-8! shrink-0! rounded-lg! bg-white! flex! items-center! justify-center! text-slate-400!"
             >
               <font-awesome-icon icon="id-card" />
             </div>
-            <span class="text-xs! font-bold! text-slate-600! font-mono!">{{
+            <span class="text-xs! font-bold! text-slate-600! font-mono! shrink-0!">{{
               customer.noInduk
             }}</span>
-            <span class="text-slate-300!">•</span>
+            <span class="text-slate-300! shrink-0!">•</span>
             <span class="text-xs! font-black! text-slate-900! truncate! flex-1!">{{
               customer.nama
             }}</span>
@@ -70,7 +82,7 @@
                   class="flex! items-center! bg-slate-100/60! border-2! border-transparent! rounded-xl! px-4! py-2.5! opacity-70!"
                 >
                   <span class="flex-1! text-sm! font-bold! text-slate-500! font-mono!">{{
-                    customer.meterAwal
+                    formatMeter(customer.meterAwal)
                   }}</span>
                   <span
                     class="text-[9px]! font-black! text-slate-400! bg-slate-200/60! px-1.5! py-0.5! rounded!"
@@ -87,19 +99,20 @@
                   >
                 </div>
                 <div
-                  class="flex! items-center! bg-white! border-2! border-slate-200! rounded-xl! px-4! py-2.5! shadow-sm! focus-within:border-cyan-500! focus-within:ring-4! focus-within:ring-cyan-500/10! transition-all!"
+                  class="flex! items-center! bg-white! border-2! border-slate-200! rounded-xl! px-4! py-3! md:py-2.5! shadow-sm! focus-within:border-cyan-500! focus-within:ring-4! focus-within:ring-cyan-500/10! transition-all!"
                 >
                   <input
                     type="text"
                     inputmode="numeric"
-                    v-model.number="meterAkhir"
+                    v-model="meterText"
                     ref="meterInput"
                     placeholder="0000"
-                    onkeypress="return /[0-9]/.test(event.key)"
-                    class="flex-1! bg-transparent! border-none! outline-none! text-base! font-black! text-slate-800! placeholder-slate-200! focus:text-cyan-600! font-mono!"
+                    @input="handleMeterInput"
+                    @blur="handleMeterBlur"
+                    class="flex-1! min-w-0! bg-transparent! border-none! outline-none! text-lg! md:text-base! font-black! text-slate-800! placeholder-slate-200! focus:text-cyan-600! font-mono!"
                   />
                   <span
-                    class="text-[9px]! font-black! text-cyan-600! bg-cyan-50! px-1.5! py-0.5! rounded!"
+                    class="text-[9px]! font-black! text-cyan-600! bg-cyan-50! px-1.5! py-0.5! rounded! shrink-0!"
                     >M³</span
                   >
                 </div>
@@ -200,7 +213,20 @@
                     <font-awesome-icon icon="times" class="text-[9px]!" />
                   </button>
 
-                  <div class="absolute! bottom-0.5! inset-x-0! flex! justify-center! z-20!">
+                  <!--
+                    Badge petunjuk di bagian bawah area kamera.
+
+                    Badge ini disembunyikan saat kamera belum menyala:
+                    saat itu placeholder "Kamera Belum Aktif" sudah
+                    menjelaskan keadaannya, dan dua label yang
+                    menginformasi hal yang sama membuat area kamera
+                    jadi berantakan -- terutama di layar HP yang
+                    areanya hanya setinggi 60px.
+                  -->
+                  <div
+                    v-if="isScanCameraOpen"
+                    class="absolute! bottom-0.5! inset-x-0! flex! justify-center! z-20!"
+                  >
                     <span
                       class="px-2! py-0.5! rounded-full! bg-black/60! text-emerald-300! text-[8px]! font-black! uppercase! tracking-widest! flex! items-center! gap-1!"
                     >
@@ -237,7 +263,7 @@
                   type="button"
                   @click="handleScanClick"
                   :disabled="isScanning"
-                  class="mt-2! w-full! flex! items-center! justify-center! gap-2! py-2! px-4! rounded-lg! bg-indigo-600! text-white! font-black! text-[10px]! uppercase! tracking-wider! shadow-md! hover:bg-indigo-700! transition-all! active:scale-95! disabled:opacity-50! disabled:cursor-not-allowed!"
+                  class="mt-2! w-full! flex! items-center! justify-center! gap-2! py-3! md:py-2! px-4! rounded-lg! bg-indigo-600! text-white! font-black! text-[10px]! uppercase! tracking-wider! shadow-md! hover:bg-indigo-700! transition-all! active:scale-95! disabled:opacity-50! disabled:cursor-not-allowed! min-h-[44px]!"
                 >
                   <font-awesome-icon :icon="isScanning ? 'spinner' : 'camera'" :spin="isScanning" />
                   {{ isScanning ? 'Membaca Angka…' : 'Scan Meteran Sekarang' }}
@@ -352,7 +378,7 @@
                 <!-- EMPTY STATE (SELECT METHOD) -->
                 <div
                   v-else
-                  class="group! relative! border-2! border-dashed! border-slate-200! rounded-xl! p-4! text-center! hover:border-cyan-500! transition-all! aspect-square! flex! flex-col! items-center! justify-center!"
+                  class="group! relative! border-2! border-dashed! border-slate-200! rounded-xl! p-4! text-center! hover:border-cyan-500! transition-all! md:aspect-square! flex! flex-col! items-center! justify-center!"
                 >
                   <div
                     class="w-12! h-12! bg-slate-50! rounded-xl! flex! items-center! justify-center! mb-3! text-slate-300! group-hover:text-cyan-500! transition-all! group-hover:rotate-6!"
@@ -365,11 +391,11 @@
                     Pilih Metode Input
                   </p>
 
-                  <div class="grid! grid-cols-2! gap-2!">
+                  <div class="grid! grid-cols-2! gap-2! w-full!">
                     <button
                       type="button"
                       @click="openLiveCamera"
-                      class="w-full! flex! items-center! justify-center! gap-2! py-2! px-4! rounded-lg! bg-cyan-600! text-white! font-black! text-[10px]! uppercase! tracking-wider! shadow-md! hover:bg-cyan-700! transition-all! active:scale-95!"
+                      class="w-full! flex! items-center! justify-center! gap-2! py-2.5! px-3! rounded-lg! bg-cyan-600! text-white! font-black! text-[10px]! uppercase! tracking-wider! shadow-md! hover:bg-cyan-700! transition-all! active:scale-95! min-h-[44px]!"
                     >
                       <font-awesome-icon icon="video" />
                       Kamera
@@ -377,7 +403,7 @@
                     <button
                       type="button"
                       @click="triggerFile"
-                      class="w-full! flex! items-center! justify-center! gap-2! py-2! px-4! rounded-lg! bg-slate-100! text-slate-600! font-black! text-[10px]! uppercase! tracking-wider! shadow-sm! hover:bg-slate-200! transition-all! active:scale-95!"
+                      class="w-full! flex! items-center! justify-center! gap-2! py-2.5! px-3! rounded-lg! bg-slate-100! text-slate-600! font-black! text-[10px]! uppercase! tracking-wider! shadow-sm! hover:bg-slate-200! transition-all! active:scale-95! min-h-[44px]!"
                     >
                       <font-awesome-icon icon="folder-open" />
                       File
@@ -407,13 +433,21 @@
           </div>
         </div>
 
+        <!--
+          Kaki popup.
+
+          Di HP tombolnya full width dan setinggi 48px: ini satu-satunya
+          jalan menyimpan meter dari popup ini, jadi targetnya dibuat
+          sebesar mungkin -- teknisi sering memakai popup ini sambil
+          memegang meter di tangan yang lain.
+        -->
         <div
-          class="p-3! md:p-4! bg-slate-50! border-t! border-slate-100! flex! items-center! justify-end!"
+          class="p-3! md:p-4! bg-slate-50! border-t! border-slate-100! flex! items-center! justify-end! shrink-0!"
         >
           <BaseButton
             variant="secondary"
             @click="handleSave"
-            class="w-full! md:w-auto! px-8! py-3! rounded-xl! font-black! shadow-lg! shadow-slate-200! tracking-widest! text-xs! uppercase! transition-all!"
+            class="w-full! md:w-auto! px-6! md:px-8! py-3.5! md:py-3! rounded-xl! font-black! shadow-lg! shadow-slate-200! tracking-widest! text-xs! uppercase! transition-all! min-h-[48px]!"
           >
             Simpan Data Pemakaian
           </BaseButton>
@@ -450,6 +484,32 @@ const emit = defineEmits(['close', 'save'])
  */
 const settingsStore = useSettingsStore()
 
+/**
+ * Angka meteran dibulatkan ke bilangan bulat.
+ *
+ * Meter memang dihitung dengan angka bulat (m³), tapi backend kadang
+ * mengirimnya sebagai pecahan desimal -- misalnya "76.00" untuk meter
+ * yang 76 m³. Kalau angka itu diteruskan mentah ke kolom input, teknisi
+ * melihat "76.00" di meteran, lalu saat mengetik angka berikutnya jadi
+ * "76.005" dan nilainya tidak sama dengan meter awal.
+ *
+ * Jadi semua angka meteran yang ditampilkan dan yang masuk ke kolom
+ * input dibulatkan dulu.
+ */
+const angkaMeter = (val) => {
+  const n = Number(val)
+  if (!Number.isFinite(n)) return 0
+  return Math.round(n)
+}
+
+/**
+ * Format angka meteran untuk ditampilkan.
+ *
+ * Pemisah ribuan gaya Indonesia, dan tanpa angka desimal -- meter
+ * selalu bilangan bulat.
+ */
+const formatMeter = (val) => angkaMeter(val).toLocaleString('id-ID')
+
 const meterAkhir = ref(0)
 const fileInputRef = ref(null)
 const photoPreview = ref(null)
@@ -483,7 +543,8 @@ watch(
   () => props.show,
   async (newVal) => {
     if (newVal) {
-      meterAkhir.value = props.customer.meterAwal
+      meterAkhir.value = angkaMeter(props.customer.meterAwal)
+      meterText.value = String(angkaMeter(props.customer.meterAwal))
       photoPreview.value = null
       selectedFile.value = null
       isCameraOpen.value = false
@@ -597,6 +658,48 @@ watch(meterAkhir, (val) => {
   }
 })
 
+/**
+ * Teks yang benar-benar tampil di kolom input.
+ *
+ * Dipisah dari `meterAkhir` karena meteran sering ditulis dengan nol
+ * di depan ("00187"), dan nol di depan itu berarti -- teknisi
+ * membacanya langsung dari dial meter. Kalau kolomnya selalu
+ * menampilkan hasil `Number(...)`, digit yang diketik jadi "187"
+ * begitu saja di tengah pengetikan, dan angka yang sudah diketik
+ * hilang.
+ *
+ * Jadi:
+ *   - `meterText` = persis apa yang diketik user (untuk ditampilkan)
+ *   - `meterAkhir` = angkanya (untuk dibandingkan dan disimpan)
+ *
+ * Nol di depan baru dibersihkan saat kolom ditinggalkan (`onBlur`),
+ * bukan saat mengetik.
+ */
+const meterText = ref('0')
+
+/**
+ * Terapkan angka yang diketik user ke state.
+ *
+ * Karakter non-angka dibuang: `inputmode="numeric"` cuma menunjukkan
+ * papan angka di HP, tapi keyboard fisik yang kadang muncul masih
+ * bisa mengirim huruf.
+ */
+const handleMeterInput = () => {
+  const bersih = String(meterText.value ?? '').replace(/[^\d]/g, '')
+  meterText.value = bersih
+  meterAkhir.value = bersih === '' ? 0 : parseInt(bersih, 10)
+}
+
+/**
+ * Bersihkan kolom setelah user selesai mengetik.
+ *
+ * Nol di depan dihapus supaya angkanya tampil rapi ("00187" -> "187"),
+ * tapi nilainya sendiri tidak berubah.
+ */
+const handleMeterBlur = () => {
+  meterText.value = String(angkaMeter(meterAkhir.value))
+}
+
 const takeSnapshot = () => {
   if (videoRef.value && canvasRef.value) {
     const video = videoRef.value
@@ -663,7 +766,7 @@ const handleSave = () => {
     return
   }
 
-  if (finalMeter < props.customer.meterAwal) {
+  if (finalMeter < angkaMeter(props.customer.meterAwal)) {
     MySwal.fire({
       icon: 'warning',
       title: 'Validasi Gagal',
@@ -792,7 +895,7 @@ const handleScanClick = async () => {
     return
   }
 
-  const meterAwal = Number(props.customer.meterAwal) || 0
+  const meterAwal = angkaMeter(props.customer.meterAwal)
 
   // Sanity check: meteran tidak pernah mundur. Hasil OCR yang lebih
   // kecil dari meter awal hampir pasti salah baca (mis. "87" terbaca "8").
@@ -835,6 +938,7 @@ const handleScanClick = async () => {
   if (confirmed.isConfirmed) {
     lastScannedValue = detected
     meterAkhir.value = detected
+    meterText.value = String(detected)
     ocrStatus.value = 'ok'
   } else {
     // User menolak: angka TIDAK diubah, kolom dibiarkan apa adanya supaya

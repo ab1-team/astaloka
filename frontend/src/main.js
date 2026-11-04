@@ -4,6 +4,12 @@ import './assets/css/stat-card.css'
 import './assets/css/ui-base.css'
 import './assets/css/ui-modals.css'
 import './assets/css/topnav-notifications.css'
+// Palet khusus role teknisi & surveyor, disamakan dengan pamsides-v2.
+// Diimpor SETELAH file-file di atas karena isinya menimpa token warna
+// yang mereka tetapkan, dan `applyTheme.js` menulis token yang sama
+// sebagai gaya inline -- jadi di file ini harus pakai `!important`.
+// Lihat catatan panjang di file itu.
+import './assets/css/role-palette.css'
 // Jarak tepi + lebar maksimum isi untuk seluruh halaman panel pusat.
 // Diimpor di sini, bukan dari komponen: `.central-page` harus menjangkau isi
 // <RouterView> yang dirender komponen lain, jadi tidak bisa dibatasi

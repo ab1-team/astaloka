@@ -176,7 +176,7 @@ class GenerateOverduePerformanceTest extends TestCase
         Setting::updateOrCreate(
             ['key' => 'sop'],
             [
-                'batas_tagihan' => 27,
+                'batas_tagihan' => $value,
                 'toleransi_tunggakan' => $value,
             ]
         );

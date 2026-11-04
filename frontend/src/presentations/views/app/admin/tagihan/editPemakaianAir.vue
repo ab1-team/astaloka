@@ -28,29 +28,44 @@
           >
             <div class="h-1.5! w-full! bg-linear-brand!"></div>
 
+            <!--
+              Kepala modal.
+
+              Di HP judulnya dipendekkan jadi "Edit Pemakaian" dan
+              subjudul "Billing - Revision Mode" disembunyikan. Alasannya
+              sederhana: baris itu harus muat dalam 320px bersama tombol
+              tutup, dan kalimat "Billing - Revision Mode" tidak
+              membawa informasi apa pun yang belum diketahui
+              oleh user -- dia cuma hiasan.
+            -->
             <div
               class="px-4! md:px-6! py-3! md:py-4! border-b! border-slate-100! flex! items-center! justify-between! bg-white/80! backdrop-blur-md! sticky! top-0! z-10!"
             >
-              <div class="flex! items-center! gap-3! md:gap-4!">
+              <div class="flex! items-center! gap-3! md:gap-4! min-w-0!">
                 <div
-                  class="w-10! h-10! md:w-12! md:h-12! rounded-xl! bg-cyan-50! flex! items-center! justify-center! border! border-cyan-100!"
+                  class="w-10! h-10! md:w-12! md:h-12! rounded-xl! bg-cyan-50! flex! items-center! justify-center! border! border-cyan-100! shrink-0!"
                 >
                   <font-awesome-icon icon="edit" class="text-lg! md:text-xl! text-cyan-600!" />
                 </div>
-                <div>
-                  <h1 class="text-lg! md:text-2xl! font-black! text-slate-800! leading-none! mb-1!">
+                <div class="min-w-0!">
+                  <h1
+                    class="text-base! md:text-2xl! font-black! text-slate-800! leading-tight! mb-0.5! md:mb-1! truncate!"
+                  >
                     Edit Pemakaian
                   </h1>
                   <p
-                    class="text-[9px]! md:text-[10px]! font-bold! uppercase! tracking-widest! text-slate-400!"
+                    class="hidden! md:block! text-[10px]! font-bold! uppercase! tracking-widest! text-slate-400!"
                   >
                     Billing • Revision Mode
+                  </p>
+                  <p class="md:hidden! text-[10px]! text-slate-400! truncate!">
+                    {{ localData.nama || 'Pelanggan' }}
                   </p>
                 </div>
               </div>
               <BaseButton
                 variant="ghost"
-                class="w-9! h-9! md:w-10! md:h-10! rounded-full! bg-slate-100! text-slate-500! hover:bg-red-50! hover:text-red-600! transition-all!"
+                class="w-10! h-10! md:w-10! md:h-10! shrink-0! rounded-full! bg-slate-100! text-slate-500! hover:bg-red-50! hover:text-red-600! transition-all!"
                 @click="handleClose"
               >
                 <font-awesome-icon icon="times" />
@@ -58,7 +73,7 @@
             </div>
 
             <div class="flex-1! overflow-y-auto! p-4! md:p-8! custom-scrollbar!">
-              <div class="max-w-4xl! mx-auto! space-y-6!">
+              <div class="max-w-4xl! mx-auto! space-y-5! md:space-y-6!">
                 <section>
                   <div
                     class="flex! items-center! gap-2! mb-3! md:mb-4! text-slate-800! font-black! uppercase! text-[10px]! md:text-xs! tracking-wider!"
@@ -79,9 +94,10 @@
                         class="text-[9px]! md:text-[10px]! font-black! text-blue-100/60! uppercase! tracking-[0.2em]!"
                         >PELANGGAN</span
                       >
-                      <span class="text-xs! md:text-sm! font-bold! text-white! tracking-tight!">{{
-                        localData.nama
-                      }}</span>
+                      <span
+                        class="text-xs! md:text-sm! font-bold! text-white! tracking-tight! text-right! truncate!"
+                        >{{ localData.nama }}</span
+                      >
                     </div>
                     <div
                       class="flex-1! w-full! flex! items-center! justify-between! gap-4! px-5! md:px-6! py-3! md:py-4!"
@@ -169,7 +185,7 @@
                     Tagihan Periode Ini
                   </div>
                   <div
-                    class="flex! items-center! justify-between! gap-4! p-4! md:p-5! bg-emerald-50/60! border! border-emerald-100! rounded-2xl! md:rounded-3xl!"
+                    class="flex! flex-col! md:flex-row! md:items-center! justify-between! gap-3! md:gap-4! p-4! md:p-5! bg-emerald-50/60! border! border-emerald-100! rounded-2xl! md:rounded-3xl!"
                   >
                     <div>
                       <p
@@ -188,7 +204,7 @@
                       </p>
                     </div>
                     <div
-                      class="text-right! text-[10px]! md:text-xs! text-emerald-700/70! max-w-[45%]!"
+                      class="text-left! md:text-right! text-[10px]! md:text-xs! text-emerald-700/70! md:max-w-[45%]!"
                     >
                       <p class="font-semibold! leading-relaxed!">
                         Dihitung ulang otomatis dari tarif paket
@@ -200,16 +216,29 @@
               </div>
             </div>
 
+            <!--
+              Kaki modal.
+
+              Di HP tombolnya jadi selebar layar (full width) dengan
+              tinggi 48px: ini satu-satunya aksi di modal ini, jadi
+              tidak perlu berbagi baris dengan apa pun -- dan target
+              48px adalah yang nyaman diketuk dengan satu ibu jari.
+
+              Kaki modal ini menempel di bawah, bukan ikut menggulir
+              bersama isinya -- jadi tombolnya selalu terlihat.
+            -->
             <div
-              class="p-4! md:p-6! border-t! border-slate-100! flex! flex-col! md:flex-row! items-center! justify-between! gap-4!"
+              class="p-4! md:p-6! border-t! border-slate-100! flex! flex-col! md:flex-row! items-center! justify-between! gap-3! md:gap-4! shrink-0!"
             >
-              <p class="text-[9px]! md:text-[10px]! text-slate-400! font-medium!">
+              <p
+                class="text-[9px]! md:text-[10px]! text-slate-400! font-medium! order-2! md:order-1!"
+              >
                 Validasi: Meter akhir ≥ Meter awal
               </p>
-              <div class="flex! gap-3! w-full! md:w-auto!">
+              <div class="flex! gap-3! w-full! md:w-auto! order-1! md:order-2!">
                 <BaseButton
                   variant="secondary"
-                  class="flex-1! px-8! md:px-10! py-3! rounded-xl! font-black! shadow-lg! shadow-slate-200/50! text-sm! md:text-base!"
+                  class="flex-1! md:flex-none! px-8! md:px-10! py-3.5! md:py-3! rounded-xl! font-black! shadow-lg! shadow-slate-200/50! text-sm! md:text-base! min-h-[48px]!"
                   :disabled="isPaid || isSaving"
                   @click="handleSave"
                 >

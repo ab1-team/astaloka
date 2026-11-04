@@ -82,7 +82,7 @@ class ArsipPiutangTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => max(1, min(31, (int) now()->format('d'))),
             'toleransi_tunggakan' => max(1, min(31, (int) now()->format('d'))),
         ]);
     }

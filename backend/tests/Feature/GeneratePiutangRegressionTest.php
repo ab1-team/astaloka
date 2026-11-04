@@ -140,7 +140,7 @@ class GeneratePiutangRegressionTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => max(1, min(31, (int) now()->format('d'))),
             'toleransi_tunggakan' => max(1, min(31, (int) now()->format('d'))),
         ]);
     }
@@ -278,15 +278,17 @@ class GeneratePiutangRegressionTest extends TestCase
         // tanggal generate. Kalau ikut tanggal generate, begitu tanggal
         // generate terlewat (28 -> generate hari 5 November), kuncinya
         // berubah dan dua jalur tidak lagi saling menjaga.
+        //
+        // Kedua kolom diset sama karena sekarang cuma satu angka tanggal.
         Setting::updateOrCreate(
             ['key' => 'sop'],
-            ['batas_tagihan' => 27, 'toleransi_tunggakan' => 28]
+            ['batas_tagihan' => 28, 'toleransi_tunggakan' => 28]
         );
         $kunciDenganTanggalGenerate = $generator->lockKey($now);
 
         Setting::updateOrCreate(
             ['key' => 'sop'],
-            ['batas_tagihan' => 27, 'toleransi_tunggakan' => 5]
+            ['batas_tagihan' => 5, 'toleransi_tunggakan' => 5]
         );
         $kunciDenganTanggalGenerateLain = $generator->lockKey($now);
 
@@ -322,7 +324,7 @@ class GeneratePiutangRegressionTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 20,
             'toleransi_tunggakan' => 20,
         ]);
 
@@ -345,7 +347,7 @@ class GeneratePiutangRegressionTest extends TestCase
 
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 20,
             'toleransi_tunggakan' => 20,
         ]);
 
@@ -372,7 +374,7 @@ class GeneratePiutangRegressionTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 32,
             'toleransi_tunggakan' => 32,
         ]);
 
@@ -397,7 +399,7 @@ class GeneratePiutangRegressionTest extends TestCase
     {
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 29,
             'toleransi_tunggakan' => 29,
         ]);
 

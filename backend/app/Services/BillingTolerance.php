@@ -43,33 +43,106 @@ use Carbon\Carbon;
  * YANG DILAKUKAN
  * -------------
  *
- * Kolom `toleransi_tunggakan` TETAP ADA dan tetap jadi sumber utama untuk
- * semua makna yang memakainya, sehingga:
+ * Dua kolom yang tadinya sama-sama "tanggal" digabung jadi SATU angka:
  *
- *   - Data lama tidak berubah.
- *   - Perilaku default tidak berubah. pamsides-v2 dan astaloka menghasilkan
- *     angka yang sama persis untuk lokasi yang tidak mengubah SOP-nya.
+ *   - `batas_tagihan`         : TANGGAL jatuh tempo tagihan (1-31).
+ *   - `toleransi_tunggakan`   : TANGGAL generate piutang (1-31).
  *
- * Percobaan memisahkan makna (4) ke kolom sendiri
- * (`billing_unpaid_limit`) sudah DIBATALKAN. Kolom itu sempat ada dan
- * sempat punya input di halaman SOP, tapi input itu justru membuat
- * masalah: dua angka dengan satuan berbeda (tanggal vs jumlah tagihan)
- * berdampingan di satu kartu dan terlihat saling menimpa.
+ * Keduanya punya satuan yang sama: "hari ke berapa dalam bulan".
+ * Menampilkan dua input untuk satu satuan yang sama bikin admin mengira
+ * ada dua aturan berbeda, padahal tujuannya satu: "hari ke berapa dalam
+ * bulan sistem jalan".
  *
- * Makna (4) sekarang kembali ke `toleransi_tunggakan` -- sama persis dengan
- * aplikasi pamsides. Kolom `billing_unpaid_limit` TETAP ADA di database
- * (tidak ada migrasi yang destruktif), tapi tidak lagi dibaca maupun ditulis
- * oleh kode mana pun.
+ * Jadi sekarang:
+ *
+ *   - `settings.batas_tagihan` = sumber angka TANGGAL yang dipakai SEMUA
+ *     aturan berbasis tanggal: jatuh tempo tagihan, generate piutang,
+ *     ambang piutang, dan deteksi advance payment.
+ *   - `settings.toleransi_tunggakan` = SALINAN dari angka yang sama.
+ *     Kolomnya tidak dihapus (dipakai import legacy, dan dilacak lewat
+ *     banyak query lama), tapi isinya selalu sama dengan `batas_tagihan`.
+ *
+ * Kenapa kolomnya tidak dihapus?
+ * ------------------------------
+ *
+ * Karena `batas_tagihan` dibaca DI LANGSUNG oleh belasan tempat
+ * (`BillingService`, `MonthlyBillService`, `BillRecalculationService`,
+ * `MeterReadingController`, `BillingController`, `SeedTenantPelangganCommand`,
+ * `ImportLegacyMonthlyBillsCommand`, `BillingDueDate`), sedangkan
+ * `toleransi_tunggakan` hanya dibaca lewat service ini.
+ *
+ * Kalau angka tunggalnya ditaruh di `toleransi_tunggakan`, semua pembaca
+ * langsung `batas_tagihan` harus ikut berubah -- padahal `due_date` yang
+ * sudah tersimpan di `monthly_bills` memakai angka `batas_tagihan` itu.
+ * Kalau tanggalnya bergeser, tagihan lama dan tagihan baru punya jatuh
+ * tempo yang berbeda dalam bulan yang sama.
+ *
+ * Dengan `batas_tagihan` jadi sumbernya, tagihan yang SUDAH ada tidak
+ * bergeser sama sekali: `due_date`-nya sudah di-materialisasi di database.
+ *
+ * Pemisahan makna (4) ke kolom sendiri
+ * ------------------------------------
+ *
+ * Percobaan pertama memisahkan makna (4) ke kolom `billing_unpaid_limit`
+ * sekaligus menambah input sendiri di halaman SOP. Input itu justru
+ * membuat masalah: dua angka dengan satuan berbeda (tanggal vs jumlah
+ * tagihan) berdampingan di satu kartu dan terlihat saling menimpa.
+ *
+ * SEKARANG pemisahan itu DIPULIHKAN, tapi dengan pembagian yang benar:
+ *
+ *   - `batas_tagihan` = TANGGAL (1-31). Satu angka untuk jatuh tempo,
+ *     generate piutang, ambang piutang, dan advance payment.
+ *   - `billing_unpaid_limit` = JUMLAH BULAN. Batas tagihan menunggak yang
+ *     boleh ditoleransi sebelum sambungan pelanggan diputus.
+ *
+ * Dipisah karena satuan keduanya memang berbeda: tanggal dalam bulan vs
+ * jumlah bulan. Admin yang ingin menunda generate ke tanggal 20 tidak akan
+ * ikutan mengubah batas tagihan yang boleh menunggak.
+ *
+ * Kolom `billing_unpaid_limit` sudah ada di database sejak
+ * `2026_10_20_000001_add_billing_unpaid_limit_to_settings_table.php`
+ * (nullable, tanpa default), jadi menghidupkannya kembali tidak perlu
+ * migration baru.
+ *
+ * KESETARAAN DENGAN APLIKASI LAMA
+ * -------------------------------
+ *
+ * Aplikasi lama (`siap_mapan`) punya dua angka yang persis seperti ini:
+ *
+ * ```php
+ * // resources/views/sop/partials/sistem_instal.blade.php
+ * "Batas Tagihan Bulanan"  -> batas_tagihan   -> satuan BULAN
+ * "Batas Tagihan Bulanan"  -> tanggal_toleransi -> satuan TANGGAL
+ * ```
+ *
+ * Di sana `batas_tagihan` = BULAN (toleransi menunggak, -> status BLOKIR)
+ * dan `tanggal_toleransi` = TANGGAL (-> `tgl_akhir`, jatuh tempo tagihan).
+ *
+ * Di ASTALOKA pembagiannya dibalik supaya tidak membingungkan: kolom
+ * `batas_tagihan` sudah lama berisi TANGGAL jatuh tempo dan dipakai di
+ * belasan tempat, jadi memindahkannya berarti mengubah seluruh logika
+ * jatuh tempo. Jumlah bulan-nya dipisah ke kolom terpisah yang memang
+ * sudah tersedia.
  *
  * INVARIANT
  * ---------
  *
- * `legacy()` mengembalikan angka yang dulu dipakai semua consumer. Setiap
- * perbaikan PERILAKU dilakukan lewat override, sehingga selama override
- * kosong hasilnya identik dengan versi lama.
+ * `tanggal()` mengembalikan SATU angka yang dipakai semua consumer
+ * berbasis tanggal. Setiap perbaikan PERILAKU dilakukan lewat override,
+ * sehingga selama override kosong hasilnya identik dengan versi lama.
  */
 class BillingTolerance
 {
+    /**
+     * Bawaan batas tagihan menunggak (satuan BULAN).
+     *
+     * Dipakai kalau kolom `billing_unpaid_limit` masih kosong -- mis. pada
+     * lokasi yang belum pernah menyimpan SOP lewat halaman ini. Angka 3
+     * diambil dari `SettingsSeeder` dan sama dengan application's bawaan
+     * di aplikasi lama (`siap_mapan`: `batas_tagihan` = 3 bulan).
+     */
+    public const DEFAULT_UNPAID_MONTH_LIMIT = 3;
+
     private ?Setting $settings = null;
 
     /**
@@ -85,14 +158,60 @@ class BillingTolerance
     }
 
     /**
-     * Nilai mentah kolom `toleransi_tunggakan`.
+     * TANGGAL dalam bulan yang dipakai semua aturan berbasis tanggal.
      *
-     * Angka yang dulu dipakai seluruh consumer. Semua accessor lain memakai
-     * ini sebagai fallback.
+     * Ini angka TUNGGAL hasil penggabungan dua kolom yang tadinya
+     * terpisah: `batas_tagihan` (jatuh tempo tagihan) dan
+     * `toleransi_tunggakan` (generate piutang). Keduanya satuan dan
+     * maknanya sama -- "hari ke berapa dalam bulan" -- jadi halaman SOP
+     * sekarang hanya punya SATU input untuk keduanya.
+     *
+     * SUMBERNYA `settings.batas_tagihan`, bukan `toleransi_tunggakan`.
+     *
+     * Alasan pemilihan kolom ini penting, karena ada tagihan yang SUDAH
+     * tersimpan di `monthly_bills` dengan `due_date` hasil hitungan
+     * `batas_tagihan`. Kalau sumbernya `toleransi_tunggakan`, angka itu
+     * (= 30 di lokasi demo) akan menggeser jatuh tempo tagihan baru ke
+     * tanggal 30 sementara tagihan lama tetap tanggal 27 -- satu bulan
+     * tagihan yang sama punya dua jatuh tempo berbeda. Dengan
+     * `batas_tagihan` (= 27) sebagai sumber, tagihan lama dan baru sama
+     * saja.
+     *
+     * `toleransi_tunggakan` tetap ada di database dan tetap diisi dengan
+     * angka yang sama -- lihat migration
+     * `2026_10_31_000002_sync_toleransi_tunggakan_with_batas_tagihan.php`
+     * dan writer di `SopController::updateSistemTagihan()`. Jadi satu
+     * angka ini berlaku untuk semua aturan, dan kedua kolomnya tidak
+     * mungkin berbeda setelah disimpan lewat SOP.
+     *
+     * FALLBACK KE `toleransi_tunggakan`
+     * --------------------------------
+     *
+     * Kalau `batas_tagihan` tidak berisi tanggal yang sah (0, atau di
+     * luar 1-31), `toleransi_tunggakan` dipakai sebagai cadangan --
+     * asalkan itu juga tanggal yang sah.
+     *
+     * Alasannya: baris dengan `batas_tagihan` = 0 adalah baris lama yang
+     * belum pernah mengisi SOP. Dulu baris seperti itu tetap punya
+     * generate piutang yang jalan pada tanggalnya (`toleransi_tunggakan`),
+     * jadi membaca `toleransi_tunggakan` sebagai cadangan mempertahankan
+     * perilaku lama persis. Tanpa fallback, baris itu tiba-tiba berhenti
+     * menjadwalkan generate -- perubahan yang tidak diminta siapa pun.
+     *
+     * Kalau keduanya tidak valid, hasilnya 0: "SOP belum diisi", dan
+     * generate TIDAK berjalan sama sekali.
      */
-    public function legacy(): int
+    public function tanggal(): int
     {
-        return (int) ($this->settings()->toleransi_tunggakan ?? 0);
+        $batas = (int) ($this->settings()->batas_tagihan ?? 0);
+
+        if ($batas >= 1 && $batas <= 31) {
+            return $batas;
+        }
+
+        $toleransi = (int) ($this->settings()->toleransi_tunggakan ?? 0);
+
+        return ($toleransi >= 1 && $toleransi <= 31) ? $toleransi : 0;
     }
 
     /**
@@ -125,7 +244,7 @@ class BillingTolerance
      */
     public function generateDay(): int
     {
-        $day = $this->legacy();
+        $day = $this->tanggal();
 
         return ($day >= 1 && $day <= 31) ? $day : 0;
     }
@@ -179,7 +298,7 @@ class BillingTolerance
      */
     public function graceDays(): int
     {
-        return $this->legacy();
+        return $this->tanggal();
     }
 
     /**
@@ -195,41 +314,52 @@ class BillingTolerance
      * menampilkan pratinjau, jadi keduanya harus memakai angka yang sama.
      * Kalau tidak, pratinjau dan hasil sebenarnya berbeda dan user melihat
      * status advance yang salah.
+     *
+     * CATATAN PENTING: angka ini dulu dibaca dari `toleransi_tunggakan`,
+     * sementara `due_date` tagihan dihitung dari `batas_tagihan`. Kalau
+     * keduanya berbeda -- yang terjadi di lokasi demo: 30 vs 27 -- maka
+     * pembayaran pada tanggal 28, 29, dan 30 dianggap ADVANCE padahal
+     * tagihannya belum jatuh tempo. Sekarang keduanya satu angka, jadi
+     * bug itu ikut hilang.
      */
     public function advanceDayOfMonth(): int
     {
-        return $this->legacy();
+        return $this->tanggal();
     }
 
     /**
-     * (4) Batas tagihan unpaid sebelum sambungan diputus.
+     * (4) Batas tagihan menunggak sebelum sambungan diputus.
      *
-     * Semuanya KEMBALI ke `toleransi_tunggakan`, persis seperti sebelum
-     * kolom `billing_unpaid_limit` pernah ada.
+     * Satuannya JUMLAH BULAN -- bukan tanggal dalam bulan, dan bukan jumlah
+     * hari. Contoh: nilai 3 berarti sambungan boleh tetap aktif selama
+     * pelanggan menunggak 3 bulan; begitu menunggak melewati 3 bulan,
+     * tiket instalasinya diubah menjadi `suspended`.
      *
-     * Kenapa kolom override-nya dihapus
-     * ---------------------------------
+     * Sumbernya kolom `billing_unpaid_limit`, yang terpisah dari
+     * `batas_tagihan` karena satuannya memang berbeda.
      *
-     * Kolom `billing_unpaid_limit` pernah dibuat untuk memisahkan makna ini
-     * dari tiga makna lain, dan sempat punya input sendiri di halaman SOP.
-     * Input itu kemudian DIHAPUS: satu kolom dengan satuan "tanggal" dan
-     * satu kolom dengan satuan "jumlah tagihan" yang berdampingan di kartu
-     * yang sama -- padahal keduanya tidak pernah bergerak
-     * bersama. Admin yang menggeser tanggal generate ke tanggal 20 diam-diam
-     * ikut mengubah batas tagihan yang boleh menunggak.
+     * NILAI KOSONG = 3 (bawaan)
+     * -------------------------
      *
-     * Sekarang tidak ada input terpisah, jadi tidak ada override yang bisa
-     * diisi -- dan angka yang dipakai balik lagi ke `toleransi_tunggakan`
-     * supaya perilakunya sama persis dengan aplikasi pamsides.
+     * Kolomnya nullable tanpa default, jadi lokasi yang belum pernah
+     * mengisinya akan punya `null` di database. `null` dibaca sebagai
+     * 3 -- angka yang sama dengan bawaan `SettingsSeeder` -- supaya
+     * semua lokasi punya perilaku yang seragam sejak awal, dan supaya
+     * angka yang tampil di halaman SOP bukan kolom kosong.
      *
-     * Kolomnya sendiri TIDAK dihapus dari database. Menghapus kolom berarti
-     * migrasi yang menyentuh data lokasi yang sedang berjalan, sementara
-     * kolom yang tidak lagi dibaca tidak mengganggu siapa pun. Yang penting
-     * adalah tidak ada satu pun kode yang membacanya.
+     * Kenapa bukan 0 (yang berarti "tidak pernah memutus")? Karena 0
+     * berarti fitur auto-suspend mati total tanpa disadari admin, dan
+     * angka 3 sudah jadi bawaan aplikasi lama.
      */
     public function unpaidBillLimit(): int
     {
-        return $this->legacy();
+        $limit = $this->settings()->billing_unpaid_limit;
+
+        if ($limit === null) {
+            return self::DEFAULT_UNPAID_MONTH_LIMIT;
+        }
+
+        return max(0, (int) $limit);
     }
 
     /**
@@ -237,6 +367,9 @@ class BillingTolerance
      *
      * Dipakai `MeterReadingController::store`. Defaultnya sama persis dengan
      * versi lama; yang berubah hanya sumber nilainya.
+     *
+     * $unpaidCount di sini adalah JUMLAH BULAN menunggak (lihat
+     * `unpaidMonths()`), bukan jumlah baris tagihan.
      */
     public function shouldSuspend(int $unpaidCount, ?int $limit = null): bool
     {

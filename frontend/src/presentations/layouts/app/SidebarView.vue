@@ -151,7 +151,6 @@ import { useMenuAccessStore } from '@/stores/menuAccessStore'
 import BaseButton from '@/presentations/components/ui/BaseButton.vue'
 import AbtAstaBrataModal from '@/presentations/components/ui/AbtAstaBrataModal.vue'
 import { useIdentitasLembaga, ensureIdentitas } from '@/composables/useIdentitasLembaga'
-import { getDashboardRoute } from '@/router/dashboardRoutes'
 
 /**
  * Group yang punya ikon sendiri di sidebar.
@@ -333,6 +332,10 @@ const filteredMenuItems = computed(() => {
   const bolehTampil = menuAccessStore.items.filter((item) => {
     if (!item.allowed) return false
     if (item.hidden) return false
+    // `tanpa_sidebar`: halaman tetap boleh dibuka (dan tetap bisa dicabut
+    // di panel pusat Hak Akses), tapi tidak jadi entri menu. Dipakai untuk
+    // halaman yang desain per-role-nya dibuka dari dashboard.
+    if (item.tanpa_sidebar) return false
     // `roles` kosong berarti tidak ada batasan role -- jangan diperlakukan
     // sebagai "tidak ada role yang boleh", itu akan menyembunyikan menu
     // yang justru terbuka untuk semua orang.
@@ -357,8 +360,7 @@ const filteredMenuItems = computed(() => {
    * Ditambahkan sebagai item tetap, di luar daftar group, supaya:
    *   - tidak pernah hilang, apa pun konfigurasi jabatan
    *   - tidak muncul sebagai group "Utama" yang isinya cuma satu
-   *   - tetap memakai `getDashboardRoute(role)`, karena tiap role punya
-   *     URL dashboard-nya sendiri (lihat `router/dashboardRoutes.js`)
+   *   - selalu bisa dibuka, apa pun jobatannya
    *
    * Sengaja TIDAK ikut disaring oleh `allowed`: kalau nanti katalognya ikut
    * memuat "Beranda" dan suatu jabatan menicentangnya mati, user akan
@@ -369,7 +371,23 @@ const filteredMenuItems = computed(() => {
     key: 'beranda',
     label: 'Beranda',
     icon: ICON_BERANDA,
-    to: getDashboardRoute(role),
+    /*
+     * Targetnya `/app`, bukan `getDashboardRoute(role)`.
+     *
+     * Di pamsides-v2 "Beranda" selalu menunjuk `/app`, untuk semua role.
+     * Dan `/app` merender dashboard per-role lewat `DashboardHome.vue` --
+     * jadi teknisi yang mengklik "Beranda" tetap mendarat di dashboard
+     * teknisi, tidak perlu URL khusus.
+     *
+     * Bedanya dengan versi lama (`getDashboardRoute(role)`) terlihat di
+     * penanda aktif: dengan `/app`, "Beranda" TIDAK pernah menyala di
+     * `/app/teknisi` -- persis seperti di pamsides-v2, yang memang tidak
+     * menyorot "Beranda" saat user sudah berada di dashboard teknisi.
+     *
+     * Halaman tujuan setelah login tetap memakai `getDashboardRoute(role)`
+     * (lihat `router/dashboardRoutes.js`) -- itu tidak berubah.
+     */
+    to: '/app',
   }
 
   // Katalog mengirim group dalam urutan kemunculannya. Preserve urutan itu:
@@ -377,8 +395,32 @@ const filteredMenuItems = computed(() => {
   // ke belakang "Master Instalasi", dan urutan itu memang disengaja.
   const groupsBaru = []
   const byGroup = new Map()
+  const tingkatAtas = []
 
   for (const item of bolehTampil) {
+    /*
+     * Menu `top_level` berdiri sendiri, di luar group apa pun.
+     *
+     * Dipakai untuk menu yang desain per-role-nya memang berdiri sendiri:
+     * "Buat Survey Baru" milik surveyor adalah link tingkat atas di
+     * pamsides-v2, bukan anak group "Survey".
+     *
+     * Menu seperti ini tetap PUNYA `group` di katalog -- supaya panel pusat
+     * Hak Akses masih mengelompokkannya bersama menu sekelompoknya. Yang
+     * berbeda hanya cara sidebar merendernya.
+     */
+    if (item.top_level === true) {
+      tingkatAtas.push({
+        key: item.key,
+        label: item.label,
+        icon: item.icon,
+        to: String(item.path || '').includes(':') ? null : item.path,
+        top_level: true,
+      })
+
+      continue
+    }
+
     const group = item.group || ''
 
     if (!byGroup.has(group)) {
@@ -390,13 +432,42 @@ const filteredMenuItems = computed(() => {
       key: item.key,
       label: item.label,
       icon: item.icon,
-      to: item.path,
+      /*
+       * Path ber-parameter (`.../hasil-instalasi/:id`) TIDAK boleh jadi
+       * tautan sidebar.
+       *
+       * Dipakai apa adanya, tautannya akan mengarah ke
+       * `/app/teknisi/hasil-instalasi/:id` -- dengan `:id` LITERAL, bukan
+       * id tiket sebenarnya. Route `teknisi/hasil-instalasi/:id` tidak
+       * akan cocok, dan user mendarat di halaman kosong.
+       *
+       * Halaman ber-parameter begitu memang tidak bisa jadi tautan statis:
+       * butuh id yang belum diketahui. Cara yang benar adalah membukanya
+       * dari tempat yang tahu id-nya -- dashboard teknisi, yang menautkan
+       * `/app/teknisi/hasil-instalasi/${task.ticketId}`. Karena itu menu
+       * seperti itu di katalog diberi `hidden`, dan di sini ia cukup
+       * dilewati.
+       */
+      to: String(item.path || '').includes(':') ? null : item.path,
+      // Menu yang(group)-nya wajib tetap tampil sebagai group, walaupun
+      // isinya cuma satu anak. Lihat `group_tetap` di `config/menu_access.php`.
+      groupTetap: item.group_tetap === true,
     })
   }
 
   const hasil = groupsBaru
     .map((group) => {
-      const children = byGroup.get(group)
+      /*
+       * Anak tanpa `to` (path ber-parameter) dibuang di sini, bukan
+       * direnders sebagai tautan rusak.
+       *
+       * Group yang seluruh anaknya dibuang menjadi group kosong -- dan
+       * group kosong TIDAK dirender (lihat filter di bawah), supaya
+       * user tidak melihat judul group yang tidak bisa dibuka.
+       */
+      const children = byGroup.get(group).filter((child) => child.to)
+
+      if (children.length === 0) return null
 
       const denganAnak = children.map((child) => {
         // Menu yang punya halaman turunan sendiri jadi group bersarang.
@@ -412,10 +483,17 @@ const filteredMenuItems = computed(() => {
         }
       })
 
-      // Group dengan satu anak saja ditampilkan sebagai link langsung,
-      // bukan sebagai submenu yang harus diklik dulu. Lebih cepat, dan
-      // supaya tidak ada menu yang cuma punya satu isi tapi butuh dua klik.
-      if (denganAnak.length === 1 && !denganAnak[0].children) {
+      /*
+       * Group dengan satu anak saja ditampilkan sebagai link langsung,
+       * bukan sebagai submenu yang harus diklik dulu. Lebih cepat, dan
+       * supaya tidak ada menu yang cuma punya satu isi tapi butuh dua klik.
+       *
+       * Pengecualian: anak yang `groupTetap` -- group-nya wajib tetap
+       * terlihat sebagai group, karena susunan menu itu bagian dari desain
+       * per-role (teknisi membuka "Master Instalasi", bukan langsung
+       * "Input Pemakaian Air").
+       */
+      if (denganAnak.length === 1 && !denganAnak[0].children && !denganAnak[0].groupTetap) {
         return denganAnak[0]
       }
 
@@ -427,9 +505,21 @@ const filteredMenuItems = computed(() => {
     })
     .filter(Boolean)
 
+  /*
+   * Susunan akhir sidebar.
+   *
+   * Urutannya: "Beranda", lalu menu tingkat atas, lalu group.
+   *
+   * Menu tingkat alas diletakkan DI SESUDAH "Beranda" karena di pamsides-v2
+   * "Buat Survey Baru" juga begitu: sesudah "Beranda", sebelum group
+   * "Pengaturan" milik admin. Menu tingkat atas tidak boleh mendahului
+   * "Beranda" -- "Beranda" selalu yang pertama.
+   */
+  const tingkatAtasValid = tingkatAtas.filter((item) => item.to)
+
   // Beranda mendahului semua group, jadi posisinya tetap pertama walaupun
   // daftar group berubah karena jabatan lain yang hak aksesnya baru disimpan.
-  return [beranda, ...hasil]
+  return [beranda, ...tingkatAtasValid, ...hasil]
 })
 
 /**

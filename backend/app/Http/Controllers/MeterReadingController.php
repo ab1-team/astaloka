@@ -10,6 +10,7 @@ use App\Models\MonthlyBill;
 use App\Models\Setting;
 use App\Services\BillingService;
 use App\Services\BillingTolerance;
+use App\Services\UnpaidMonths;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -257,27 +258,29 @@ class MeterReadingController extends Controller
         $suspended = false;
 
         /*
-         * Batas tagihan menunggak sebelum sambungan diputus.
+         * Batas tunggakan sebelum sambungan diputus.
          *
-         * Nilai ini punya satuan yang BERBEDA dari `toleransi_tunggakan`
-         * yang dipakai di tempat lain: yang di sini adalah JUMLAH TAGIHAN,
-         * bukan tanggal dalam bulan dan bukan jumlah hari. Semuanya dulu
-         * dibaca dari satu kolom yang sama, sehingga admin yang ingin
-         * menunda generate ke tanggal 20 ikut mengubah batas tagihan yang
-         * boleh menunggak.
+         * Satuannya JUMLAH BULAN -- bukan tanggal dalam bulan dan bukan
+         * jumlah tagihan. Angka ini dibaca dari kolom
+         * `settings.billing_unpaid_limit`, yang terpisah dari
+         * `toleransi_tunggakan` justru karena satuannya berbeda.
          *
-         * `BillingTolerance::unpaidBillLimit()` adalah satu-satunya tempat
-         * angka ini dibaca, dan nilainya kembali ke `toleransi_tunggakan`
-         * -- sama persis dengan perilaku pamsides.
+         * Yang dibandingkan adalah JUMLAH BULAN menunggak, bukan jumlah
+         * baris tagihan unpaid. Alasannya: yang ditanyakan admin adalah
+         * "berapa bulan pelanggan belum bayar". Kalau yang dihitung jumlah
+         * tagihan, 4 tagihan dalam 2 bulan (mis. ada tagihan susulan)
+         * akan dihitung sama dengan 4 tagihan berjarak 4 bulan.
+         *
+         * Perhitungan bulan menunggak ada di `UnpaidMonths` -- satu tempat
+         * supaya angka ini tidak dihitung berbeda di tempat lain.
          */
         $toleransi = app(BillingTolerance::class)->unpaidBillLimit();
 
         if ($toleransi > 0) {
-            $unpaidCount = MonthlyBill::where('customer_id', $result['customer']->id)
-                ->where('status', 'unpaid')
-                ->count();
+            $unpaidMonths = app(UnpaidMonths::class)
+                ->forCustomer($result['customer']->id);
 
-            if ($unpaidCount > $toleransi && $result['customer']->ticket) {
+            if ($unpaidMonths > $toleransi && $result['customer']->ticket) {
                 $result['customer']->ticket->update(['status' => 'suspended']);
                 $suspended = true;
             }

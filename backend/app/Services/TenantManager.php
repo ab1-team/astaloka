@@ -628,6 +628,14 @@ class TenantManager
      * perintah, nilai bawaannya ditulis eksplisit -- hanya kalau baris
      * `settings` belum ada sama sekali. Kalau barisnya sudah ada, nilai
      * `toleransi_tunggakan` yang ada di sana dibiarkan apa adanya.
+     *
+     * CATATAN SOAL PENGGABUNGAN DUA TANGGAL
+     * -------------------------------------
+     *
+     * `batas_tagihan` dan `toleransi_tunggakan` sekarang jadi SATU angka
+     * tanggal (lihat `BillingTolerance::tanggal()`). Jadi waktu baris
+     * `settings` baru dibuat di sini, keduanya diisi dengan angka yang
+     * sama -- 10, sama dengan `SettingsSeeder`.
      */
     public function applyTenantIdentity(Tenant $tenant): void
     {
@@ -656,9 +664,9 @@ class TenantManager
 
             /*
              * Baris `settings` yang sudah ada: HANYA kolom identitas lokasi
-             * yang ditulis ulang. `toleransi_tunggakan` dan
-             * `billing_unpaid_limit` -- dua hal yang diatur admin lewat
-             * halaman SOP -- TIDAK ikut sentuh.
+             * yang ditulis ulang. `batas_tagihan`,
+             * `toleransi_tunggakan`, dan `billing_unpaid_limit` -- tiga hal
+             * yang diatur admin lewat halaman SOP -- TIDAK ikut sentuh.
              */
             if ($sudahAda) {
                 $tabel->where('id', 1)->update([
@@ -677,10 +685,22 @@ class TenantManager
             /*
              * Baris `settings` belum ada sama sekali: baris baru dibuat
              * lengkap, dengan nilai bawaan yang SAH untuk tanggal generate
-             * (3 -- angka yang sama dengan `SettingsSeeder`).
+             * (10 -- angka yang sama dengan `SettingsSeeder`).
+             *
+             * `batas_tagihan` dan `toleransi_tunggakan` diisi DENGAN ANGKA
+             * YANG SAMA, karena keduanya sudah digabung jadi satu angka
+             * tanggal di halaman SOP. Kalau keduanya diisi berbeda, lokasi
+             * baru akan langsung punya dua tanggal yang saling
+             * bertentangan -- persis masalah yang penggabungan ini
+             * diselesaikan.
+             *
+             * `billing_unpaid_limit` (batas tunggakan dalam BULAN) juga
+             * diisi 3, supaya lokasi baru punya titik awal yang sama dengan
+             * lokasi yang installation-nya sudah jalan.
              */
             $tabel->insert($data + [
-                'toleransi_tunggakan' => 3,
+                'toleransi_tunggakan' => 10,
+                'billing_unpaid_limit' => 3,
             ]);
         });
     }

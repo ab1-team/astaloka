@@ -580,9 +580,16 @@ class CentralTenantProvisionTest extends TestCase
         ])->assertCreated();
 
         // Admin menyetel tanggal generate lewat halaman SOP.
+        //
+        // Kedua kolom diset sama karena sekarang cuma satu angka tanggal:
+        // `batas_tagihan` (jatuh tempo) dan `toleransi_tunggakan`
+        // (generate piutang) sudah digabung.
         DB::connection(self::LOCATION)->table('settings')
             ->where('id', 1)
-            ->update(['toleransi_tunggakan' => 28]);
+            ->update([
+                'batas_tagihan' => 28,
+                'toleransi_tunggakan' => 28,
+            ]);
 
         $tenant = Tenant::where('slug', $slug)->first();
 
@@ -592,6 +599,12 @@ class CentralTenantProvisionTest extends TestCase
             28,
             (int) DB::connection(self::LOCATION)->table('settings')->value('toleransi_tunggakan'),
             'Tanggal generate yang sudah diset admin tidak boleh tertimpa saat provisioning ulang.'
+        );
+
+        $this->assertSame(
+            28,
+            (int) DB::connection(self::LOCATION)->table('settings')->value('batas_tagihan'),
+            'Tanggal jatuh tempo yang sudah diset admin tidak boleh tertimpa saat provisioning ulang.'
         );
     }
 

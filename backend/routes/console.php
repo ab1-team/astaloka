@@ -188,6 +188,29 @@ Schedule::command('migrasi:bersihkan')
  *
  * Kalau `Last Result` bukan 0, task-nya gagal jalan -- dan generate piutang
  * tidak akan terjadi di tanggal yang seharusnya. Isi
- * `backend/storage/logs/scheduler-run.log` hanya terisi kalau ada error;
- * dalam kondisi normal file itu tetap kosong.
+ * `backend/storage/logs/scheduler-run.log` hanya terisi kalau ada MASALAH:
+ * exit code bukan 0, atau output-nya menandakan error. Run yang sukses
+ * tidak ditulis sama sekali -- kalau tidak, log akan penuh baris "DONE"
+ * yang tidak pernah dibaca, dan error yang sesungguhnya jadi sulit
+ * ditemukan di antaranya.
+ *
+ * CATATAN: `schedule:run` mengembalikan exit code 0 bahkan kalau job-nya
+ * gagal. Kegagalan job dilaporkan lewat exception handler (dan ditulis ke
+ * `storage/logs/laravel.log`), bukan lewat exit code scheduler. Jadi
+ * `Last Result` yang 0 berarti "scheduler-nya hidup", bukan "semua job-nya
+ * sukses".
+ *
+ * FLAG PAUSE
+ * ==========
+ *
+ * `schedule:pause` dan `schedule:resume` menulis dan menghapus flag pause
+ * di store `config('cache.schedule_store')` -- store yang sama dengan yang
+ * dibaca scheduler. Perintah bawaan Laravel menulis ke cache DEFAULT
+ * (`database`), yang berbeda -- dan hasilnya `schedule:pause` menganggur
+ * tanpa error: scheduler tetap berjalan meski perintahnya bilang "paused".
+ * Karena itu kedua perintah itu di-override.
+ *
+ * @see \App\Console\Commands\ScheduleRunResilient
+ * @see \App\Console\Commands\SchedulePauseResilient
+ * @see \App\Console\Commands\ScheduleResumeResilient
  */

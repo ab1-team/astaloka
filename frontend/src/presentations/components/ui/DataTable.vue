@@ -34,8 +34,24 @@
 
       <div class="flex! items-center! gap-2! w-full! sm:w-auto!">
         <div class="relative! flex-1! sm:w-auto!">
-          <span class="absolute! left-3.5! top-1/2! -translate-y-1/2! text-sm! text-slate-400!">
-            🔍
+          <!--
+            Ikon pakai FontAwesome, bukan emoji.
+
+            Emoji `🔍` digambar oleh sistem operasi dengan gayanya sendiri:
+            di Windows dia berwarna-warni (kaca pembesar biru-merah) dan
+            bentuknya jauh lebih besar daripada ikon garis yang dipakai
+            komponen lain. Akibatnya ikon search di header tabel terlihat
+            "beda" dari ikon search di dalam dropdown -- keduanya sebenarnya
+            ikon yang sama untuk aksi yang sama.
+
+            `pointer-events-none` supaya klik yang mendarat di ikon tetap
+            regarded sebagai klik di input, bukan ke elemen yang menutupi
+            input.
+          -->
+          <span
+            class="absolute! left-3.5! top-1/2! -translate-y-1/2! text-sm! text-slate-400! pointer-events-none!"
+          >
+            <font-awesome-icon icon="search" />
           </span>
           <input
             v-model="searchQuery"

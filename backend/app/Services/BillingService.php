@@ -36,7 +36,7 @@ class BillingService
         $endMeter = $currentReading->meter_value;
         $usageM3 = max(0, $endMeter - $startMeter);
 
-        $usageCharge = $this->calculateProgressiveCharge(
+        $usageCharge = $this->calculateUsageCharge(
             $customer->ticket->package,
             $usageM3
         );
@@ -62,7 +62,7 @@ class BillingService
         //    dihitung menunggak di dashboard, dan menjatuhkan tiket jadi
         //    `suspended` — semuanya untuk sesuatu yang tidak ada uangnya.
         //
-        // 2. usage_m3 > 0 tapi total tetap 0 → berarti `calculateProgressiveCharge`
+        // 2. usage_m3 > 0 tapi total tetap 0 → berarti `calculateUsageCharge`
         //    mengembalikan 0 padahal air mengalir. Penyebabnya hampir selalu
         //    paket belum punya blok tarif (`water_tariff_blocks` kosong) atau
         //    semua `price_per_m3`-nya 0. Paket dan blok tarif memang dibuat
@@ -103,8 +103,125 @@ class BillingService
         ]);
     }
 
-    public function calculateProgressiveCharge($package, float $usageM3): float
+    /**
+     * Hitung biaya pemakaian untuk satu paket.
+     *
+     * RUMUSNYA FLAT: `pemakaian × harga paket per m³`.
+     *
+     * Artinya SELURUH pemakaian dihitung dengan harga blok yang memuat
+     * pemakaian itu -- bukan dipecah per blok. Contoh Paket "Warga"
+     * (10 m³ pertama @ 3.500, selanjutnya @ 4.000):
+     *
+     *   10 m³ → 10 × 3.500 = 35.000
+     *   19 m³ → 19 × 4.000 = 76.000
+     *   35 m³ → 35 × 4.000 = 140.000
+     *
+     * INI BUKAN KEBOHONGAN -- ini yang dipakai aplikasi LAMA, dan itu
+     * dibuktikan dari data produksi, bukan dari dugaan:
+     *
+     *   - `pamsides_dump.usages` berisi 25.569 baris pemakaian nyata yang
+     *     dihitung APLIKASI (bukan import Excel) dan paketnya bertarif.
+     *     Rumus FLAT cocok 25.540 baris (99,89%); rumus progresif bertingkat
+     *     cocok 11.832 baris (46,27%).
+     *   - Pelanggan "Arjo Suwito" (paket Warga, 4.000/m³): pemakaian 19 m³
+     *     tercatat 76.000 = 19 × 4.000. Progresif akan memberi 71.000.
+     *
+     * Populasi di atas = `user_id IS NOT NULL` (dihitung aplikasi, bukan
+     * import Excel) DAN `jumlah > 0` DAN paketnya punya harga. Baris paket
+     * gratis (561 baris) tidak dihitung karena memang tidak ada harga.
+     *
+     * Dalem legacy, blok tarif itu hanya PEMBATAS: dipakai untuk memilih
+     * harga per m³, bukan untuk membagi pemakaian jadi beberapa bagian
+     * dengan harga berbeda.
+     *
+     * Kenapa dulu kelihatan progresif? Versi lama (commit `9282aa3`) sudah
+     * memakai rumus flat yang sama. Yang berubah justru arahnya: saat
+     * tarif blok diturunkan ke bentuk rentang (`1-10 m3` = 10 m³), rumus
+     * flat yang "cari blok pertama yang memuat pemakaian" mulai ambigu,
+     * lalu diganti progressive -- dan itu membuat tagihan BERBEDA dari
+     * aplikasi lama. Formulasi sekarang mengembalikan perilaku flat yang
+     * sama, dengan batas atas blok yang INKLUSIF.
+     *
+     * ATURAN PEMILIHAN BLOK
+     * ---------------------
+     *   - Blok dipilih berdasarkan batas ATASNYA (inklusif): blok pertama
+     *     yang `usage_max_m3`-nya >= pemakaian.
+     *   - Blok terakhir tanpa `usage_max_m3` (tak terbatas) jadi fallback
+     *     untuk pemakaian yang melewati semua batas atas.
+     *   - Pemakaian 0 → 0.
+     *
+     * Kenapa "blok pertama", dan bukan "blok terakhir" seperti source legacy?
+     * ---------------------------------------------------------------------
+     * Source legacy (`siap_mapan/app/Http/Controllers/UsageController.php:287`)
+     * menulis `$result[$i] = $index` di dalam loop, jadi angka yang
+     * dicakup lebih dari satu blok berakhir menunjuk blok TERAKHIR. Blok
+     * legacy memang tumpang tindih (`0-10`, `10-20`, `20-100`), jadi aturan
+     * itu BEDA dari yang tertulis di paket.
+     *
+     * Diuji terhadap data produksi yang tersimpan:
+     *
+     *   - FLAT + blok PERTAMA (aturan di sini) : 25.540 / 25.569 = 99,89%
+     *   - FLAT + blok TERAKHIR (source legacy)   : 25.377 / 25.569 = 99,25%
+     *
+     * Jadi "blok pertama" justru LEBIH cocok dengan data yang benar-benar
+     * tersimpan di produksi.
+     *
+     * 29 baris sisanya bukan bukti aturan yang berbeda: TIDAK SATU PUN
+     * dari mereka cocok dengan aturan blok TERAKHIR legacy -- semuanya
+     * gagal cocok dengan kedua aturan. Isinya anomali data:
+     *
+     *   - 8 baris `nominal` = 0 (pemakaian tercatat, tidak ada tagihan).
+     *   - 4 baris memakai harga 10.000/m³ yang bukan harga paket mana pun.
+     *   - 3 baris memakai harga paket lain dari blok terpilih.
+     *   - 14 baris `nominal`-nya duplikat/hasil import.
+     *
+     * Sebar di 22 tanggal berbeda dan 10 bulan berbeda (terpadat 7 baris
+     * dalam satu timestamp), jadi tidak terkluster -- bukan bukti aturan
+     * yang berbeda.
+     *
+     * PEMBULATAN
+     * ----------
+     * Hasil dikembalikan sebagai rupiah penuh (`round()`).
+     *
+     * Aplikasi LAMA TIDAK membulatkan di sini -- source-nya
+     * (`siap_mapan/app/Http/Controllers/UsageController.php:315`) menyimpan
+     * `harga × pemakaian` apa adanya. Tapi itu tidak berarti harus ikut
+     * menyimpan pecahan rupiah:
+     *
+     *   - Semua harga paket legacy kelipatan 100, dan pemakaian yang
+     *     diinput aplikasi SELALU bulat (`jumlah = akhir - awal` dari meter).
+     *     Jadi `bulat × kelipatan-100` = kelipatan 100, dan pembulatan ke
+     *     rupiah penuh TIDAK mengubah satu rupiah pun untuk pemakaian
+     *     bulat. Hasilnya identik dengan legacy.
+     *   - Diuji terhadap data produksi: dari 25.569 baris yang dihitung
+     *     aplikasi, 25.540 baris cocok FLAT+blok PERTAMA dan SEMUA 25.540
+     *     di antaranya menghasilkan `harga × pemakaian` yang sudah bulat --
+     *     nol baris pecahan, jadi `round()` tidak mengubah apa pun.
+     *   - `monthly_bills.usage_charge` bertipe DECIMAL(12,2), dan tagihan
+     *     dibayar dalam rupiah penuh -- tagihan 33.985 rupiah tidak pernah
+     *     bisa dibayar tepat, jadi pembulatan ke rupiah penuh lebih
+     *     realistis dan tidak pernah mengubah nominal untuk pemakaian bulat.
+     *
+     * Pembulatan ke RATUSAN (mis. 33.985 → 34.000) TIDAK dipakai: tidak ada
+     * satu pun aturan di aplikasi LAMA yang melakukannya. Helper
+     * `Keuangan::pembulatan()` ada di source legacy tapi tidak dipanggil
+     * dari mana pun (kode mati), dan tabel `businesses` tidak punya kolom
+     * `pembulatan` sama sekali -- jadi tidak ada pengaturan yang bisa
+     * mengaturnya.
+     *
+     * CATATAN KONSISTENSI: ini SATU-SATUNYA tempat rumus tagihan dipakai
+     * air ditetapkan. `MonthlyBillService::calculateTariff()` dan
+     * `BillRecalculationService::recalculateForCustomer()` memanggil
+     * method ini, bukan menyalin logikanya. Dulu ketiganya punya salinan
+     * sendiri, dan selisih sekecil apa pun akan terlihat oleh klien
+     * sebagai "tagihan berbeda antar lokasi".
+     */
+    public function calculateUsageCharge($package, float $usageM3): float
     {
+        if ($usageM3 <= 0) {
+            return 0;
+        }
+
         $blocks = WaterTariffBlock::where('package_id', $package->id)
             ->orderBy('usage_min_m3')
             ->get();
@@ -113,74 +230,30 @@ class BillingService
             return 0;
         }
 
-        $remaining = $usageM3;
-        $total = 0;
+        $price = null;
 
-        foreach ($blocks as $index => $block) {
-            if ($remaining <= 0) {
+        foreach ($blocks as $block) {
+            // Batas atas blok ini. Kalau `usage_max_m3` kosong, bloknya
+            // tak terbatas -- jadi blok inilah yang harus dipakai kalau
+            // pemakaiannya melewati semua batas atas di blok sebelumnya.
+            $max = $block->usage_max_m3 === null
+                ? null
+                : (float) $block->usage_max_m3;
+
+            if ($max === null || $usageM3 <= $max) {
+                $price = (float) $block->price_per_m3;
+
                 break;
             }
-
-            $min = (int) $block->usage_min_m3;
-
-            // Batas atas blok ini. Kalau `usage_max_m3` kosong, bloknya
-            // tak terbatas.
-            //
-            // PENTING: batas atas dipakai sebagai batas INKLUSIF pemakaian, dan
-            // panjang rentang dihitung dari jarak ke blok BERIKUTNYA — bukan
-            // `max - min`.
-            //
-            // Alasannya: blok tarif di database memakai penulisan rentang
-            // inklusif, mis. `1-10 m3` = 10 m3 (1,2,...,10). Kalau dipakai
-            // `max - min`, rentang itu jadi 9 m3 sehingga 1 m3 terakhir terlewat
-            // dan justru dihitung dengan tarif blok berikutnya yang lebih
-            // mahal. Contoh nyata di paket "Warga" (3.500/m3 untuk 10 m3
-            // pertama, 4.000/m3 selanjutnya):
-            //
-            //   10 m3 → seharusnya 10 x 3.500 = 35.000
-            //   (dengan max-min: 9 x 3.500 + 1 x 4.000 = 35.500 — 500 lebih mahal)
-            //
-            //   19 m3 → seharusnya 10 x 3.500 + 9 x 4.000 = 71.000
-            //   (dengan max-min: 9 x 3.500 + 10 x 4.000 = 71.500 — 500 lebih mahal)
-            //
-            // Blok terakhir (tanpa `usage_max_m3`) memakai sisa pemakaian.
-            //
-            // CATATAN KONSISTENSI: rumus ini WAJIB sama dengan
-            // `MonthlyBillService::calculateProgressiveCharge()` dan
-            // `BillRecalculationService::recalculateForCustomer()`. Ketiganya
-            // menghitung tagihan dari sumber yang sama (blok tarif paket),
-            // jadi selisih sekecil apa pun akan terlihat oleh klien sebagai
-            // "tagihan berbeda antar lokasi".
-            if ($block->usage_max_m3 === null) {
-                $range = $remaining;
-            } else {
-                $max = (int) $block->usage_max_m3;
-
-                // Batas bawah blok berikutnya (bila ada) adalah penanda bahwa
-                // rentang blok ini berakhir di angka tersebut. Jika blok
-                // berikutnya dimulai tepat setelah batas atas blok ini
-                // (mis. 1-10 lalu 11-100000), batas efektifnya tetap `max`.
-                $nextMin = $blocks[$index + 1]->usage_min_m3 ?? null;
-
-                if ($nextMin !== null && (int) $nextMin === $max + 1) {
-                    // Blok berurutan tanpa jeda: `1-10` lalu `11-...`.
-                    // Batas atas inklusif = max, dan panjang rentangnya
-                    // `max - min + 1` (1..10 = 10 nilai).
-                    $range = $max - $min + 1;
-                } else {
-                    // Blok berjarak / tumpang tindih (mis. `0-10` lalu `10-20`,
-                    // dipakai di test lama): panjang rentangnya `max - min`,
-                    // dan blok berikutnya mulai tepat di `max`.
-                    $range = max(0, $max - $min);
-                }
-            }
-
-            $used = min($remaining, $range);
-            $total += round($used * (float) $block->price_per_m3);
-            $remaining -= $used;
         }
 
-        return round($total);
+        // Pemakaian melewati semua batas atas dan tidak ada blok tak
+        // terbatas: pakai harga blok terakhir.
+        if ($price === null) {
+            $price = (float) $blocks->last()->price_per_m3;
+        }
+
+        return round($usageM3 * $price);
     }
 
     public function calculatePenalty(Customer $customer, int $year, int $month): float
@@ -214,6 +287,6 @@ class BillingService
 
     public function calculateChargeForTesting($package, float $usageM3): float
     {
-        return $this->calculateProgressiveCharge($package, $usageM3);
+        return $this->calculateUsageCharge($package, $usageM3);
     }
 }

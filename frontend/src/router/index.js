@@ -14,6 +14,7 @@ import PelangganEdit from '@/presentations/views/app/admin/pelanggan/PelangganEd
 import datainstalasiView from '@/presentations/views/app/admin/instalasi/dataInstalasi.vue'
 import registerInstalasi from '@/presentations/views/app/admin/instalasi/registrasi.vue'
 import statusInstalasi from '@/presentations/views/app/admin/instalasi/InstalasiStatus.vue'
+import cetakStatusInstalasi from '@/presentations/views/app/admin/instalasi/cetakStatusInstalasi.vue'
 import TeknisiPemakaianAir from '@/presentations/views/app/teknisi/PemakaianAir.vue'
 import pemakaianair from '@/presentations/views/app/admin/tagihan/pemakaianAir.vue'
 import DetailPermohonan from '@/presentations/views/app/admin/instalasi/partials/permohonan.vue'
@@ -196,6 +197,24 @@ const router = createRouter({
       name: 'Pelaporan Preview',
       component: pelaporanPreview,
     },
+    /*
+      Halaman CETAK status instalasi.
+
+      Sengaja TOP-LEVEL (sibling dari `/app/pelaporan/preview`), bukan
+      anak dari `/app`: halaman cetak memakai kerangka preview sendiri --
+      tanpa sidebar aplikasi, dengan toolbar zoom dan thumbnail. Kalau
+      ditaruh di dalam MainView, sidebar ikut tercetak ke PDF.
+
+      Tetap aman: prefix admin di `ROLE_GUARDS` memakai
+      `path.startsWith(prefix + '/')`, jadi `/app/instalasi/status/cetak`
+      tetap tertangkap oleh prefix `/app/instalasi/status` dan hanya bisa
+      dibuka role admin.
+    */
+    {
+      path: '/app/instalasi/status/cetak',
+      name: 'Cetak Status Instalasi',
+      component: cetakStatusInstalasi,
+    },
     {
       path: '/app',
       name: 'layout-dashboard',
@@ -317,14 +336,51 @@ const router = createRouter({
           component: DetailCabut,
         },
         {
-          path: 'instalasi/pemakaian-air',
+          path: 'instalasi/pemakaian',
           name: 'Pemakaian',
           component: pemakaianair,
         },
         {
-          path: 'instalasi/pemakaian-air/input',
-          name: 'Input Pemakaian',
+          path: 'instalasi/pemakaian/input',
+          name: 'Input Pemakaian Air',
           component: detailPemakaianAir,
+        },
+        {
+          /*
+            Path LAMA, sebelum kata "air" dihapus dari URL.
+            
+            Redirect, bukan halaman tersendiri -- supaya bookmark browser,
+            tautan chat WhatsApp, dan shortcut yang sudah dibuat admin
+            tidak mati mendadak. Tanpa baris ini, URL lama jatuh ke
+            catch-all `/:pathMatch(.*)*` dan user mendarat di dashboard
+            tanpa penjelasan -- gejalanya seperti "halaman pemakaiannya
+            hilang", padahal hanya pindah nama.
+
+            Query DITERUSKAN, bukan dibuang: `?bulan=Oktober&tahun=2026`
+            adalah bagian dari intentions user (periode apa yang mau
+            dibuka). `redirect` dengan fungsi mengembalikan objek
+            `{ path, query }` -- kalau query-nya dibuang, user mendarat
+            di halaman yang benar dengan filter yang salah, dan itu lebih
+            membingungkan daripada 404.
+
+            `hash` juga diteruskan, tapi memang tidak ada anchor di
+            halaman ini -- bentuk responsnya dijaga seragam supaya kalau
+            nanti ada anchor, tetap ikut terbawa.
+          */
+          path: 'instalasi/pemakaian-air',
+          redirect: (to) => ({
+            path: '/app/instalasi/pemakaian',
+            query: to.query,
+            hash: to.hash,
+          }),
+        },
+        {
+          path: 'instalasi/pemakaian-air/input',
+          redirect: (to) => ({
+            path: '/app/instalasi/pemakaian/input',
+            query: to.query,
+            hash: to.hash,
+          }),
         },
         {
           path: 'instalasi/daftar-tagihan',
@@ -378,7 +434,7 @@ const router = createRouter({
         },
         {
           path: 'instalasi/teknisiPemakaianAir',
-          name: 'Input Pemakaian Teknisi',
+          name: 'Input Pemakaian Air Teknisi',
           component: TeknisiPemakaianAir,
         },
         {
@@ -602,7 +658,7 @@ const ROLE_GUARDS = [
     // admin DAN teknisi, jadi halaman pemakaiknya tidak boleh dikunci
     // admin-only. Yang dilindungi di sini hanya akses role lain
     // (pelanggan/surveyor) yang memang tidak punya endpoint-nya.
-    prefixes: ['/app/instalasi/pemakaian-air'],
+    prefixes: ['/app/instalasi/pemakaian'],
     roles: ['admin', 'teknisi'],
   },
 ]

@@ -70,6 +70,23 @@ const POLA_SIMPAN = /\b(simpan|simpanan|tersimpan|menyimpan|perbarui|terbitkan)\
 const KECUALIAN = [
   { berkas: 'CentralTagihanPopup.vue', teks: 'Batalkan Lunas' },
   { berkas: 'CentralTagihanIndex.vue', teks: 'Batalkan Lunas' },
+
+  /*
+   * Dua tombol ini milik desain per-role yang memang harus PERSIS sama
+   * dengan pamsides-v2 -- bukan halaman yang "kebetulan" beda.
+   *
+   * "SIMPAN HASIL INSTALASI" (teknisi) dan "KIRIM HASIL SURVEY" (surveyor)
+   * memakai gradien warna brand, bukan abu. Asterokens yang berlaku: dua
+   * layar ini adalah tempat orang benar-benar mengerjakan pekerjaannya,
+   * dan tombolnya adalah penanda "kerjakan ini" -- bukan sekadar
+   * "menyimpan data".
+   *
+   * Pengecualiannya SEBUTAN, bukan wildcard: kalau nanti ada tombol simpan
+   * lain yang ikut berubah ke gradien tanpa sengaja, test ini tetap
+   * menangkapnya.
+   */
+  { berkas: 'InstallationResult.vue', teks: 'SIMPAN HASIL INSTALASI' },
+  { berkas: 'createSurvey.vue', teks: 'KIRIM HASIL SURVEY' },
 ]
 
 /** Varian `BaseButton` yang berarti "tombol menyimpan data". */
@@ -343,10 +360,7 @@ describe('tombol simpan', () => {
         .map((b) => b.trim()),
     )
 
-    assert.ok(
-      deklarasi.length > 0,
-      'token `--btn-save-*` tidak dideklarasikan di mana pun',
-    )
+    assert.ok(deklarasi.length > 0, 'token `--btn-save-*` tidak dideklarasikan di mana pun')
     assert.deepEqual(
       deklarasi,
       deklarasi.filter((b) => b.startsWith('--btn-save-')),

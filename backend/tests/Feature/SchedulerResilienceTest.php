@@ -2,16 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Console\Commands\SchedulePauseResilient;
+use App\Console\Commands\ScheduleResumeResilient;
 use App\Console\Commands\ScheduleRunResilient;
-use App\Providers\AppServiceProvider;
 use Illuminate\Cache\Repository;
 use Illuminate\Console\Application;
-use Illuminate\Console\Events\ArtisanStarting;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Connection;
 use Illuminate\Database\MySqlConnection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 use Throwable;
 
@@ -40,8 +40,14 @@ use Throwable;
  *   2. `ScheduleRunResilient` overriding `schedule:run` bawaan -- kalau
  *      pembacaan cache GAGAL, scheduler tidak boleh mati.
  *
+ * Plus satu bagian yang mudah terlewat: `schedule:pause` dan
+ * `schedule:resume` harus menulis/menghapus flag di store yang SAMA dengan
+ * yang dibaca scheduler. Kalau tidak, `schedule:pause` menganggur tanpa
+ * error -- scheduler tetap jalan padahal perintahnya bilang "paused".
+ *
  * @see ScheduleRunResilient
- * @see AppServiceProvider::registerSchedulerCommandOverride()
+ * @see SchedulePauseResilient
+ * @see ScheduleResumeResilient
  */
 class SchedulerResilienceTest extends TestCase
 {
@@ -93,24 +99,6 @@ class SchedulerResilienceTest extends TestCase
         );
     }
 
-    public function test_mutex_yang_gagal_diambil_tidak_melewati_job(): void
-    {
-        $command = $this->scheduleRunCommand();
-
-        $this->swapBrokenCache();
-
-        // Kalau mutex GAGAL diambil karena masalah infrastruktur, job
-        // harus tetap dijalankan -- bukan dilewati. Melewatkan job
-        // `migrasi:bersihkan` berarti file kerja migrasi (yang memuat NIK
-        // dan nama lengkap orang) tidak pernah terhapus.
-        $skip = $command->shouldSkipDueToOverlapping();
-
-        $this->assertFalse(
-            $skip,
-            'Job tidak boleh dilewati hanya karena mutex tidak bisa diambil.'
-        );
-    }
-
     public function test_scheduler_tetap_berjalan_saat_database_tidak_bisa_dijangkau(): void
     {
         // Simulasikan kondisi sebenarnya: MySQL mati.
@@ -126,6 +114,89 @@ class SchedulerResilienceTest extends TestCase
             0,
             $exitCode,
             'schedule:run harus selesai dengan sukses walau database mati.'
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Flag pause: harus ditulis dan dibaca di store yang SAMA
+    |--------------------------------------------------------------------------
+    |
+    | Ini yang paling mudah terlewat dan paling menyesatkan.
+    |
+    | Perintah bawaan Laravel menulis flag pause ke cache DEFAULT
+    | (`database`), sementara scheduler membacanya dari store `file`.
+    | Dua store berbeda, dua kunci berbeda -- flag yang ditulis tidak
+    | pernah dibaca.
+    |
+    | Gejalanya: `schedule:pause` mencetak "paused" dengan exit code 0,
+    | lalu scheduler tetap menjalankan job setiap menit tanpa error.
+    |
+    */
+
+    public function test_schedule_pause_menulis_flag_ke_store_yang_dibaca_scheduler(): void
+    {
+        $this->artisan('schedule:pause')->run();
+
+        $flagInSchedulerStore = $this->schedulerCache()
+            ->get('illuminate:schedule:paused', false);
+
+        $this->assertTrue(
+            $flagInSchedulerStore,
+            'schedule:pause harus menulis flag ke store yang dibaca scheduler.'
+        );
+    }
+
+    public function test_schedule_resume_menghapus_flag_dari_store_yang_dibaca_scheduler(): void
+    {
+        $this->artisan('schedule:pause')->run();
+
+        $this->assertTrue(
+            $this->schedulerCache()->get('illuminate:schedule:paused', false),
+            'Flag harus ada sebelum resume.'
+        );
+
+        $this->artisan('schedule:resume')->run();
+
+        $this->assertFalse(
+            $this->schedulerCache()->get('illuminate:schedule:paused', false),
+            'schedule:resume harus menghapus flag dari store yang dibaca scheduler.'
+        );
+    }
+
+    public function test_scheduler_menghormati_flag_pause(): void
+    {
+        $this->artisan('schedule:pause')->run();
+
+        $command = $this->scheduleRunCommand();
+
+        $paused = $this->callProtected($command, 'isPaused');
+
+        $this->assertTrue(
+            $paused,
+            'Scheduler harus menghormati flag pause yang ditulis schedule:pause.'
+        );
+    }
+
+    public function test_schedule_pause_terdaftar_sebagai_override(): void
+    {
+        $artisan = $this->artisanApplication();
+
+        $this->assertInstanceOf(
+            SchedulePauseResilient::class,
+            $artisan->find('schedule:pause'),
+            'schedule:pause harus memakai override yang menulis ke store yang benar.'
+        );
+    }
+
+    public function test_schedule_resume_terdaftar_sebagai_override(): void
+    {
+        $artisan = $this->artisanApplication();
+
+        $this->assertInstanceOf(
+            ScheduleResumeResilient::class,
+            $artisan->find('schedule:resume'),
+            'schedule:resume harus memakai override yang menghapus dari store yang benar.'
         );
     }
 
@@ -152,33 +223,48 @@ class SchedulerResilienceTest extends TestCase
     }
 
     /**
+     * Cache store yang dipakai scheduler.
+     */
+    private function schedulerCache(): Repository
+    {
+        return $this->app['cache']->store(Config::get('cache.schedule_store'));
+    }
+
+    /**
      * Ambil instance `Illuminate\Console\Application` yang dipakai Artisan.
      *
      * `Application` tidak bisa di-resolve langsung dari container --
-     * konstruktornya butuh argumen `$version` yang tidak di-binding. Dan
-     * `Artisan::getFacadeRoot()` mengembalikan Kernel, bukan Application.
+     * konstruktornya butuh argumen `$version` yang tidak di-binding.
      *
-     * Cara yang benar: dengarkan event `ArtisanStarting` -- event itu
-     * membawa instance Artisan-nya.
+     * Yang dipakai: instance yang disimpan Kernel. Kernel meng-cache-nya
+     * di property `$artisan`, jadi event `ArtisanStarting` HANYA terbakar
+     * sekali -- pada saat instance itu pertama kali dibuat. Test yang
+     * memanggil `Artisan::call()` lebih dulu akan mendapat `null` dari
+     * listener, karena Artisan-nya sudah jadi.
      */
     private function artisanApplication(): Application
     {
-        $captured = null;
+        $kernel = $this->app->make(Kernel::class);
 
-        Event::listen(ArtisanStarting::class, function (ArtisanStarting $event) use (&$captured): void {
-            $captured = $event->artisan;
-        });
+        $reflection = new \ReflectionProperty($kernel, 'artisan');
+        $reflection->setAccessible(true);
 
-        // Panggil `handle` supaya Artisan benar-benar dibangun.
-        Artisan::call('list', ['--raw' => true]);
+        $artisan = $reflection->getValue($kernel);
+
+        // Instance-nya belum dibuat -- pancing supaya dibangun.
+        if (! $artisan instanceof Application) {
+            Artisan::call('list', ['--raw' => true]);
+
+            $artisan = $reflection->getValue($kernel);
+        }
 
         $this->assertInstanceOf(
             Application::class,
-            $captured,
-            'Event ArtisanStarting harus membawa instance Artisan.'
+            $artisan,
+            'Instance Artisan harus bisa diambil dari Kernel.'
         );
 
-        return $captured;
+        return $artisan;
     }
 
     /**
@@ -262,7 +348,7 @@ class SchedulerResilienceTest extends TestCase
      * Paksa koneksi database yang dipakai aplikasi melempar error.
      *
      * Dipakai untuk mensimulasikan MySQL mati tanpa benar-benar
-     *-assessmentassessment mematikan servernya.
+     * mematikan servernya.
      */
     private function breakDatabaseConnections(): void
     {

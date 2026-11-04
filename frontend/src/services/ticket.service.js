@@ -26,6 +26,23 @@ export const ticketService = {
     return response.data
   },
 
+  /**
+   * Ekspor daftar status instalasi ke file Excel (.xlsx).
+   *
+   * Response-nya BINARY, jadi harus pakai `responseType: 'blob'`.
+   * Tanpa itu, axios mencoba mem-parsing body sebagai JSON dan file
+   * unduhnya jadi rusak (atau `response.data` jadi objek kosong).
+   *
+   * @param {Object} params - { kategori, search }
+   */
+  async exportStatusExcel(params = {}) {
+    const response = await api.get('/installation-tickets/export-status', {
+      params,
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
   async getSurveyResults(params = {}) {
     const response = await api.get('/survey-results', {
       params,
