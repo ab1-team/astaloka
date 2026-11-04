@@ -8,9 +8,9 @@ use App\Models\User;
 use App\Services\BillingTolerance;
 use App\Services\SuspendTransactionsTrigger;
 use App\Services\TenantCache;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class GenerateOverdueTransactions extends Command
 {
@@ -54,13 +54,15 @@ class GenerateOverdueTransactions extends Command
             // Tetap tulis ringkasan supaya frontend tidak salah menampilkan
             // "diproses 0" padahal prosesnya memang tidak menemukan apa pun.
             $this->storeRunSummary($today, $thresholdDate, 0, 0, 0, 0, 0);
+
             return self::SUCCESS;
         }
 
         $systemUser = User::where('role', 'admin')->first();
-        if (!$systemUser) {
+        if (! $systemUser) {
             $this->error('User admin tidak ditemukan.');
             $this->storeRunSummary($today, $thresholdDate, 0, $overdueBills->count(), 0, 0, 0);
+
             return self::FAILURE;
         }
 
@@ -82,7 +84,7 @@ class GenerateOverdueTransactions extends Command
 
         // Trigger `amount` dimatikan sementara selama insert dan SELALU
         // dikembalikan lagi sebelum selesai — termasuk saat gagal.
-        $suspend = new SuspendTransactionsTrigger();
+        $suspend = new SuspendTransactionsTrigger;
         $suspend->disable();
 
         DB::beginTransaction();
@@ -94,7 +96,27 @@ class GenerateOverdueTransactions extends Command
             // sendiri. Update itu memicu trigger `update_amount_debit` yang
             // menjalankan 8x SUM() penuh PER BARIS, padahal `urutan` sama
             // sekali tidak memengaruhi saldo.
-            $nextId = ((int) Transaction::max('id')) + 1;
+            //
+            // PENTING: `max('id')` WAJIB dibaca lewat query builder polos,
+            // bukan lewat model Eloquent.
+            //
+            // `Transaction` memakai global scope `SoftDeletes`, jadi
+            // `Transaction::max('id')` TIDAK melihat baris yang sudah
+            // di-soft-delete. Padahal primary key `id` tetap dipakai baris
+            // itu -- soft delete tidak membebaskan id-nya.
+            //
+            // Akibatnya: begitu ada satu baris soft-deleted dengan id
+            // tertinggi ( commonplace: rollback pembayaran meng-soft-delete
+            // jurnal `bill_payment`), `max('id')` mengembalikan angka yang
+            // LEBIH KECIL dari id yang benar-benar terpakai. Command lalu
+            // menghitung `nextId` yang sudah dipakai -> INSERT gagal dengan
+            // "Duplicate entry ... for key 'transactions.PRIMARY'" ->
+            // seluruh generate piutang hari itu GAGAL tanpa menghasilkan
+            // satu baris pun.
+            //
+            // `DB::table()` mengabaikan global scope, jadi id yang benar
+            // (termasuk yang sudah soft-deleted) ikut terhitung.
+            $nextId = ((int) DB::table('transactions')->max('id')) + 1;
             $now = now();
 
             // ── Tagihan yang benar-benar belum punya jurnal ──
@@ -115,11 +137,10 @@ class GenerateOverdueTransactions extends Command
                     ->select('reverence_id', 'account_kredit')
                     ->distinct()
                     ->get()
-                    ->map(fn ($t) => $t->reverence_id . '|' . $t->account_kredit)
+                    ->map(fn ($t) => $t->reverence_id.'|'.$t->account_kredit)
                     ->flip();
 
-            $hasJournal = fn ($bill, string $kredit) =>
-                $force ? false : $alreadyHave->has($bill->id . '|' . $kredit);
+            $hasJournal = fn ($bill, string $kredit) => $force ? false : $alreadyHave->has($bill->id.'|'.$kredit);
 
             // Karena deduplikasi kini per pasangan akun, "sudah punya
             // jurnal" tidak bisa lagi dihitung dari jumlah tagihan. Hitung
@@ -181,16 +202,16 @@ class GenerateOverdueTransactions extends Command
             $rows = [];
 
             foreach ($targets as $bill) {
-                $relasi       = $bill->customer?->customer_code ?? ('Bill #' . $bill->id);
+                $relasi = $bill->customer?->customer_code ?? ('Bill #'.$bill->id);
                 $customerName = $bill->customer?->user?->name
                     ?? $bill->customer?->ticket?->applicant_name
                     ?? 'Tanpa Nama';
-                $abodemen     = (float) ($bill->abodemen ?? 0);
-                $usageCharge  = (float) ($bill->usage_charge ?? 0);
-                $denda        = (float) ($bill->penalty_amount ?? 0);
+                $abodemen = (float) ($bill->abodemen ?? 0);
+                $usageCharge = (float) ($bill->usage_charge ?? 0);
+                $denda = (float) ($bill->penalty_amount ?? 0);
 
-                $keteranganSuffix = 'bulan ' . $this->periodLabelLong($bill) .
-                    ' an. ' . $customerName . ' (' . $relasi . ')';
+                $keteranganSuffix = 'bulan '.$this->periodLabelLong($bill).
+                    ' an. '.$customerName.' ('.$relasi.')';
 
                 // Cek PER TIPE, bukan hanya per tagihan: jurnal abodemen yang sudah
                 // ada tidak boleh mencegah jurnal pemakaiannya dibuat, dan
@@ -205,7 +226,7 @@ class GenerateOverdueTransactions extends Command
                         $systemUser->id,
                         $bill,
                         '4.1.01.02',
-                        'Piutang Abodemen ' . $keteranganSuffix,
+                        'Piutang Abodemen '.$keteranganSuffix,
                         $relasi,
                         $abodemen
                     );
@@ -239,7 +260,7 @@ class GenerateOverdueTransactions extends Command
                          * dan seluruh perhitungan tidak tersentuh, sehingga
                          * pembukuan yang sudah terjadi tidak berubah angkanya.
                          */
-                        'Piutang Pemakaian ' . $keteranganSuffix,
+                        'Piutang Pemakaian '.$keteranganSuffix,
                         $relasi,
                         $usageCharge
                     );
@@ -277,7 +298,7 @@ class GenerateOverdueTransactions extends Command
                         $systemUser->id,
                         $bill,
                         '4.1.01.04',
-                        'Piutang Denda ' . $keteranganSuffix,
+                        'Piutang Denda '.$keteranganSuffix,
                         $relasi,
                         $denda
                     );
@@ -323,6 +344,7 @@ class GenerateOverdueTransactions extends Command
                 $jurnalPemakaian,
                 $jurnalDenda
             );
+
             return self::SUCCESS;
         } catch (\Throwable $e) {
             if (DB::transactionLevel() > 0) {
@@ -333,8 +355,9 @@ class GenerateOverdueTransactions extends Command
             // ter-update untuk seluruh aplikasi.
             $suspend->restore();
 
-            $this->error('Gagal: ' . $e->getMessage());
+            $this->error('Gagal: '.$e->getMessage());
             $this->storeRunSummary($today, $thresholdDate, 0, $overdueBills->count(), 0, 0, 0);
+
             return self::FAILURE;
         }
     }
@@ -354,20 +377,20 @@ class GenerateOverdueTransactions extends Command
         float $saldo
     ): array {
         return [
-            'id'                   => $id,
-            'tgl_transaksi'        => $today,
-            'account_debet'        => '1.1.03.01',
-            'account_kredit'       => $kredit,
-            'transaction_group'    => null,
-            'reverence_type'       => 'overdue_bill',
-            'reverence_id'         => $bill->id,
+            'id' => $id,
+            'tgl_transaksi' => $today,
+            'account_debet' => '1.1.03.01',
+            'account_kredit' => $kredit,
+            'transaction_group' => null,
+            'reverence_type' => 'overdue_bill',
+            'reverence_id' => $bill->id,
             'keterangan_transaksi' => $keterangan,
-            'relasi'               => $relasi,
-            'saldo'                => $saldo,
-            'id_user'              => $userId,
-            'urutan'               => $id,
-            'created_at'           => $now,
-            'updated_at'           => $now,
+            'relasi' => $relasi,
+            'saldo' => $saldo,
+            'id_user' => $userId,
+            'urutan' => $id,
+            'created_at' => $now,
+            'updated_at' => $now,
         ];
     }
 
@@ -377,6 +400,47 @@ class GenerateOverdueTransactions extends Command
      * Menggantikan trigger `create_amount_debit` yang sebelumnya melakukan hal
      * yang sama untuk setiap baris. Dipanggil SETELAH semua insert selesai,
      * jadi cukup satu kali per akun.
+     *
+     * PERIODE: 1 Januari sampai AKHIR BULAN yang sama.
+     *
+     * Ini PERSIS rentang yang dipakai trigger MySQL `create_amount_debit`:
+     *
+     *     tgl_transaksi BETWEEN CONCAT(YEAR(tgl_transaksi), "-01-01")
+     *                      AND LAST_DAY(tgl_transaksi)
+     *
+     * Jadi nilai yang ditulis command ini sama persis dengan nilai yang
+     * akan ditulis trigger kalau jurnal itu di-insert satu per satu. Itu
+     * penting: kalau angkanya beda, `amount` akan "berganti bentuk" setiap
+     * kali ada insert biasa berikutnya -- laporan melompat-lompat untuk
+     * alasan yang tidak ada hubungannya dengan transaksi yang baru masuk.
+     *
+     * Versi lama command ini memakai `BETWEEN 1 Januari DAN 31 Desember`,
+     * yaitu satu baris `amount` untuk bulan generate ditulis dengan JUMLAH
+     * SELURUH TAHUN. Kalau generate berjalan tanggal 28 Oktober, baris
+     * `amount` bulan Oktober berisi saldo gabungan Oktober..Desember.
+     * Laporan Laba Rugi Oktober jadi lebih besar dari seharusnya, sementara
+     * November dan Desember kehilangan saldonya -- dua sumber kebenaran
+     * berbeda untuk angka yang sama.
+     *
+     * Efeknya semakin buruk setiap kali generate dijalankan ulang di akhir
+     * bulan: `amount` bulan itu ditulis ulang dengan angka yang sama
+     * berulang kali, sementara jurnal barunya ikut masuk kehitungannya.
+     *
+     * CATATAN TENTANG KONSISTENSI SELURUH APLIKASI
+     * --------------------------------------------
+     *
+     * Tabel `amount` di aplikasi ini TIDAK seragam definisinya:
+     *
+     *   - Trigger MySQL, `TransactionObserver::updateAmountForAccount()`, dan
+     *     `PelaporanController::recalcBulan()` memakai YTD-sampai-akhir-bulan
+     *     (1 Januari .. akhir bulan).
+     *   - `AmountRecalculator::compute()` memakai per bulan (GROUP BY tahun+bulan).
+     *
+     * Command ini sengaja mengikuti yang PERTAMA, karena itu yang otoritatif
+     * di database dan yang dipakai oleh insert jurnal biasa. Perbedaan dengan
+     * `AmountRecalculator` adalah ketidakkonsistenan lama di seluruh
+     * aplikasi, bukan pilihan command ini -- dan menormalkan satu sisi saja
+     * akan mengubah angka pelaporan yang sudah berjalan.
      */
     private function recomputeAmount(array $kodeAkuns, string $tanggal): void
     {
@@ -386,8 +450,9 @@ class GenerateOverdueTransactions extends Command
 
         $tahun = substr($tanggal, 0, 4);
         $bulan = substr($tanggal, 5, 2);
-        $startOfYear = $tahun . '-01-01';
-        $endOfYear  = $tahun . '-12-31';
+        $startOfYear = $tahun.'-01-01';
+        // Batas periode = AKHIR BULAN yang sama, persis seperti trigger.
+        $endOfPeriod = Carbon::create((int) $tahun, (int) $bulan, 1)->endOfMonth()->toDateString();
 
         foreach (array_unique($kodeAkuns) as $kode) {
             $account = DB::table('accounts')->where('kode_akun', $kode)->first();
@@ -400,7 +465,7 @@ class GenerateOverdueTransactions extends Command
                 ->selectRaw('COALESCE(SUM(CASE WHEN account_debet = ? THEN saldo ELSE 0 END), 0) AS debit', [$kode])
                 ->selectRaw('COALESCE(SUM(CASE WHEN account_kredit = ? THEN saldo ELSE 0 END), 0) AS kredit', [$kode])
                 ->whereNull('deleted_at')
-                ->whereBetween('tgl_transaksi', [$startOfYear, $endOfYear])
+                ->whereBetween('tgl_transaksi', [$startOfYear, $endOfPeriod])
                 ->where(function ($q) use ($kode) {
                     $q->where('account_debet', $kode)
                         ->orWhere('account_kredit', $kode);
@@ -408,13 +473,13 @@ class GenerateOverdueTransactions extends Command
                 ->first();
 
             DB::table('amount')->updateOrInsert(
-                ['id' => (string) $account->id . $tahun . $bulan],
+                ['id' => (string) $account->id.$tahun.$bulan],
                 [
                     'account_id' => $account->id,
-                    'tahun'      => $tahun,
-                    'bulan'      => $bulan,
-                    'debit'      => $row->debit ?? 0,
-                    'kredit'     => $row->kredit ?? 0,
+                    'tahun' => $tahun,
+                    'bulan' => $bulan,
+                    'debit' => $row->debit ?? 0,
+                    'kredit' => $row->kredit ?? 0,
                 ]
             );
         }
@@ -426,7 +491,8 @@ class GenerateOverdueTransactions extends Command
     private function periodLabel($bill)
     {
         $months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
-        return ($months[$bill->billing_period_month] ?? '') . ' ' . $bill->billing_period_year;
+
+        return ($months[$bill->billing_period_month] ?? '').' '.$bill->billing_period_year;
     }
 
     /**
@@ -439,7 +505,8 @@ class GenerateOverdueTransactions extends Command
             5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
             9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
         ];
-        return ($months[(int) $bill->billing_period_month] ?? '') . ' ' . $bill->billing_period_year;
+
+        return ($months[(int) $bill->billing_period_month] ?? '').' '.$bill->billing_period_year;
     }
 
     /**
@@ -481,16 +548,16 @@ class GenerateOverdueTransactions extends Command
         // tergeser oleh bump di atas. Pembacanya ada di
         // ReceivableGenerator::execute() dan DashboardController.
         $cache->flagPut('overdue_gen_run_summary', [
-            'date'                => $today,
-            'threshold_date'      => $thresholdDate,
-            'processed'           => $processed,
-            'skipped'             => $skipped,
-            'jurnal_abodemen'     => $jurnalAbodemen,
-            'jurnal_pemakaian'    => $jurnalPemakaian,
-            'jurnal_denda'        => $jurnalDenda,
-            'total_unpaid'        => $totalUnpaid,
-            'total_overdue'       => $totalOverdue,
-            'timestamp'           => now()->toISOString(),
+            'date' => $today,
+            'threshold_date' => $thresholdDate,
+            'processed' => $processed,
+            'skipped' => $skipped,
+            'jurnal_abodemen' => $jurnalAbodemen,
+            'jurnal_pemakaian' => $jurnalPemakaian,
+            'jurnal_denda' => $jurnalDenda,
+            'total_unpaid' => $totalUnpaid,
+            'total_overdue' => $totalOverdue,
+            'timestamp' => now()->toISOString(),
         ], now()->addHours(26));
     }
 }

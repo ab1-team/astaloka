@@ -29,15 +29,28 @@ export function useFormatCurrency(value, options = {}) {
 
 /**
  * Formatter Rupiah sederhana (alternatif)
- * @param {number} value - Angka yang diformat
+ *
+ * Nilai dipaksa jadi number DULU sebelum diformat.
+ *
+ * Alasannya: `String.prototype.toLocaleString` MENERIMA argumen apa pun dan
+ * tetap mengembalikan string itu apa adanya -- jadi `("15000").toLocaleString('id-ID')`
+ * menghasilkan "15000", bukan "15.000". Nilai dari API memang bisa berupa
+ * string angka, dan hasilnya jadi "Rp 15000" (tanpa pemisah ribuan) --
+ * format yang berbeda dari "Rp 15.000" untuk angka yang sama.
+ *
+ * Karena itu: `Number()` dulu, cek hasilnya finite, baru format.
+ *
+ * @param {number|string} value - Angka yang diformat
  * @returns {string} String Rupiah yang diformat
  */
 export function formatRupiah(value) {
-  if (value === null || value === undefined || isNaN(value)) {
+  const angka = Number(value)
+
+  if (!Number.isFinite(angka)) {
     return 'Rp 0'
   }
 
-  return `Rp ${value.toLocaleString('id-ID')}`
+  return `Rp ${angka.toLocaleString('id-ID')}`
 }
 
 /**

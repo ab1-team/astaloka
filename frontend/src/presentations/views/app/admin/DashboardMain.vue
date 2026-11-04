@@ -419,7 +419,9 @@
         <div
           class="bg-white! w-full! h-full! max-w-7xl! rounded-2xl! shadow-2xl! flex! flex-col! overflow-hidden! animate-[fade-in-up_0.3s_ease-out_forwards]!"
         >
-          <div class="flex! items-center! justify-between! px-6! py-4! border-b! border-slate-100!">
+          <div
+            class="flex! items-center! justify-between! px-6! py-4! border-b! border-slate-100! shrink-0!"
+          >
             <div class="flex! items-center! gap-3!">
               <div
                 class="w-8! h-8! rounded-full! bg-slate-700! flex! items-center! justify-center! text-white!"
@@ -436,12 +438,30 @@
             </button>
           </div>
 
-          <div class="flex-1! overflow-y-auto! relative! bg-white!">
+          <!--
+            `min-h-0!` WAJIB di sini.
+
+            Body ini flex item di kolom panel dengan `flex: 1`. Flex item punya
+            `min-height: auto` secara default: ia tidak boleh menyusut di bawah
+            tinggi isinya. Tanpa `min-h-0`, body ikut tumbuh mengikuti tabel di
+            dalamnya, jadi `overflow-y-auto` tidak pernah punya apa pun untuk
+            digulir -- panel tetap `h-full`, tabel meluber dan terpotong.
+
+            Dengan `min-h-0`, body benar-benar batasi diri ke ruang sisa,
+            lalu tabel di dalamnya yang jadi elemen yang digulir (lihat
+            DataTable: `flex-1! min-h-0! overflow-y-auto!`).
+
+            `overflow-y-auto!` (bukan `hidden`) sengaja: area tabel di dalam
+            sudah menggulir sendiri, jadi scrollbar ini tidak pernah muncul --
+            tapi kalau suatu saat isi popup lebih tinggi dari ruangnya, isinya
+            masih bisa dijangkau, bukan diam-diam terpotong.
+          -->
+          <div class="flex-1! min-h-0! overflow-y-auto! relative! bg-white!">
             <component :is="activeComponent" />
           </div>
 
           <div
-            class="px-6! py-4! border-t! border-slate-100! flex! items-center! justify-between! bg-white!"
+            class="px-6! py-4! border-t! border-slate-100! flex! items-center! justify-between! bg-white! shrink-0!"
           >
             <div class="text-xs! text-slate-500! font-medium!">
               <template v-if="currentDetailType === 'tagihan' && tagihanSelection.length > 0">
@@ -451,12 +471,15 @@
             <div class="flex! items-center! gap-2!">
               <button
                 v-if="currentDetailType === 'tagihan'"
-                :disabled="tagihanSelection.length === 0"
+                :disabled="tagihanSelection.length === 0 || sendingIds.length > 0"
                 @click="handleSendMessage"
                 class="px-5! py-2! text-sm! font-semibold! text-white! bg-blue-600! hover:bg-blue-700! disabled:bg-slate-300! disabled:cursor-not-allowed! rounded-lg! flex! items-center! gap-2! transition-colors!"
               >
-                <font-awesome-icon icon="paper-plane" />
-                Kirim Pesan
+                <font-awesome-icon
+                  :icon="sendingIds.length > 0 ? 'spinner' : 'paper-plane'"
+                  :spin="sendingIds.length > 0"
+                />
+                {{ sendingIds.length > 0 ? 'Mengirim...' : 'Kirim Pesan WA' }}
               </button>
               <button
                 @click="closeDetailModal"
@@ -473,19 +496,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, provide } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, provide } from 'vue'
 import statCard from '@/presentations/components/stat-card.vue'
 import ContentCard from '@/presentations/components/ui/ContentCard.vue'
 import dashboardService from '@/services/dashboard.service'
+import { useWhatsappTagihan } from '@/composables/useWhatsappTagihan.js'
 
 import InstalasiDetail from './arsipDashbord/ArsipInstalasi.vue'
 import PemakaianDetail from './arsipDashbord/ArsipPemakaian.vue'
-import TunggakanDetail from './arsipDashbord/ArsipTunggakan.vue'
+import TunggakanDetail from './arsipDashbord/ArsipPiutangPopup.vue'
 import TagihanDetail from './arsipDashbord/ArsipTagihan.vue'
 
 const activeModal = ref(false)
 const currentDetailType = ref('')
 const tagihanSelection = ref([])
+
+const { sendBulk, sendingIds } = useWhatsappTagihan()
 
 const openDetailModal = (type) => {
   currentDetailType.value = type
@@ -501,8 +527,50 @@ const closeDetailModal = () => {
   }, 300)
 }
 
-const handleSendMessage = () => {
-  // ponytail: handler placeholder, wire ke WhatsApp/email gateway saat fitur siap
+/*
+ * Escape menutup popup, dan scroll body dikunci selama popup terbuka.
+ *
+ * Tanpa yang kedua, roda mouse di dalam popup ikut menggulir halaman di
+ * belakangnya -- sehingga user merasa "dipaksa" dan tidak bisa fokus ke
+ * tabel. Konsisten dengan BaseModal.vue dan CentralTagihanPopup.vue.
+ */
+const onKeydown = (e) => {
+  if (e.key === 'Escape' && activeModal.value) closeDetailModal()
+}
+
+watch(
+  activeModal,
+  (isOpen) => {
+    document.body.style.overflow = isOpen ? 'hidden' : ''
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  document.body.style.overflow = ''
+})
+
+/**
+ * Kirim pengingat WhatsApp untuk semua tagihan yang dicentang di popup.
+ *
+ * Popup ini memang jalur "kirim banyak sekaligus" -- admin mencentang
+ * beberapa baris, lalu semua pesan disusun sekaligus dan jendela
+ * WhatsApp-nya dibuka berurutan.
+ *
+ * Isi pesannya disusun backend dari template yang diset admin di
+ * SOP -> Whatsapp API, sama persis dengan yang dipakai halaman
+ * "Daftar Tagihan" (yang mengirim satu per satu).
+ */
+const handleSendMessage = async () => {
+  if (tagihanSelection.value.length === 0) return
+
+  const ids = tagihanSelection.value.map((row) => row.id).filter(Boolean)
+  await sendBulk(ids)
 }
 
 provide('tagihanSelection', tagihanSelection)
@@ -527,7 +595,7 @@ const modalTitle = computed(() => {
     case 'instalasi':
       return 'Permohonan Instalasi'
     case 'pemakaian':
-      return 'Pemakaian Air'
+      return 'Pemakaian'
     case 'tunggakan':
       return 'Tunggakan'
     case 'tagihan':

@@ -63,17 +63,18 @@
           <div
             class="w-7! h-7! rounded-lg! bg-orange-100! flex! items-center! justify-center! shrink-0!"
           >
-            <font-awesome-icon
-              icon="exclamation-triangle"
-              class="text-orange-600! text-xs!"
-            />
+            <font-awesome-icon icon="exclamation-triangle" class="text-orange-600! text-xs!" />
           </div>
           <h3 class="text-sm! font-bold! text-slate-800!">Akun Diblokir</h3>
         </div>
-        <div class="rounded-xl! bg-orange-50! border! border-orange-200! p-3! text-[11px]! text-orange-700! leading-relaxed!">
-          Layanan air untuk pelanggan ini sedang terputus sementara.
+        <div
+          class="rounded-xl! bg-orange-50! border! border-orange-200! p-3! text-[11px]! text-orange-700! leading-relaxed!"
+        >
+          Layanan untuk pelanggan ini sedang terputus sementara.
         </div>
-        <div class="rounded-xl! bg-emerald-50! border! border-emerald-200! p-3! mt-2! text-[11px]! text-emerald-700! leading-relaxed! flex! items-start! gap-2!">
+        <div
+          class="rounded-xl! bg-emerald-50! border! border-emerald-200! p-3! mt-2! text-[11px]! text-emerald-700! leading-relaxed! flex! items-start! gap-2!"
+        >
           <font-awesome-icon icon="info-circle" class="text-emerald-600! mt-0.5! shrink-0!" />
           <div>
             <p class="font-bold! text-emerald-800! mb-0.5!">Syarat Kembali Aktif</p>
@@ -119,7 +120,10 @@
           </div>
         </div>
 
-        <div v-if="customer.tunggakanList.length === 0" class="text-center! py-4! text-xs! text-slate-400!">
+        <div
+          v-if="customer.tunggakanList.length === 0"
+          class="text-center! py-4! text-xs! text-slate-400!"
+        >
           Tidak ada tagihan tertunggak.
         </div>
         <div v-else class="space-y-2!">
@@ -275,8 +279,18 @@ const id = decodeURIComponent(route.params.id)
 const catatan = ref('')
 
 const MONTHS_ID = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
 ]
 
 const formatRibuan = (val) => {
@@ -356,9 +370,7 @@ const customer = computed(() => {
   const totalPemakaian = Math.max(0, meterAkhir - meterAwal)
 
   // Hitung tunggakan dari monthly_bills (dedup by period — pertahankan 1 per periode)
-  const billsRaw = Array.isArray(customerRecord?.monthly_bills)
-    ? customerRecord.monthly_bills
-    : []
+  const billsRaw = Array.isArray(customerRecord?.monthly_bills) ? customerRecord.monthly_bills : []
   const billsMap = new Map()
   for (const b of billsRaw) {
     const key = `${b.billing_period_year}-${b.billing_period_month}`

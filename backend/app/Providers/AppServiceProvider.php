@@ -3,8 +3,13 @@
 namespace App\Providers;
 
 use App\Console\Commands\MigrateCentral;
+use App\Console\Commands\SchedulePauseResilient;
+use App\Console\Commands\ScheduleResumeResilient;
+use App\Console\Commands\ScheduleRunResilient;
+use App\Listeners\BridgeConsoleCommandEvents;
 use App\Listeners\GuardCentralDatabaseWrites;
 use App\Listeners\GuardDestructiveCommands;
+use App\Listeners\GuardProtectedDatabaseDestructiveSql;
 use App\Models\BillPayment;
 use App\Models\Customer;
 use App\Models\MonthlyBill;
@@ -15,8 +20,11 @@ use App\Observers\PaymentObserver;
 use App\Observers\TransactionObserver;
 use App\Services\TenantManager;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Application;
+use Illuminate\Console\Events\ArtisanStarting;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Events\ConnectionEstablished;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -61,6 +69,9 @@ class AppServiceProvider extends ServiceProvider
         $this->configureRateLimiters();
         $this->registerDestructiveCommandGuard();
         $this->registerCentralDatabaseWriteGuard();
+        $this->registerProtectedDatabaseSqlGuard();
+        $this->registerConsoleEventBridge();
+        $this->registerSchedulerCommandOverride();
         Relation::enforceMorphMap([
             'payment' => Payment::class,
             'monthly_bill' => MonthlyBill::class,
@@ -71,6 +82,65 @@ class AppServiceProvider extends ServiceProvider
 
         Transaction::observe(TransactionObserver::class);
         Payment::observe(PaymentObserver::class);
+    }
+
+    /**
+     * Ganti `schedule:run` bawaan dengan versi yang tidak crash saat
+     * database tidak terjangkau.
+     *
+     * Kenapa ini perlu
+     * ==============
+     *
+     * `schedule:run` dipanggil SETIAP MENIT oleh Task Scheduler. Sebelum
+     * menjalankan job apa pun, framework membaca cache (flag pause, flag
+     * interrupt, mutex `withoutOverlapping`). Cache aplikasi memakai store
+     * `database`, jadi:
+     *
+     *   - MySQL mati / belum selesai start -> query cache melempar
+     *     `SQLSTATE[HY000] [2002]`, `schedule:run` CRASH sebelum job dicek;
+     *   - job yang SEHARUSNYA jalan tidak jalan -- termasuk generate piutang
+     *     pada tanggalnya, yang gate-nya bersifat PERSIS, jadi satu malam
+     *     yang terlewat berarti bulan itu tidak pernah punya jurnal;
+     *   - satu baris ERROR ditulis ke log SETIAP MENIT, jadi log membanjir
+     *     dan error yang sesungguhnya jadi sulit ditemukan.
+     *
+     * Cache yang dipakai scheduler tidak WAJIB di database -- isinya cuma
+     * "apakah job ini sedang jalan". Karena itu `config('cache.schedule_store')`
+     * diset ke `file` (lihat `config/cache.php`), dan command ini memastikan
+     * command yang membacanya memakai store itu.
+     *
+     * `schedule:pause` dan `schedule:resume` juga di-override, karena
+     * perintah bawaan menulis flag pause ke cache DEFAULT (`database`) --
+     * sedangkan scheduler membacanya dari store `file`. Dua store berbeda,
+     * dua kunci berbeda: flag yang ditulis `schedule:pause` tidak pernah
+     * dibaca scheduler, jadi perintahnya menganggur tanpa error.
+     *
+     * Kenapa overriding, bukan mengubah `vendor/`
+     * ==========================================
+     *
+     * `composer install` menimpa file di `vendor/`, jadi perubahan di sana
+     * hilang tanpa jejak. Overriding lewat `ArtisanStarting` membuat
+     * perbedaannya menetap di repo ini dan terlihat saat review kode.
+     *
+     * @see ScheduleRunResilient
+     * @see SchedulePauseResilient
+     * @see ScheduleResumeResilient
+     */
+    private function registerSchedulerCommandOverride(): void
+    {
+        Event::listen(ArtisanStarting::class, function (ArtisanStarting $event): void {
+            $artisan = $event->artisan;
+
+            if (! $artisan instanceof Application) {
+                return;
+            }
+
+            $artisan->resolveCommands([
+                ScheduleRunResilient::class,
+                SchedulePauseResilient::class,
+                ScheduleResumeResilient::class,
+            ]);
+        });
     }
 
     /**
@@ -121,7 +191,7 @@ class AppServiceProvider extends ServiceProvider
      * {@see GuardCentralDatabaseWrites}, yang menolak perintah yang menulis
      * ke salah satu database dengan folder milik yang lain.
      *
-     * @see \App\Console\Commands\MigrateCentral
+     * @see MigrateCentral
      */
 
     /**
@@ -132,19 +202,39 @@ class AppServiceProvider extends ServiceProvider
      * untuk HTTP request, sehingga `migrate:fresh` yang dijalankan di terminal
      * akan lolos tanpa ada yang menghentikannya.
      *
-     * Syarat `runningInConsole()` saja TIDAK cukup. Saat PHPUnit berjalan,
-     * aplikasi di-boots ulang di dalam proses dan `runningInConsole()`
-     * bisa bernilai false -- sehingga guard diam-diam tidak aktif, dan
-     * `php artisan test` bisa menjatuhkan database yang tidak seharusnya.
-     * Karena itu `runningUnitTests()` ikut diperiksa.
+     *PENDAFTARANNYA TIDAK BERGANTUNG KONDISI APAPUN, dan itu justru inti
+     * perbaikannya.
+     *
+     * Sebelumnya guard ini hanya terdaftar saat `runningInConsole()` atau
+     * `runningUnitTests()` bernilai true. Dua-duanya terlihat logis, tapi
+     * keduanya TIDAK menjamin event-nya benar-benar terkirim.
+     *
+     * `CommandStarting` hanya dikirim oleh
+     * `Illuminate\Foundation\Console\Kernel::rerouteSymfonyCommandEvents()`,
+     * dan method itu SENGAJA dilewati saat `runningUnitTests()` true --
+     * framework menganggap event console tidak relevan di dalam test.
+     *
+     * Akibatnya, di DALAM `php artisan test`, kedua penjaga ini terdaftar tapi
+     * TIDAK PERNAH DIPANGGIL. Bukan "kurang ketat" -- benar-benar mati.
+     *
+     * Dan itu bukan cacat teoretis: `RefreshDatabase` menjalankan
+     * `migrate:fresh`, yang memanggil `db:wipe` secara internal, yang
+     * memanggil `dropAllTables()` -- menjatuhkan SELURUH tabel database
+     * pusat dalam satu statement. Tidak ada penjaga yang menyadarinya,
+     * dan tidak ada pesan error apa pun.
+     *
+     * Verifikasi: `php artisan test` yang memanggil `Artisan::call()` dan
+     * `$this->artisan()` TIDAK PERNAH menerima satu pun `CommandStarting`.
+     *
+     * Karena itu penjaga ketiga yang benar-benar tidak bergantung pada
+     * perintah -- {@see GuardProtectedDatabaseDestructiveSql} -- dipasang
+     * sebagai jaring pengaman terakhir. See juga {@see registerConsoleEventBridge()}.
      *
      * @see GuardDestructiveCommands
      */
     private function registerDestructiveCommandGuard(): void
     {
-        if ($this->app->runningInConsole() || $this->app->runningUnitTests()) {
-            Event::listen(CommandStarting::class, GuardDestructiveCommands::class);
-        }
+        Event::listen(CommandStarting::class, GuardDestructiveCommands::class);
     }
 
     /**
@@ -160,9 +250,42 @@ class AppServiceProvider extends ServiceProvider
      */
     private function registerCentralDatabaseWriteGuard(): void
     {
-        if ($this->app->runningInConsole() || $this->app->runningUnitTests()) {
-            Event::listen(CommandStarting::class, GuardCentralDatabaseWrites::class);
-        }
+        Event::listen(CommandStarting::class, GuardCentralDatabaseWrites::class);
+    }
+
+    /**
+     * Pasang penjaga SQL tingkat-tinggi -- jaring pengaman terakhir.
+     *
+     * Berbeda dengan dua penjaga di atas, penjaga ini tidak memanggil perintah
+     * apa pun. Ia memasang kait pada setiap koneksi MySQL, sehingga setiap
+     * statement `drop` yang akan dijalankan diperiksa terhadap nama database
+     * yang BENAR-BENAR dibuka koneksi itu.
+     *
+     * Karena tidak bergantung pada event console, ia tetap aktif di dalam
+     * `php artisan test` -- di situlah dua penjaga lain mati.
+     *
+     * @see GuardProtectedDatabaseDestructiveSql
+     */
+    private function registerProtectedDatabaseSqlGuard(): void
+    {
+        Event::listen(ConnectionEstablished::class, GuardProtectedDatabaseDestructiveSql::class);
+    }
+
+    /**
+     * Pasang jembatan event console.
+     *
+     * Tanpa ini, `CommandStarting` TIDAK PERNAH terkirim di dalam test --
+     * dan dua penjaga command yang terdaftar tapi tidak pernah dipanggil
+     * sama saja dengan tidak ada penjaga.
+     *
+     * Di luar test, dispatcher milik Kernel menimpa dispatcher yang dipasang
+     * jembatan ini, jadi event tidak terkirim dua kali.
+     *
+     * @see BridgeConsoleCommandEvents
+     */
+    private function registerConsoleEventBridge(): void
+    {
+        Event::listen(ArtisanStarting::class, BridgeConsoleCommandEvents::class);
     }
 
     /**

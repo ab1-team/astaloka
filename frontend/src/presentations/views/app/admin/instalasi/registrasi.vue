@@ -145,9 +145,7 @@
               </BaseButton>
             </div>
             <div class="px-4! py-2! border-t! border-slate-100! bg-slate-50/50!">
-              <p class="text-[11px]! text-slate-400!">
-                
-              </p>
+              <p class="text-[11px]! text-slate-400!"></p>
             </div>
           </div>
         </Transition>
@@ -268,7 +266,7 @@
           </template>
           <template v-else>
             Pelanggan <strong>{{ selectedCustomer.name }}</strong> sudah dalam status
-            <strong>cabut (terminated)</strong>. Koneksi air telah dicabut permanen dan
+            <strong>cabut (terminated)</strong>. Koneksi layanan telah dicabut permanen dan
             <strong>tidak dapat didaftarkan kembali</strong>.
           </template>
         </p>
@@ -298,7 +296,7 @@
             <h2 class="text-base! font-bold! text-slate-800!">Detail Layanan</h2>
           </div>
 
-<div class="grid! grid-cols-1! sm:grid-cols-2! gap-3! mb-3!">
+          <div class="grid! grid-cols-1! sm:grid-cols-2! gap-3! mb-3!">
             <AppDatePicker
               v-model="form.tanggalOrder"
               label="Tanggal Order"
@@ -322,19 +320,8 @@
                 placeholder="Pilih Paket"
                 searchable
               />
-               <BaseInput
-                v-model="form.rw"
-                label="RW"
-                placeholder="02"
-                maxlength="10"
-              />
-              <BaseInput
-                v-model="form.rt"
-                label="RT"
-                placeholder="01"
-                maxlength="10"
-              />
-             
+              <BaseInput v-model="form.rw" label="RW" placeholder="02" maxlength="10" />
+              <BaseInput v-model="form.rt" label="RT" placeholder="01" maxlength="10" />
             </div>
 
             <Transition
@@ -1116,7 +1103,6 @@ const handleSubmit = async () => {
       })
     }
   } catch (err) {
-
     const errorMessage =
       err.response?.data?.message || 'Gagal mendaftarkan instalasi. Silakan coba lagi.'
 

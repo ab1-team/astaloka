@@ -60,6 +60,40 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+
+            /*
+             * Timezone SESI MySQL.
+             *
+             * MySQL menyimpan kolom `TIMESTAMP` dalam UTC dan mengubahnya ke
+             * timezone SESI setiap kali dibaca. Laravel membaca `TIMESTAMP`
+             * sebagai string polos tanpa konversi, jadi nilai yang ditulis
+             * PHP harus sama dengan nilai yang dibaca MySQL -- keduanya harus
+             * memakai zona waktu yang SAMA.
+             *
+             * Tanpa baris ini, session time_zone MySQL tetap `SYSTEM`, yaitu
+             * timezone host. Di mesin ini host berjalan UTC, jadi jam WIB yang
+             * ditulis Laravel (mis. `created_at` = 08:00) akan dibaca kembali
+             * sebagai 08:00 UTC = 15:00 WIB -- mundur 7 jam. Tanggal
+             * pembayaran dan laporan harian jadi tidak cocok dengan kenyataan.
+             *
+             * NILAINYA ADALAH OFFSET, BUKAN NAMA ZONA.
+             *
+             * `Asia/Jakarta` TIDAK bisa dipakai: MySQL hanya mengenali nama
+             * zona kalau tabel timezone-nya sudah dimuat
+             * (`mysql_tzinfo_to_sql`). Server yang belum memuat tabel itu
+             * menolak dengan:
+             *
+             *     ERROR 1298 (HY000): Unknown or incorrect time zone: 'Asia/Jakarta'
+             *
+             * Offset `+07:00` tidak butuh tabel apa pun, jadi selalu bisa
+             * dipakai. Indonesia tidak memakai daylight saving, jadi
+             * offsetnya tetap sepanjang tahun.
+             *
+             * Kalau `APP_TIMEZONE` diubah ke zona lain, offset ini harus
+             * diubah juga -- MySQL tidak bisa menebaknya dari nama zona.
+             */
+            'timezone' => env('DB_TIMEZONE', '+07:00'),
+
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -81,6 +115,7 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            'timezone' => env('DB_TIMEZONE', '+07:00'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -120,6 +155,11 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+
+            // Sama dengan koneksi `mysql` di atas -- lihat catatan panjang
+            // di sana soal kenapa offset, bukan nama zona.
+            'timezone' => env('DB_TIMEZONE', '+07:00'),
+
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -158,6 +198,15 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+
+            // Sama dengan koneksi `mysql` di atas -- lihat catatan panjang
+            // di sana soal kenapa offset, bukan nama zona.
+            //
+            // Penting untuk koneksi ini: `TenantManager::activate()` mengganti
+            // `database` saja, jadi `timezone` yang diwarisi dari config
+            // awal tetap ikut terpakai.
+            'timezone' => env('DB_TIMEZONE', '+07:00'),
+
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

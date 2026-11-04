@@ -259,8 +259,7 @@ const pageMeta = {
   },
   '/central/hak-akses': {
     title: 'Hak Akses Lokasi',
-    subtitle:
-      'Atur menu yang boleh dibuka setiap jabatan, untuk semua lokasi dari satu halaman.',
+    subtitle: 'Atur menu yang boleh dibuka setiap jabatan, untuk semua lokasi dari satu halaman.',
   },
   '/central/tagihan': {
     title: 'Tagihan Langganan',
@@ -283,7 +282,8 @@ const pageMeta = {
     // Menyebut urutan langkahnya di sini, bukan cuma sekali di dalam
     // halaman: subtitle ikut terbaca di tab peramban dan di riwayat,
     // di tempat orang tidak sedang membaca paragraf penjelasan.
-    subtitle: 'Unduh template, isi, lalu unggah kembali. Data masuk ke database lokasi yang dipilih.',
+    subtitle:
+      'Unduh template, isi, lalu unggah kembali. Data masuk ke database lokasi yang dipilih.',
   },
 }
 
@@ -320,10 +320,33 @@ const handleLogout = async () => {
 
   if (!result.isConfirmed) return
 
+  /*
+   * Nama diambil SEBELUM logout, bukan sesudahnya.
+   *
+   * `centralAuthService.logout()` menghapus seluruh jejak sesi dari
+   * localStorage di blok `finally`-nya -- termasuk `central_user`. Kalau
+   * nama diambil setelah pemanggilan itu, isinya sudah `null`, dan toast
+   * perpisahan di halaman login hanya bisa berkata "Terima kasih!" tanpa
+   * menyebut siapa yang sebenarnya baru saja keluar.
+   *
+   * `getCentralUser()` dipakai langsung, bukan `user.value`, supaya yang
+   * terbaca jelas-jelas keadaan localStorage pada saat ini.
+   */
+  const nama = getCentralUser()?.name || ''
+
   // Sengaja ditelan: user harus tetap keluar dari panel meski server tidak
   // bisa dihubungi. Token server akan ditolak sendiri setelah kedaluwarsa.
   await centralAuthService.logout().catch(() => {})
-  router.replace('/central/login?logout=1')
+
+  /*
+   * `name` ikut dibawa di URL supaya halaman login bisa menyapa orangnya --
+   * persis seperti yang dilakukan aplikasi lokasi di `MainView.vue`.
+   *
+   * Parameter itu dihapus lagi di sisi halaman login (`replaceState`), jadi
+   * tidak menggantung di riwayat peramban atau di alamat yang disalin.
+   */
+  const namaDiUrl = nama ? `&name=${encodeURIComponent(nama)}` : ''
+  router.replace(`/central/login?logout=1${namaDiUrl}`)
 }
 </script>
 

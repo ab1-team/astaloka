@@ -32,7 +32,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { compileScript, parse } from 'vue/compiler-sfc'
+import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 
 import env from './envTest.mjs'
 
@@ -125,6 +125,60 @@ function kompilasiSfc(kode, namaFile) {
    * ke render, dan hampir semua komponen di repo ini memakainya.
    */
   const id = Buffer.from(namaFile).toString('hex').slice(0, 8)
+
+  /*
+   * SFC dengan `<script setup>` KOSONG.
+   *
+   * `compileScript` menolak berkasnya dengan:
+   *
+   *     [@vue/compiler-sfc] SFC contains no <script> tags.
+   *
+   * padahal berkasnya ADA `<script setup></script>` -- cuma isinya nol
+   * byte, jadi parser menganggapnya tidak ada.
+   *
+   * Contoh di repo ini: `FooterView.vue` -- komponen paling sepele yang
+   * ada, cuma `<footer>` dan teks. Karena itu komponen ini TIDAK PERNAH
+   * bisa diimpor di Node, dan semua yang mengimpornya ikut gagal --
+   * termasuk `MainView.vue` (layout admin) dan karena itu `router/index.js`
+   * juga gagal, karena router mengimpor layout itu.
+   *
+   * Efeknya ke test: tabel route sama sekali tidak bisa diperiksa, dan
+   * route yang salah -- seperti redirect path lama yang hilang -- lolos
+   * tanpa ada yang menangkapnya.
+   *
+   * Di sini template-nya dikompilasi sendiri dan digabung sebagai modul
+   * biasa, tanpa blok script sama sekali. Hasilnya tetap komponen yang
+   * bisa dirender, persis seperti SFC dengan script kosong.
+   */
+  if (!descriptor.script && !descriptor.scriptSetup) {
+    const template = compileTemplate({
+      source: descriptor.template?.content ?? '',
+      filename: namaFile,
+      id,
+    })
+
+    if (template.errors.length) {
+      throw new Error(
+        `SFC ${namaFile} gagal dikompilasi: ${template.errors[0].message ?? template.errors[0]}`,
+      )
+    }
+
+    /*
+     * `compileTemplate` mengembalikan KODE template, bukan modul -- belum
+     * ada `export default`. Tanpa itu, whoever mengimpor SFC ini gagal
+     * dengan:
+     *
+     *     The requested module './FooterView.vue' does not provide an
+     *     export named 'default'
+     *
+     * yang menyebut file turuan, bukan masalah aslinya.
+     *
+     * `compileTemplate` mengexpor fungsi render-nya sebagai `render`
+     * bernama (bukan `_sfc_main` seperti yang dilakukan `compileScript`),
+     * jadi modul turuannya yang/Reference `render` itu.
+     */
+    return `${template.code}\nexport default { render }\n`
+  }
 
   return compileScript(descriptor, {
     id,
@@ -305,6 +359,47 @@ export async function resolve(specifier, context, nextResolve) {
     const ketemu = denganEkstensi(asli)
 
     return { url: ketemu ?? asli.href, shortCircuit: true }
+  }
+
+  /*
+   * Impor RELATIF tanpa ekstensi, dari dalam `src/`.
+   *
+   * Contoh nyata: `src/router/index.js` mengimpor `./dashboardRoutes`,
+   * sementara berkasnya `dashboardRoutes.js`. Vite menyelesaikannya
+   * otomatis; Node ESM tidak -- dan hasilnya:
+   *
+   *     Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+   *     '...\src\router\dashboardRoutes'
+   *
+   * Yang membuat ini penting: file router itu yang Holds definisi
+   * SEMUA route -- termasuk redirect path lama arsip. Tanpa ia, tabel
+   * route tidak bisa diuji sama sekali di Node, dan yang bisa diuji
+   * hanyalah "// belum ada test untuk ini" yang/toh tidak memblokir apa
+   * pun.
+   *
+   * Ekstensi dicoba di sini dengan cara yang sama seperti alias `@/...`
+   * di atas, jadi perilakunya konsisten: berkas yang ADA dipakai, dan
+   * kalau tidak ada, biarlah Node yang melaporkannya -- jangan diam-diam
+   * menunjuk ke URL yang salah.
+   *
+   * `nextResolve` melempar (bukan mengembalikan) kalau berkasnya tidak
+   * ada, jadi check-nya dilakukan lebih dulu: kalau hasil tebakan
+   * eksplisit ada, itu yang dipakai; kalau tidak, error asli Node
+   * dibiarkan apa adanya supaya pesannya tetap menyebut file yang
+   * sebenarnya bermasalah.
+   */
+  if (
+    (specifier.startsWith('./') || specifier.startsWith('../')) &&
+    context.parentURL?.startsWith(AKAR.href)
+  ) {
+    const asal = new URL(specifier, context.parentURL)
+    const ketemu = denganEkstensi(asal)
+
+    if (ketemu) {
+      const tiruan = mockUntuk(ketemu)
+
+      return { url: tiruan ?? ketemu, shortCircuit: true }
+    }
   }
 
   const hasil = await nextResolve(specifier, context)

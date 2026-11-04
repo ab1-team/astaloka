@@ -91,28 +91,28 @@ class MenuAccessController extends Controller
             $tersimpan = $this->menu->storedKeysForJabatan((int) $j->id);
 
             $data[] = [
-                'id'         => $j->id,
-                'nama'       => $j->nama_jabatan,
+                'id' => $j->id,
+                'nama' => $j->nama_jabatan,
                 // `null` = belum pernah dikonfigurasi (semua menu tampil).
                 // `[]` = sudah dikonfigurasi tapi tidak boleh apa-apa.
                 // Frontend perlu membedakan keduanya untuk menanyakan
                 // "jadikan semua" atau tidak.
                 'configured' => $tersimpan !== null,
                 'total_user' => (int) ($penggunaPerJabatan[$j->id] ?? 0),
-                'roles'      => $daftarRole[(int) $j->id] ?? [],
+                'roles' => $daftarRole[(int) $j->id] ?? [],
                 // Role dari NAMA jabatan, bukan dari user yang memakainya.
                 // Wajib sama persis dengan yang dikirim
                 // `CentralMenuAccessController::bacaJabatan()` -- bentuk
                 // respons kedua sisi dikunci oleh test
                 // `bentuk_respons_sama_dengan_aplikasi_lokasi`.
-                'role'       => $this->menu->roleForJabatan($j->nama_jabatan),
-                'menu'       => $this->menu->menuForJabatan((int) $j->id, $j->nama_jabatan),
+                'role' => $this->menu->roleForJabatan($j->nama_jabatan),
+                'menu' => $this->menu->menuForJabatan((int) $j->id, $j->nama_jabatan),
             ];
         }
 
         return response()->json([
             'success' => true,
-            'data'    => $data,
+            'data' => $data,
         ]);
     }
 
@@ -152,13 +152,40 @@ class MenuAccessController extends Controller
             }
 
             $items[] = [
-                'key'     => $key,
+                'key' => $key,
                 'allowed' => true,
-                'label'   => (string) $item['label'],
-                'group'   => (string) ($item['group'] ?? ''),
-                'icon'    => (string) ($item['icon'] ?? ''),
-                'path'    => (string) ($item['path'] ?? ''),
-                'hidden'  => (bool) ($item['hidden'] ?? false),
+                'label' => (string) $item['label'],
+                'group' => (string) ($item['group'] ?? ''),
+                'icon' => (string) ($item['icon'] ?? ''),
+                'path' => (string) ($item['path'] ?? ''),
+                'hidden' => (bool) ($item['hidden'] ?? false),
+                // `tanpa_sidebar`: halaman tetap ada dan tetap bisa
+                // dicentang di panel pusat Hak Akses, tapi tidak jadi
+                // entri sidebar. Dipakai untuk halaman yang desain
+                // per-role-nya dibuka dari dashboard, bukan dari menu.
+                //
+                // BEDA dari `hidden`: `hidden` juga disembunyikan dari
+                // daftar centang di panel pusat, jadi tidak bisa
+                // dicabut. Yang ini TETAP bisa dicabut -- hanya
+                // menunya yang tidak dirender.
+                'tanpa_sidebar' => (bool) ($item['tanpa_sidebar'] ?? false),
+                // Sidebar mem-flatten group yang cuma punya satu anak
+                // menjadi link langsung. `group_tetap` membatalkan itu
+                // untuk group tertentu, karena susunan menu itu bagian dari
+                // desain per-role (teknisi membuka "Master Instalasi",
+                // bukan langsung "Input Pemakaian Air").
+                //
+                // `group_tetap` TIDAK dikirim untuk item yang tidak
+                // diizinkan: item itu tidak punya label/path yang boleh
+                // bocor, jadi tidak boleh punya atribut lain juga.
+                'group_tetap' => (bool) ($item['group_tetap'] ?? false),
+                // Menu `top_level` berdiri sendiri, di luar group-nya.
+                // "Buat Survey Baru" milik surveyor begitu: di desain
+                // per-role ia link tingkat atas, bukan anak group "Survey".
+                //
+                // `group`-nya tetap ada supaya panel pusat Hak Akses masih
+                // mengelompokkannya bersama menu sekelompoknya.
+                'top_level' => (bool) ($item['top_level'] ?? false),
                 // Sidebar menyaring per ROLE, karena `allowed` hanya bicara
                 // soal jabatan. Satu user bisa punya role `teknisi` dan
                 // jabatan yang mencentangnya tidak memuat `survey.daftar` --
@@ -172,13 +199,13 @@ class MenuAccessController extends Controller
                 // `roles` dikirim hanya untuk item yang sudah diizinkan.
                 // Untuk item yang tidak, tidak ada yang perlu bocor: label,
                 // path, maupun daftar role-nya sama sekali tidak dikirim.
-                'roles'   => array_values((array) ($item['roles'] ?? [])),
+                'roles' => array_values((array) ($item['roles'] ?? [])),
             ];
         }
 
         return response()->json([
             'success' => true,
-            'data'    => [
+            'data' => [
                 'items' => $items,
                 'groups' => $this->groupOrder(),
             ],

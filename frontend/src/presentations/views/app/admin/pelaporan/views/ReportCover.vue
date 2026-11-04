@@ -41,7 +41,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { storageUrl } from '@/utils/storage'
+import { storageLogoUrl } from '@/utils/storage'
 
 const props = defineProps({
   payload: { type: Object, required: true },
@@ -66,12 +66,7 @@ const initials = computed(() => {
     .toUpperCase()
 })
 
-const logoUrl = computed(() => {
-  const logo = lembaga.value?.logo
-  if (!logo) return ''
-  if (logo.startsWith('http')) return logo
-  return `${storageUrl('')}/sop/logo/${logo}`
-})
+const logoUrl = computed(() => storageLogoUrl(lembaga.value?.logo))
 </script>
 
 <style scoped>

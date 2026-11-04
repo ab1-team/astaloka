@@ -74,4 +74,48 @@ export const storageUrl = (path) => {
   return `${API_ORIGIN}/${clean.replace(/^\/+/, '')}`
 }
 
+/**
+ * URL absolut untuk logo lembaga.
+ *
+ * Nama helper ini sengaja BUKAN `logoUrl` — sudah ada computed bernama
+ * `logoUrl` di beberapa komponen (BaseReportLayout, ReportCover, dst), dan
+ * mengimpor fungsi dengan nama yang sama di file yang sama akan bentrok.
+ *
+ * Kenapa perlu helper khusus
+ * ========================
+ *
+ * Nilai `settings.logo` disimpan sebagai NAMA FILE saja (mis.
+ * `logo-abc.jpg`), dan file-nya disimpan di `storage/app/public/sop/logo/`.
+ * File publik seperti ini disajikan lewat symlink `public/storage`, jadi
+ * URL yang benar adalah `/storage/sop/logo/<nama-file>`.
+ *
+ * Sebelumnya beberapa komponen membentuk URL-nya sendiri dengan
+ * `${storageUrl('')}/sop/logo/${logo}` — TANPA segmen `storage`. Itu
+ * menghasilkan `https://host/sop/logo/file.jpg` yang 404, sehingga logo
+ * tidak pernah muncul di kop laporan. Helper ini dipakai di semua tempat
+ * supaya path-nya hanya ada di satu titik dan tidak salah lagi.
+ *
+ * Path yang sudah lengkap (http/https/data) atau yang sudah memuat
+ * `/storage/` dikembalikan apa adanya supaya tidak jadi dobel prefix.
+ */
+export const storageLogoUrl = (logo) => {
+  const clean = String(logo ?? '').trim()
+
+  if (!clean) return ''
+  if (/^(https?:)?\/\//i.test(clean) || /^data:/i.test(clean)) return clean
+
+  // Sudah berupa path storage yang utuh (mis. "storage/sop/logo/a.jpg").
+  if (/^\/?storage\//i.test(clean)) {
+    return storageUrl(clean)
+  }
+
+  // Sudah memuat folder logo (mis. "/sop/logo/a.jpg").
+  if (clean.includes('/sop/logo/')) {
+    return storageUrl(clean)
+  }
+
+  // Bentuk paling umum: hanya nama file.
+  return storageUrl(`storage/sop/logo/${clean.replace(/^\/+/, '')}`)
+}
+
 export default storageUrl

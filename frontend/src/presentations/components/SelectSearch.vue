@@ -30,11 +30,7 @@
                 @click.stop
               >
                 {{ getLabel(opt) }}
-                <button
-                  type="button"
-                  class="chip-remove"
-                  @click.stop="removeOption(opt)"
-                >
+                <button type="button" class="chip-remove" @click.stop="removeOption(opt)">
                   <font-awesome-icon icon="times" />
                 </button>
               </span>
@@ -58,7 +54,12 @@
 
       <!-- Dropdown Menu -->
       <transition name="fade-slide">
-        <div v-if="isOpen" class="select-dropdown">
+        <div
+          v-if="isOpen"
+          ref="panelRef"
+          class="select-dropdown"
+          :class="{ 'select-dropdown--ujung': geserKeUjung }"
+        >
           <!-- Search Header -->
           <div v-if="searchable" class="search-container">
             <div class="search-input-wrapper">
@@ -121,7 +122,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 const props = defineProps({
   modelValue: {
@@ -190,6 +191,32 @@ const searchQuery = ref('')
 const dropdownRef = ref(null)
 const searchInput = ref(null)
 
+/*
+ * Panel dropdown yang melewati tepi kanan layar.
+ *
+ * Panelnya ber-`position: absolute` dan ber-`min-width: max(100%, 11rem)`,
+ * jadi panel bisa LEBIH LEBAR dari inputnya. Kalau inputnya kebetulan
+ * berada dekat tepi kanan layar (mis. filter "Bulan" di HP 320px),
+ * panelnya menonjol keluar layar -- isinya terpotong viewport dan
+ * ikon centang di sebelah kanan hilang.
+ *
+ * `geserKeUjung` menggeser jangkarnya ke KANAN input supaya panel tumbuh
+ * ke kiri, bukan ke kanan. Diukur ulang setiap kali panel dibuka.
+ */
+const panelRef = ref(null)
+const geserKeUjung = ref(false)
+
+const cekTepiPanel = () => {
+  const panel = panelRef.value
+  if (!panel) {
+    geserKeUjung.value = false
+    return
+  }
+  // Sisakan 8px supaya panel tidak menempel di tepi layar.
+  const ruangKanan = window.innerWidth - panel.getBoundingClientRect().right
+  geserKeUjung.value = ruangKanan < 8
+}
+
 // Komputasi
 const selectedOption = computed(() => {
   if (props.multiple) return null
@@ -256,7 +283,10 @@ const selectOption = (opt) => {
     if (idx >= 0) current.splice(idx, 1)
     else current.push(v)
     emit('update:modelValue', current)
-    emit('change', props.options.filter((o) => current.includes(getValue(o))))
+    emit(
+      'change',
+      props.options.filter((o) => current.includes(getValue(o))),
+    )
   } else {
     emit('update:modelValue', v)
     emit('change', opt)
@@ -271,7 +301,10 @@ const removeOption = (opt) => {
   const idx = current.indexOf(v)
   if (idx >= 0) current.splice(idx, 1)
   emit('update:modelValue', current)
-  emit('change', props.options.filter((o) => current.includes(getValue(o))))
+  emit(
+    'change',
+    props.options.filter((o) => current.includes(getValue(o))),
+  )
 }
 
 // Penanganan klik di luar elemen
@@ -283,10 +316,17 @@ const handleClickOutside = (event) => {
 
 // Pantau fokus elemen
 watch(isOpen, (newVal) => {
-  if (newVal && props.searchable) {
-    setTimeout(() => {
-      searchInput.value?.focus()
-    }, 50)
+  if (newVal) {
+    // Ukur tepi panel SETELAH Vue merender panelnya (v-if baru muncul
+    // setelah tick berikutnya), kalau tidak panelRef masih null.
+    nextTick(cekTepiPanel)
+    if (props.searchable) {
+      setTimeout(() => {
+        searchInput.value?.focus()
+      }, 50)
+    }
+  } else {
+    geserKeUjung.value = false
   }
 })
 
@@ -421,8 +461,63 @@ onUnmounted(() => {
   @apply rotate-180 text-blue-500;
 }
 
+/*
+ * PANEL DROPDOWN.
+ *
+ * Lebarnya TIDAK lagi dikunci sama dengan lebar input (`left-0 right-0`).
+ * Sebaliknya, panel ini mengikuti lebar ISI-nya, dengan batas bawah
+ * dan batas atas.
+ *
+ * Kenapa tidak dikunci?
+ *
+ * Karena beberapa filter punya input yang SANGAT sempit -- filter
+ * "Tahun" di halaman pemakaian cuma ~88px. Waktu dropdown-nya ikut
+ * dikunci 88px, isinya tidak muat:
+ *
+ *   - kolom pencarian yang ada di dalam dropdown terpotong jadi "Ca",
+ *   - opsi yang sedang dipilih (yang menambah garis penanda 4px dan
+ *     ikon centang) jadi lebih sempit lagi, sehingga teks "2026"
+ *     terpotong jadi "20...".
+ *
+ * Dua-duanya masalah nyata: user tidak bisa melihat angka tahunnya
+ * utuh, dan tidak bisa mengetik di kotak pencarian karena teksnya
+ * sendiri sudah terpotong.
+ *
+ * `min-width: max(100%, 11rem)` menggabungkan dua syarat sekaligus:
+ * panelnya TIDAK PERNAH lebih sempit dari inputnya (jadi dropdown yang
+ * normally lebar, mis. "Pilih Teknisi", tetap mengikuti inputnya seperti
+ * sebelumnya), DAN panelnya selalu punya ruang minimal 11rem (176px)
+ * untuk opsi pendek seperti "2026" plus kotak pencarian -- bahkan
+ * kalau inputnya cuma 88px.
+ *
+ * Dua aturan `min-width` terpisah tidak bisa dipakai di sini: yang
+ * belakangan menimpa yang pertama, jadi hanya satu yang berlaku.
+ *
+ * `max-width` mencegah panel meluber keluar layar untuk dropdown yang
+ * isinya panjang.
+ */
 .select-dropdown {
-  @apply absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 z-[9999] overflow-hidden;
+  @apply absolute top-full left-0 mt-2 max-w-[min(28rem,calc(100vw-2rem))] bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 z-[9999] overflow-hidden;
+  min-width: max(100%, 11rem);
+}
+
+/*
+ * PANEL YANG DITEPI KANAN LAYAR.
+ *
+ * `min-width` di atas membuat panel bisa lebih lebar dari inputnya.
+ * Kalau inputnya dekat tepi kanan layar, panelnya akan menonjol keluar
+ * viewport dan isinya terpotong (termasuk ikon centang di sebelah
+ * kanan).
+ *
+ * `left: auto; right: 0` membalik jangkarnya: sekarang panel tumbuh
+ * ke arah KIRI, sehingga selalu muat di dalam layar.
+ *
+ * Nilainya ditentukan JS di `cekTepiPanel()` saat panel dibuka, karena
+ * CSS tidak bisa tahu apakah inputnya dekat tepi layar atau tidak.
+ */
+.select-dropdown--ujung {
+  left: auto;
+  right: 0;
 }
 
 .search-container {
@@ -455,19 +550,56 @@ onUnmounted(() => {
   @apply bg-blue-50 text-blue-700;
 }
 
+/*
+ * OPSI YANG SEDANG DIPILIH.
+ *
+ * Baris terpilih punya garis penanda 4px di sebelah kiri. Garis itu
+ * memakan ruang teks -- jadi kalau padding-nya ikut `px-3` seperti
+ * baris biasa, teks baris terpilih mulai 4px lebih kanan (16px)
+ * dibanding baris lain (12px).
+ *
+ * `pl-2` (8px) dipakai supaya 4px border + 8px padding = 12px, persis
+ * sama dengan `px-3` (12px) di baris biasa. Hasilnya semua teks opsi
+ * mulai di kolom yang sama, dan garis penanda tetap terlihat.
+ *
+ * Padding KANAN sengaja tidak disentuh -- tetap `px-3` dari
+ * `.option-item`.
+ */
 .option-item--selected {
-  @apply bg-blue-50! border-l-4 border-blue-600 text-blue-900 font-semibold;
+  @apply bg-blue-50! border-l-4 border-l-blue-600 text-blue-900 font-semibold pl-2!;
 }
 .option-item--selected:hover {
   @apply bg-blue-100! text-blue-900;
 }
 
+/*
+ * TEKS OPSI.
+ *
+ * `min-width: 0` WAJIB ada di sini.
+ *
+ * Tanpa itu, `flex` memberi teks ukuran minimum otomatis -- yaitu
+ * ukuran kata yang tidak bisa dipecah ("2026" = 31px). Di dropdown
+ * sempit, baris terpilih hanya menyisakan 27px untuk teks, dan teks itu
+ * dipotong jadi "20...".
+ *
+ * `min-width: 0` melepas batasan minimum itu, sehingga `truncate`
+ * benar-benar bekerja: teks panjang dipotong dengan elipsis, dan
+ * teks pendek seperti "2026" punya ruang untuk ditampilkan utuh.
+ */
 .option-label {
-  @apply text-sm truncate font-medium;
+  @apply text-sm truncate font-medium min-w-0;
 }
 
+/*
+ * IKON CENTANG.
+ *
+ * Ikonnya ikut boleh menyusut -- tidak seperti teks, yang tidak boleh
+ * terpotong. `shrink-0` di sini berarti ikon tidak pernah hilang,
+ * tapi teks di sebelahnya yang mengalah kalau ruangnya memang tidak
+ * cukup.
+ */
 .selected-indicator {
-  @apply text-xs ml-2;
+  @apply text-xs ml-2 shrink-0;
 }
 
 .empty-state {

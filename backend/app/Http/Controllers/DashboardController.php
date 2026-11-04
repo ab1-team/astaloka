@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use App\Models\InstallationTicket;
 use App\Models\MonthlyBill;
-use App\Models\Setting;
 use App\Models\Transaction;
+use App\Services\ArsipPiutangService;
+use App\Services\BillingTolerance;
+use App\Services\ReceivableGenerator;
 use App\Services\TenantCache;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -52,9 +55,17 @@ class DashboardController extends Controller
                         ->all(),
                     'bills_unpaid' => MonthlyBill::where('status', 'unpaid')->count(),
                     'pemakaian_count' => InstallationTicket::where('status', 'completed')->count(),
-                    'tunggakan_total' => MonthlyBill::where('status', 'unpaid')
-                        ->where('penalty_amount', '>', 0)
-                        ->count(),
+                    /*
+                     * Jumlah piutang tunggakan yang tercatat.
+                     *
+                     * Dihitung lewat `ArsipPiutangService` supaya angka di kotak
+                     * dashboard sama persis dengan isi tabel Arsip Piutang.
+                     *
+                     * Sebelumnya dipakai `penalty_amount > 0` -- proxy yang
+                     * menyesatkan: tagihan menunggak tanpa denda ikut hilang,
+                     * padahal piutangnya sudah membebani akun 1.1.03.01.
+                     */
+                    'tunggakan_total' => app(ArsipPiutangService::class)->countFiltered(null, null),
                     'latest_tickets' => InstallationTicket::with('package:id,name')
                         ->orderBy('created_at', 'desc')
                         ->limit(5)
@@ -189,14 +200,19 @@ class DashboardController extends Controller
      *   - type     : instalasi | tunggakan | tagihan | pemakaian (wajib)
      *   - search   : string pencarian (opsional)
      *   - page     : halaman (default 1)
-     *   - per_page : rows per page (default 10, max 50)
+     *   - per_page : rows per page (default 10, max 100)
      *
      * Response shape seragam: { success, data: [...], meta: { ... } }
      */
     public function popupData(Request $request)
     {
         $type = (string) $request->query('type', '');
-        $perPage = max(1, min((int) $request->query('per_page', 10), 50));
+        // Batas max 100 WAJIB sinkron dengan opsi "Tampilkan" di DataTable
+        // (10/25/50/100). Kalau batas server lebih kecil dari pilihan UI,
+        // frontend menghitung offset halaman dari `per_page` pilihan user
+        // sementara server memakai nilai yang dipangkas -- sehingga halaman 2
+        // menampilkan baris yang salah, dan label "Showing X to Y" jadi bohong.
+        $perPage = max(1, min((int) $request->query('per_page', 10), 100));
         $page = max(1, (int) $request->query('page', 1));
         $search = trim((string) $request->query('search', ''));
 
@@ -260,51 +276,24 @@ class DashboardController extends Controller
     }
 
     /**
-     * Arsip Tunggakan: tagihan unpaid + penalty_amount > 0.
-     * Eager load minimum + paginasi server-side (TIDAK loop halaman).
+     * Arsip Piutang: piutang pelanggan yang belum tertagih.
+     *
+     * DITERUSKAN ke `ArsipPiutangService`, bukan dihitung sendiri.
+     *
+     * Alasannya: popup dashboard dan halaman Arsip Piutang (/app/arsip/
+     * tunggakan) menampilkan HAL YANG SAMA, dan versi lama menghitungnya
+     * sendiri dengan `penalty_amount > 0` -- proxy yang sudah ditolak di
+     * `MonthlyBillController::pay` ("jurnal overdue_bill adalah satu-satunya
+     * fakta yang bisa dipercaya"). Kalau popup dan arsip memakai definisi
+     * berbeda, angka di kotak dashboard tidak akan sama dengan isi tabelnya,
+     * dan tidak ada yang bisa menjelaskan bedanya.
      */
     private function popupTunggakan(int $perPage, int $page, string $search)
     {
-        $query = MonthlyBill::query()
-            ->with([
-                'customer:id,user_id,ticket_id,customer_code',
-                'customer.user:id,name',
-                'customer.ticket:id,applicant_name,address',
-            ])
-            ->where('status', 'unpaid')
-            ->where('penalty_amount', '>', 0)
-            ->orderBy('due_date', 'asc');
+        $arsip = app(ArsipPiutangService::class);
 
-        if ($search !== '') {
-            $query->where(function ($w) use ($search) {
-                $w->whereHas('customer.user', fn ($u) => $u->where('name', 'like', $search.'%'))
-                    ->orWhereHas('customer', fn ($c) => $c->where('customer_code', 'like', $search.'%'))
-                    ->orWhereHas('customer.ticket', fn ($t) => $t->where('applicant_name', 'like', $search.'%'));
-            });
-        }
-
-        $total = (clone $query)->count();
-        $rows = $query->forPage($page, $perPage)->get();
-
-        $items = $rows->map(function ($b) {
-            $totalAmt = (float) $b->total_amount;
-            $denda = (float) $b->penalty_amount;
-
-            return [
-                'id' => $b->id,
-                'nomorInduk' => $b->customer?->customer_code ?: '-',
-                'customer' => $b->customer?->ticket?->applicant_name
-                    ?? $b->customer?->user?->name ?? '-',
-                'alamat' => $b->customer?->ticket?->address ?: '-',
-                'periodeLabel' => $b->billing_period_month
-                    ? sprintf('%02d/%d', $b->billing_period_month, $b->billing_period_year)
-                    : '-',
-                'tagihan' => max(0, $totalAmt - $denda),
-                'denda' => $denda,
-                'total' => $totalAmt,
-                'status' => 'Belum Lunas',
-            ];
-        })->values();
+        $total = $arsip->countFiltered(null, null, $search);
+        $items = $arsip->items(null, null, $search, $page, $perPage);
 
         return response()->json([
             'success' => true,
@@ -448,42 +437,81 @@ class DashboardController extends Controller
      */
     public function checkAutoGenerateOverdue(Request $request)
     {
-        $today        = now();
-        $todayYmd     = $today->toDateString();
-        $todayDay     = (int) $today->format('d');
-        $scheduledDay = (int) (Setting::first()?->toleransi_tunggakan ?? 0);
+        $today = now();
+        $todayYmd = $today->toDateString();
+        $todayDay = (int) $today->format('d');
 
-        $configured     = $scheduledDay >= 1 && $scheduledDay <= 28;
-        $isScheduledDay = $todayDay === $scheduledDay;
+        /*
+         * Tanggal generate dibaca lewat `BillingTolerance`, bukan langsung
+         * dari `Setting`.
+         *
+         * `generateDay()` mengubah nilai di luar rentang 1-31 menjadi 0 --
+         * artinya "SOP belum diisi, tidak ada yang dijadwalkan". Tanpa itu,
+         * nilai 40 akan lolos sebagai tanggal generate yang sah.
+         *
+         * `effectiveGenerateDay()` menarik angka yang diset ke HARI TERAKHIR
+         * bulan kalau angka itu tidak ada di bulan berjalan. Jadi tanggal 29
+         * di Oktober = 29, di Februari = 28.
+         *
+         * Sumbernya tetap SATU: `BillingTolerance` adalah tempat semua
+         * arti `toleransi_tunggakan` dikunci.
+         */
+        $tolerance = app(BillingTolerance::class);
+        $scheduledDay = $tolerance->generateDay();
+        $effectiveDay = $tolerance->effectiveGenerateDay($today);
+
+        $configured = $scheduledDay >= 1;
+
+        // Gate `===`: HANYA pada tanggal yang di-set.
+        //
+        // `toleransi_tunggakan` = 28 -> generate jalan pada tanggal 28,
+        // dan TIDAK pada tanggal 29, 30, maupun 31.
+        //
+        // Ini yang diminta: "generate hanya 1 hari di tgl yang di-set,
+        // bukan hari ini -- tgl itu, tapi hanya tgl itu".
+        //
+        // Konsekuensinya yang disengaja: kalau tidak ada staff yang login
+        // tepat pada tanggal itu, generate bulan itu TIDAK PERNAH jalan
+        // -- tanpa error, tanpa log. Penutupnya adalah scheduler harian
+        // di `routes/console.php`, yang memanggil `runIfDue()` untuk semua
+        // lokasi setiap malam.
+        $isScheduledDay = $configured && $todayDay === $effectiveDay;
 
         return response()->json([
-            'success'       => true,
-            'configured'    => $configured,
-            'is_scheduled'  => $isScheduledDay,
+            'success' => true,
+            'configured' => $configured,
+            'is_scheduled' => $isScheduledDay,
             // Dipertahankan supaya frontend lama yang membaca field ini
             // tidak rusak, tapi nilainya sudah tidak dipakai sebagai penentu.
-            'already_ran'   => false,
-            'will_run'      => $configured && $isScheduledDay,
+            'already_ran' => false,
+            'will_run' => $isScheduledDay,
             'scheduled_day' => $scheduledDay,
-            'today_day'     => $todayDay,
-            'date'          => $todayYmd,
+            'effective_day' => $effectiveDay,
+            'today_day' => $todayDay,
+            'date' => $todayYmd,
         ]);
     }
 
     /**
      * Auto-generate piutang/abodemen/denda untuk tagihan menunggak.
      *
-     * Dipanggil dari frontend setiap kali halaman dashboard di-mount.
-     * - Hanya jalan bila hari ini == `toleransi_tunggakan` (tanggal di
-     *   kolom SOP, range 1-28) DAN proses untuk bulan ini belum pernah
-     *   dijalankan (cache `auto_gen_overdue_{YYYY-MM}_{userId}`).
+     * Dipanggil dari frontend setiap kali halaman dashboard di-mount, dan
+     * juga otomatis dari `POST /api/login` lewat `ReceivableGenerator`.
+     * - Hanya jalan bila hari ini PERSIS sama dengan tanggal generate
+     *   (`toleransi_tunggakan`, range 1-31). Gate `===`.
      * - Menjalankan command `billing:generate-overdue-transactions`
      *   dengan `--tanggal=today` dan `--force=false`.
      * - Hasil dikembalikan ke frontend untuk ditampilkan di pop up.
      *
-     * Catatan: bila dijalankan berulang pada hari yang sama untuk user
-     * berbeda, command akan skip tagihan yang sudah punya jurnal
-     * overdue_bill (lihat flag `--force=false`). Aman.
+     * Boleh dijalankan BERULANG. Dulu ada flag `auto_gen_overdue_{YYYY-MM}`
+     * (TTL 35 hari) yang mengunci generate untuk seluruh bulan setelah
+     * jalannya yang pertama -- sehingga pelanggan yang lupa somehow, tagihan
+     * yang baru masuk belakangan, atau tagihan yang tadinya salah lalu
+     * diperbaiki, tidak pernah bisa tertangani tanpa intervensi manual.
+     *
+     * Flag itu dihapus. Yang mencegah jurnal dobel adalah command itu
+     * sendiri yang sudah idempotent: tagihan yang sudah punya jurnal
+     * piutang untuk akun kredit tertentu akan dilewati.
      */
     public function autoGenerateOverdue(Request $request)
     {
@@ -500,69 +528,90 @@ class DashboardController extends Controller
         $userId = auth()->id();
         $today = now();
         $todayYmd = $today->toDateString();
-        $todayYm = $today->format('Y-m');
 
-        $setting = Setting::first();
-        $scheduledDay = (int) ($setting?->toleransi_tunggakan ?? 0);
+        // Sama seperti di `checkAutoGenerateOverdue()`: satu sumber angka.
+        $tolerance = app(BillingTolerance::class);
+        $scheduledDay = $tolerance->generateDay();
+        $effectiveDay = $tolerance->effectiveGenerateDay($today);
 
-        // 1) Kalau SOP belum di-set / 0 â†’ tidak ada generate otomatis.
-        if ($scheduledDay < 1 || $scheduledDay > 28) {
+        // 1) Kalau SOP belum di-set / 0 -> tidak ada generate otomatis.
+        if ($scheduledDay < 1) {
             return response()->json([
                 'success' => true,
                 'ran' => false,
                 'reason' => 'Toleransi menunggak belum dikonfigurasi.',
                 'scheduled_day' => $scheduledDay,
+                'effective_day' => $effectiveDay,
                 'today_day' => (int) $today->format('d'),
                 'date' => $todayYmd,
             ]);
         }
 
-        // 2) Hanya jalan di tanggal yang sesuai SOP.
+        // 2) Gate `===`: HANYA pada tanggal yang di-set.
+        //
+        //    `toleransi_tunggakan` = 20 -> generate jalan pada tanggal 20,
+        //    dan TIDAK pada tanggal 19, 21, atau 22.
+        //
+        //    Ini yang diminta: "generate hanya 1 hari di tgl yang di-set,
+        //    bukan hari ini -- tgl itu, tapi hanya tgl itu".
+        //
+        //    Tanggal 29/30/31 ditarik ke hari terakhir bulan: 29 di
+        //    Oktober, 28 di Februari.
+        //
+        //    Konsekuensi yang disengaja: bulan tanpa staff yang login tepat
+        //    pada tanggal itu TIDAK punya jurnal piutang. Penutupnya
+        //    adalah scheduler harian di `routes/console.php`.
         $todayDay = (int) $today->format('d');
-        if ($todayDay !== $scheduledDay) {
+        if ($todayDay !== $effectiveDay) {
             return response()->json([
                 'success' => true,
                 'ran' => false,
-                'reason' => 'Hari ini bukan tanggal generate yang dijadwalkan.',
+                'reason' => 'Hari ini bukan tanggal generate piutang bulan ini.',
+                'scheduled_day' => $scheduledDay,
+                'effective_day' => $effectiveDay,
+                'today_day' => $todayDay,
+                'date' => $todayYmd,
+            ]);
+        }
+
+        /*
+         * 3) Generate TIDAK lagi dikunci per bulan.
+         *
+         *    Versi lama memakai flag `auto_gen_overdue_{YYYY-MM}` (TTL 35
+         *    hari) plus gate tanggal. Efeknya: begitu generate jalan sekali
+         *    pada tanggal 6, SELURUH bulan berikutnya di lokasi itu tidak
+         *    pernah bisa generate lagi.
+         *
+         *    Itu persis skenario yang harus dicegah: ada pelanggan yang
+         *    lupa somehow, ada tagihan yang baru masuk belakangan, atau ada
+         *    tagihan yang tadinya salah lalu diperbaiki admin. Semua itu
+         *    butuh generate ULANG, bukan generate yang terkunci.
+         *
+         *    Yang PEGANG duplikatnya adalah command itu sendiri, yang sudah
+         *    idempotent: setiap tagihan punya paling banyak satu jurnal
+         *    piutang per akun kredit (dicek lewat pasangan
+         *    `reverence_id|account_kredit`). Menjalankan berkali-kali pada
+         *    hari yang sama tidak menghasilkan jurnal dobel.
+         *
+         *    Yang tersisa di sini hanya BUSY-GUARD: mencegah dua proses
+         *    agregasi tabel `amount` berjalan bersamaan (lock wait timeout),
+         *    BUKAN mencegah generate.
+         */
+        $lockKey = app(ReceivableGenerator::class)->lockKey($today);
+
+        if (! Cache::add($lockKey, 1, now()->addMinutes(10))) {
+            return response()->json([
+                'success' => true,
+                'ran' => false,
+                'busy' => true,
+                'reason' => 'Generate sedang berjalan di proses lain. Coba lagi sebentar lagi.',
                 'scheduled_day' => $scheduledDay,
                 'today_day' => $todayDay,
                 'date' => $todayYmd,
             ]);
         }
 
-        // 3) Idempotent per (bulan, lokasi).
-        //
-        //    Kuncinya lewat `TenantCache` sehingga tidak lagi milik user.
-        //    Versi lama memakai `auto_gen_overdue_{bulan}_{userId}`: karena
-        //    seeder demo memakai email yang sama di semua lokasi, `admin@gmail.com`
-        //    punya id 1 di setiap database. Lokasi kedua yang membuka dashboard
-        //    akan membaca flag milik lokasi pertama dan SKIP generate
-        //    tunggakannya sendiri -- tanpa error, hanya tanpa jurnal piutang.
-        //
-        //    Kunci juga tidak lagi menyertakan user: generate tunggakan
-        //    menulis ke tabel `transactions` yang sifatnya GLOBAL per lokasi,
-        //    bukan milik akun yang|time executing. Kalau dua admin login di
-        //    tanggal yang sama, keduanya akan menjalankan proses atas nama
-        //    lokasi yang sama.
-        $runCacheKey = 'auto_gen_overdue_'.$todayYm;
-        $alreadyRan = $this->cache->flagGet($runCacheKey, false);
-
-        if ($alreadyRan) {
-            // Ambil hasil terakhir dari cache notifikasi (kalau ada).
-            $lastNotif = $this->cache->flagGet('overdue_gen_run_summary');
-
-            return response()->json([
-                'success' => true,
-                'ran' => false,
-                'reason' => 'Generate sudah pernah dijalankan bulan ini untuk lokasi ini.',
-                'scheduled_day' => $scheduledDay,
-                'today_day' => $todayDay,
-                'date' => $todayYmd,
-                'previous' => $lastNotif,
-            ]);
-        }
-
-        // 4) Eksekusi command (sama seperti endpoint /tunggakan/generate).
+        // 4) Eksekusi command (sama seperti endpoint /piutang/generate).
         $start = microtime(true);
         $opts = ['--tanggal' => $todayYmd];
 
@@ -570,6 +619,10 @@ class DashboardController extends Controller
             $exit = Artisan::call('billing:generate-overdue-transactions', $opts);
             $output = Artisan::output();
         } catch (\Throwable $e) {
+            // Lepas kunci supaya percobaan berikutnya tidak terkunci hanya
+            // karena satu kegagalan.
+            Cache::forget($lockKey);
+
             Log::error('autoGenerateOverdue gagal: '.$e->getMessage());
 
             return response()->json([
@@ -580,14 +633,13 @@ class DashboardController extends Controller
                 'today_day' => $todayDay,
                 'date' => $todayYmd,
             ], 500);
+        } finally {
+            // Lepas kunci juga setelah sukses: generate berikutnya
+            // (login berikutnya, atau klik ulang tombol) harus BOLEH jalan.
+            Cache::forget($lockKey);
         }
 
         $duration = (int) ((microtime(true) - $start) * 1000);
-
-        // Tandai sudah pernah dijalankan untuk lokasi ini selama 35 hari.
-        // Pakai kunci FLAG (tanpa versi): bump cache yang baru saja
-        // dipanggil di bawah harus tidak ikut menggeser penanda ini.
-        $this->cache->flagPut($runCacheKey, true, now()->addDays(35));
 
         // Reset flag dismiss notifikasi supaya pop up baru bisa muncul.
         $this->cache->flagForget('overdue_gen_dismissed_'.$userId);
@@ -596,26 +648,29 @@ class DashboardController extends Controller
         // sehingga angka tunggakan dan pendapatan berubah.
         $this->cache->bump();
 
-        // Susun payload untuk pop up frontend. Hitung ringkasan dari DB
-        // agar frontend tidak perlu parsing output Artisan.
-        $processed = (int) Transaction::where('reverence_type', 'overdue_bill')
-            ->whereDate('tgl_transaksi', $todayYmd)
-            ->where('account_debet', '1.1.03.01')
-            ->where('account_kredit', '4.1.01.02') // Tunggakan Abodemen
-            ->distinct()
-            ->count('reverence_id');
+        // Susun payload untuk pop up frontend.
+        //
+        // Ringkasan diambil dari command yang baru saja jalan, BUKAN dari
+        // query ulang "jurnal bertanggal hari ini".
+        //
+        // Query lama selalu mengembalikan 0 pada run kedua: semua tagihan
+        // sudah punya jurnal, jadi TIDAK ada jurnal baru bertanggal hari
+        // ini. Padahal command-nya memproses ribuan tagihan. Popup pun
+        // menampilkan "diproses 0" -- angka yang tidak pernah terjadi.
+        //
+        // `ReceivableGenerator::runSummary()` membaca ringkasan yang
+        // ditulis command dari loop pemrosesannya, jadi angkanya selalu
+        // sesuai dengan apa yang benar-benar terjadi.
+        $ringkasan = app(ReceivableGenerator::class)->runSummary($today);
 
-        $processedUsage = (int) Transaction::where('reverence_type', 'overdue_bill')
-            ->whereDate('tgl_transaksi', $todayYmd)
-            ->where('account_debet', '1.1.03.01')
-            ->where('account_kredit', '4.1.01.03') // Tunggakan Pemakaian / denda
-            ->distinct()
-            ->count('reverence_id');
+        $processed = (int) ($ringkasan['jurnal_abodemen'] ?? 0);
+        $processedUsage = (int) ($ringkasan['jurnal_pemakaian'] ?? 0);
+        $processedDenda = (int) ($ringkasan['jurnal_denda'] ?? 0);
 
-        $totalUnpaid = (int) MonthlyBill::where('status', 'unpaid')->count();
-        $totalOverdue = (int) MonthlyBill::where('status', 'unpaid')
-            ->where('due_date', '<', $todayYmd)
-            ->count();
+        $totalUnpaid = (int) ($ringkasan['total_unpaid']
+            ?? MonthlyBill::where('status', 'unpaid')->count());
+        $totalOverdue = (int) ($ringkasan['total_overdue']
+            ?? MonthlyBill::where('status', 'unpaid')->where('due_date', '<', $todayYmd)->count());
 
         $payload = [
             'success' => true,
@@ -629,6 +684,7 @@ class DashboardController extends Controller
             'summary' => [
                 'tagihan_dengan_abodemen_tungakan' => $processed,
                 'tagihan_dengan_pemakaian_tungakan' => $processedUsage,
+                'tagihan_dengan_denda_tungakan' => $processedDenda,
                 'total_unpaid' => $totalUnpaid,
                 'total_overdue' => $totalOverdue,
             ],

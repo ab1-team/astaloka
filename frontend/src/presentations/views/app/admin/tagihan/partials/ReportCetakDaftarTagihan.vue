@@ -2,12 +2,12 @@
   <BaseReportLayout :lembaga="lembaga" :config="payload?.config" :no-kop="true">
     <template v-if="showMeta">
       <div class="page-header">
-        <h2>DAFTAR TAGIHAN PEMAKAIAN AIR</h2>
-        <h2 class="mt-1 mb-0 leading-tight " style="font-size: 19px;">
+        <h2>DAFTAR TAGIHAN PEMAKAIAN</h2>
+        <h2 class="mt-1 mb-0 leading-tight" style="font-size: 19px">
           "TIRTO MULO" BUMDes BANGUN KENCANA
         </h2>
-        <p class="page-subtitle" style="font-size: 14px;">KALURAHAN MULO KAPANEWON WONOSARI</p>
-        <hr class="kop-single-divider">
+        <p class="page-subtitle" style="font-size: 14px">KALURAHAN MULO KAPANEWON WONOSARI</p>
+        <hr class="kop-single-divider" />
       </div>
 
       <div class="meta-grid">
@@ -27,7 +27,6 @@
             <span class="meta-sep">:</span>
             <span class="meta-value">{{ tanggalCetak }}, Pukul {{ jamCetak }}</span>
           </div>
-          
         </div>
         <div class="meta-col meta-col-right">
           <div class="meta-row">
@@ -46,15 +45,15 @@
 
     <table class="data-table data-table-fixed">
       <colgroup>
-        <col style="width: 6%">
-        <col style="width: 23%">
-        <col style="width: 14%">
-        <col style="width: 5%">
-        <col style="width: 7%">
-        <col style="width: 7%">
-        <col style="width: 12%">
-        <col style="width: 14%">
-        <col style="width: 14%">
+        <col style="width: 6%" />
+        <col style="width: 23%" />
+        <col style="width: 14%" />
+        <col style="width: 5%" />
+        <col style="width: 7%" />
+        <col style="width: 7%" />
+        <col style="width: 12%" />
+        <col style="width: 14%" />
+        <col style="width: 14%" />
       </colgroup>
       <thead>
         <tr>
@@ -77,7 +76,10 @@
           <td class="text-center">{{ item.rt || '-' }}</td>
           <td class="text-center">{{ Number(item.meterAwal || 0).toLocaleString('id-ID') }}</td>
           <td class="text-center">{{ Number(item.meterAkhir || 0).toLocaleString('id-ID') }}</td>
-          <td class="text-center">{{ item.pemakaian }} - {{ String(item.status || '').toUpperCase() === 'PAID' ? 'L' : 'B' }}</td>
+          <td class="text-center">
+            {{ item.pemakaian }} -
+            {{ String(item.status || '').toUpperCase() === 'PAID' ? 'L' : 'B' }}
+          </td>
           <td class="text-right col-dibayar">
             {{
               Number(item.paid_amount || 0).toLocaleString('id-ID', {
@@ -99,9 +101,9 @@
           <td colspan="9" class="empty">Tidak ada data pelanggan pada dusun ini.</td>
         </tr>
         <tr v-if="isLastPage && items && items.length > 0" class="total-row">
-          <td colspan="6" class="text-center" style="font-weight: 700;">Total</td>
-          <td class="text-center" style="font-weight: 700;">{{ totalPemakaian }}</td>
-          <td class="text-right col-dibayar" style="font-weight: 700;">
+          <td colspan="6" class="text-center" style="font-weight: 700">Total</td>
+          <td class="text-center" style="font-weight: 700">{{ totalPemakaian }}</td>
+          <td class="text-right col-dibayar" style="font-weight: 700">
             {{
               Number(totalDibayar).toLocaleString('id-ID', {
                 minimumFractionDigits: 2,
@@ -109,7 +111,7 @@
               })
             }}
           </td>
-          <td class="text-right" style="font-weight: 700;">
+          <td class="text-right" style="font-weight: 700">
             {{
               Number(totalTagihan).toLocaleString('id-ID', {
                 minimumFractionDigits: 2,
@@ -126,6 +128,7 @@
 <script setup>
 import { computed } from 'vue'
 import BaseReportLayout from '@/presentations/views/app/admin/pelaporan/layouts/BaseReportLayout.vue'
+import { parseLocalDate } from '@/utils/date'
 
 const props = defineProps({
   payload: { type: Object, default: () => ({}) },
@@ -152,8 +155,18 @@ const totalDibayar = computed(() => {
 })
 
 const bulans = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
 ]
 
 const bulanIndex = (val) => {
@@ -170,16 +183,33 @@ const tanggalCetak = computed(() =>
     day: '2-digit',
     month: 'long',
     year: 'numeric',
-  })
+  }),
 )
 
 const jamCetak = computed(() =>
   now.toLocaleTimeString('id-ID', {
     hour: '2-digit',
     minute: '2-digit',
-  })
+  }),
 )
 
+/**
+ * "Tgl Akhir Pembayaran" pada kop laporan.
+ *
+ * Label ini berarti batas akhir SUDAH BAYAR -- jadi satu hari SEBELUM
+ * tanggal jatuh tempo. Kalau tagihannya jatuh tempo 27 Agustus, maka
+ * pembayaran terakhirnya 26 Agustus.
+ *
+ * Sumbernya `jatuhTempo` milik baris data, jadi tidak ada tanggal yang
+ * diketik manual di sini. Fallback-nya (kalau baris data tidak punya
+ * jatuh tempo) memakai tanggal jatuh tempo dari toleransi tunggakan --
+ * bukan angka hardcode, karena angka hardcode pasti akan menyimpang begitu
+ * admin mengubah "Batas Tagihan Bulanan".
+ *
+ * PERIODE: tagihan pemakaian bulan BERIKUTNYA yang dibayar. Jadi untuk
+ * laporan pemakaian Juli, tagihannya jatuh tempo di Agustus, dan labelnya
+ * menyebut Agustus.
+ */
 const tanggalAkhir = computed(() => {
   const withDue = items.value.find((it) => it.jatuhTempo)
   if (!withDue) {
@@ -187,11 +217,31 @@ const tanggalAkhir = computed(() => {
     const m = bulanIndex(f.bulan)
     const y = parseInt(f.tahun, 10)
     if (!m || !Number.isFinite(y)) return '-'
+
+    // Bulan tagihan = bulan pemakaian + 1 (aturan "dibayar bulan
+    // berikutnya").
     const next = m === 12 ? { m: 1, y: y + 1 } : { m: m + 1, y }
-    return `26 ${bulans[next.m - 1]} ${next.y}`
+
+    // Toleransi tunggakan (tanggal jatuh tempo) dikirim oleh halaman cetak
+    // lewat `payload.toleransiTunggakan`. Kalau tidak ada -- misalnya
+    // halaman dibuka tanpa query -- dipakai angka bawaan 27.
+    const toleransi = Number(props.payload?.toleransiTunggakan || 27)
+    const maxDay = new Date(next.y, next.m, 0).getDate()
+    // Batas akhir bayar = hari toleransi - 1 hari.
+    const day = Math.min(Math.max(1, toleransi - 1), maxDay)
+
+    const d = new Date(next.y, next.m - 1, day)
+    d.setDate(d.getDate() - 1)
+
+    return d.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    })
   }
-  const d = new Date(withDue.jatuhTempo)
-  if (Number.isNaN(d.getTime())) return '-'
+
+  const d = parseLocalDate(withDue.jatuhTempo)
+  if (!d) return '-'
   d.setDate(d.getDate() - 1)
   return d.toLocaleDateString('id-ID', {
     day: '2-digit',
@@ -267,7 +317,7 @@ const tanggalAkhir = computed(() => {
 
 /* Mengatur label sebelah kanan agar rata kiri sejajar vertikal dan memiliki lebar tetap */
 .meta-col-right .meta-label {
-  min-width: 135px; 
+  min-width: 135px;
   display: inline-block;
 }
 
@@ -345,31 +395,46 @@ const tanggalAkhir = computed(() => {
   break-before: avoid;
 }
 
-/* Page-break setelah .report-page */
+/* Page-break setelah .report-page
+   CATATAN: pemenggalan halaman saat print dilakukan oleh .report-page-wrap
+   (parent-nya) di cetakDaftarTagihan.vue. Kalau break-after juga dipasang
+   di sini, Chrome menghasilkan satu halaman kosong di antara setiap halaman
+   laporan karena ada dua page-break berturut-turut. */
 .report-page,
 .report-page.surat-page {
-  page-break-after: always;
-  break-after: page;
+  page-break-after: auto;
+  break-after: auto;
 }
 
 .report-page:last-child {
   page-break-after: auto;
   break-after: auto;
 }
+
+/* Margin cetak & preview.
+   Padding WAJIB sama antara layar dan print. Kalau preview memakai padding
+   lebih besar (mis. bawaan BaseReportLayout 60px/90px) sementara print
+   memakai 12mm/15mm, area cetak di preview jadi lebih sempit -> baris
+   terakhir tabel terpotong saat ganti halaman di tampilan preview.
+
+   Rule ini scoped (punya [data-v-...]) jadi hanya berlaku untuk halaman
+   laporan daftar tagihan ini, tidak mengubah laporan lain. */
+.report-page.surat-page {
+  padding: 12mm 15mm !important;
+}
 </style>
 
 <style>
-.report-page.surat-page {
-  padding: 60px !important;
-}
-
+/* Ukuran halaman cetak.
+   `height: auto` (bukan 297mm) supaya baris tabel terakhir tidak
+   terpotong -- halaman tetap minimal setinggi A4 lewat `min-height`,
+   tapi isinya boleh lebih panjang dan tidak dipotong diam-diam.
+   Padding TIDAK diatur di sini supaya tidak bentrok dengan aturan
+   scoped `padding: 12mm 15mm` di atas. */
 @media print {
-  .report-page.surat-page {
-    padding: 0 !important;
-  }
   .report-page.surat-page.size-a4.portrait {
     width: 210mm !important;
-    height: 297mm !important;
+    height: auto !important;
     min-height: 297mm !important;
     margin: 0 !important;
   }

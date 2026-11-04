@@ -366,6 +366,42 @@
   box-shadow: var(--card-shadow-base);
 }
 
+/*
+ * CARD YANG SEDANG MEMBUKA DROPDOWN HARUS NAIK DI ATAS ISI HALAMAN.
+ *
+ * Gejalanya: dropdown "Pilih Teknisi" dibuka, tapi input "Cari..." milik
+ * tabel di bawahnya tetap terlihat -- bahkan MENAMPILKAN DIRI DI DEPAN
+ * dropdown, padahal dropdown itu z-index-nya 9999.
+ *
+ * Sebabnya bukan z-index dropdown yang terlalu kecil. Dropdown itu anak dari
+ * `ContentCard`, dan card yang `hoverable` mendapat `transform:
+ * translateY(-2px)` ketika kursor lewat di atasnya. `transform` otomatis
+ * membuat STACKING CONTEXT: sejak saat itu z-index dropdown hanya dibandingkan
+ * dengan isi card itu sendiri, bukan dengan halaman.
+ *
+ * Card (z-index auto) lalu bersaing dengan `DataTable` di bawahnya di level
+ * yang sama, dan di level yang sama yang menang adalah URUTAN DOM. Tabel
+ * ditulis SESUDAH card filter di template, jadi tabel menimpa dropdown.
+ *
+ * Diperbaiki dengan menaikkan card-nya sendiri -- bukan dengan menaikkan
+ * z-index dropdown, karena z-index dropdown tidak pernah keluar dari card
+ * yang sudah jadi stacking context.
+ *
+ * `:has(.select-dropdown)` (bukan `:has(.custom-select-search)`) dipakai
+ * karena `.select-dropdown` hanya ADA di DOM ketika dropdown-nya benar-benar
+ * terbuka (`v-if="isOpen"` di `SelectSearch.vue`). Kalau yang diperiksa
+ * selalu ada, card filter akan terus meninggi dan ikut menutupi isi lain di
+ * halaman yang tidak ada hubungannya dengan dropdown.
+ *
+ * Nilainya 30: di atas isi halaman biasa (tabel, kartu lain), tapi masih di
+ * bawah topnav (50), sub-header (40), dan overlay PrimeVue (10000) --
+ * dropdown tidak boleh menutupi navigasi.
+ */
+.content-card:has(.select-dropdown) {
+  position: relative;
+  z-index: 30;
+}
+
 .content-card__header {
   padding-bottom: 0.5rem;
   margin-bottom: 0.5rem;
@@ -373,6 +409,22 @@
 
 .content-card__body {
   flex: 1;
+
+  /*
+  | `min-height: 0` wajib, bukan tambahan.
+  |
+  | `.content-card__body` adalah flex item di kolom dengan `flex: 1`. Flex item
+  | punya `min-height: auto` secara default, yang berarti ia TIDAK BOLEH
+  | menyusut di bawah tinggi isinya sendiri. Kalau isi card lebih tinggi dari
+  | ruang yang tersedia, body akan memaksa card tumbuh, bukan sebaliknya --
+  | sehingga `max-height` / `h-full` di card tidak pernah ditegakkan.
+  |
+  | Di popup dashboard, efeknya: tabel di dalam card melebar melewati area
+  | panel, lalu terpotong `overflow-hidden`, dan tidak ada scrollbar yang
+  | muncul sama sekali. Gejalanya: "kepaksa, cuma segitu datanya, ngak bisa
+  | discroll".
+  */
+  min-height: 0;
 }
 
 .content-card__footer {

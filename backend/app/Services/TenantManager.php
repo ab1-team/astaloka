@@ -584,31 +584,124 @@ class TenantManager
      * Aman dipanggil berulang: `updateOrInsert` menulis ulang isi yang sama,
      * jadi lokasi yang identitasnya sudah dikoreksi manual tidak ikut
      * ditimpa kalau perintah ini dijalankan tanpa tujuan eksplisit.
+     *
+     * TANGGAL GENERATE PIUTANG TIDAK DIISI DI SINI
+     * ---------------------------------------------
+     *
+     * `toleransi_tunggakan` TIDAK boleh diisi di sini -- dan dulu memang
+     * diisi, dengan `invoice_grace_months`, yang satuanannya BULAN
+     * (nilai bawaan 1).
+     *
+     * Dua satuan yang berbeda mengisi satu kolom yang sama:
+     *
+     *   - `invoice_grace_months` : BULAN. Masa tenggang tagihan langganan
+     *     ASTALOKA ke lokasi.
+     *   - `toleransi_tunggakan` : TANGGAL dalam bulan (1-31). Tanggal
+     *     generate jurnal piutang tunggakan.
+     *
+     * Yang terjadi akibatnya: setiap kali perintah ini dijalankan
+     * (`tenancy:reseed-master --identity`, atau provisioning lokasi baru),
+     * tanggal generate yang sudah diset admin DITIMPA jadi 1.
+     *
+     * Gejalanya persis seperti keluhan yang diterima: tanggal generate sudah
+     * diset 28, tapi generate tidak pernah berjalan pada tanggal itu -- karena
+     * nilai 28 sudah hilang jauh sebelum tanggal 28 tiba. Dan karena
+     * `toleransi_tunggakan` juga dipakai sebagai batas tagihan unpaid
+     * sebelum suspend, batas itu ikut bergeser tanpa disadari.
+     *
+     * Kolomnya TIDAK ikut ditulis di sini, sehingga nilai yang sudah diset
+     * admin tidak pernah tertimpa. Untuk lokasi yang belum punya nilai
+     * sama sekali, kolom itu dibiarkan memakai nilai bawaan database (0) --
+     * dan 0 berarti "belum dijadwalkan": `BillingTolerance::generateDay()`
+     * mengubahnya jadi 0, sehingga generate TIDAK berjalan sama sekali sampai
+     * admin mengisinya lewat halaman SOP. Itu lebih aman daripada diam-diam
+     * memakai angka yang tidak pernah dipilih siapa pun.
+     *
+     * Nilai bawaan untuk lokasi BARU tidak diambil dari
+     * `invoice_grace_months` -- satu-satunya angka yang memang batas
+     * tagihan menunggak ada di `SettingsSeeder` (`3`), dan itu pun hanya
+     * berlaku kalau seeder master-nya ikut jalan. Provisionsa lokasi baru
+     * menjalankan `seedTenantDatabase()` sebelum `applyTenantIdentity()`,
+     * jadi baris `settings` sudah ada dengan nilai `3` dari situ.
+     *
+     * TAPI supaya titik ini tidak bergantung pada urutan pemanggilan
+     * perintah, nilai bawaannya ditulis eksplisit -- hanya kalau baris
+     * `settings` belum ada sama sekali. Kalau barisnya sudah ada, nilai
+     * `toleransi_tunggakan` yang ada di sana dibiarkan apa adanya.
+     *
+     * CATATAN SOAL PENGGABUNGAN DUA TANGGAL
+     * -------------------------------------
+     *
+     * `batas_tagihan` dan `toleransi_tunggakan` sekarang jadi SATU angka
+     * tanggal (lihat `BillingTolerance::tanggal()`). Jadi waktu baris
+     * `settings` baru dibuat di sini, keduanya diisi dengan angka yang
+     * sama -- 10, sama dengan `SettingsSeeder`.
      */
     public function applyTenantIdentity(Tenant $tenant): void
     {
         $this->runFor($tenant, function () use ($tenant) {
-            DB::connection(self::CONNECTION)->table('settings')->updateOrInsert(
-                ['id' => 1],
-                [
-                    'key' => 'sop',
-                    'value' => '',
-                    'nama' => $tenant->nama,
-                    'nama_lembaga' => $tenant->nama_lembaga ?: $tenant->nama,
-                    'alamat' => $tenant->alamat,
-                    'email' => $tenant->email,
-                    'telepon' => $tenant->telepon,
-                    'domain' => $tenant->domain,
-                    'status_pembayaran' => true,
-                    'batas_tagihan' => 10,
-                    'toleransi_tunggakan' => (int) config('tenancy.invoice_grace_months', 1),
-                    'logo' => null,
-                    'pesan_tagihan' => 'Yth. {customer}, tagihan Anda bulan ini sebesar {jumlah_tagihan}. Mohon segera melakukan pembayaran sebelum jatuh tempo. Terima kasih.',
-                    'pesan_pembayaran' => 'Yth. {customer}, pembayaran tagihan sebesar {tagihan} telah kami terima. Terima kasih.',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ],
-            );
+            $tabel = DB::connection(self::CONNECTION)->table('settings');
+
+            $sudahAda = $tabel->where('id', 1)->exists();
+
+            $data = [
+                'key' => 'sop',
+                'value' => '',
+                'nama' => $tenant->nama,
+                'nama_lembaga' => $tenant->nama_lembaga ?: $tenant->nama,
+                'alamat' => $tenant->alamat,
+                'email' => $tenant->email,
+                'telepon' => $tenant->telepon,
+                'domain' => $tenant->domain,
+                'status_pembayaran' => true,
+                'batas_tagihan' => 10,
+                'logo' => null,
+                'pesan_tagihan' => 'Yth. {customer}, tagihan Anda bulan ini sebesar {jumlah_tagihan}. Mohon segera melakukan pembayaran sebelum jatuh tempo. Terima kasih.',
+                'pesan_pembayaran' => 'Yth. {customer}, pembayaran tagihan sebesar {tagihan} telah kami terima. Terima kasih.',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+
+            /*
+             * Baris `settings` yang sudah ada: HANYA kolom identitas lokasi
+             * yang ditulis ulang. `batas_tagihan`,
+             * `toleransi_tunggakan`, dan `billing_unpaid_limit` -- tiga hal
+             * yang diatur admin lewat halaman SOP -- TIDAK ikut sentuh.
+             */
+            if ($sudahAda) {
+                $tabel->where('id', 1)->update([
+                    'nama' => $data['nama'],
+                    'nama_lembaga' => $data['nama_lembaga'],
+                    'alamat' => $data['alamat'],
+                    'email' => $data['email'],
+                    'telepon' => $data['telepon'],
+                    'domain' => $data['domain'],
+                    'updated_at' => $data['updated_at'],
+                ]);
+
+                return;
+            }
+
+            /*
+             * Baris `settings` belum ada sama sekali: baris baru dibuat
+             * lengkap, dengan nilai bawaan yang SAH untuk tanggal generate
+             * (10 -- angka yang sama dengan `SettingsSeeder`).
+             *
+             * `batas_tagihan` dan `toleransi_tunggakan` diisi DENGAN ANGKA
+             * YANG SAMA, karena keduanya sudah digabung jadi satu angka
+             * tanggal di halaman SOP. Kalau keduanya diisi berbeda, lokasi
+             * baru akan langsung punya dua tanggal yang saling
+             * bertentangan -- persis masalah yang penggabungan ini
+             * diselesaikan.
+             *
+             * `billing_unpaid_limit` (batas tunggakan dalam BULAN) juga
+             * diisi 3, supaya lokasi baru punya titik awal yang sama dengan
+             * lokasi yang installation-nya sudah jalan.
+             */
+            $tabel->insert($data + [
+                'toleransi_tunggakan' => 10,
+                'billing_unpaid_limit' => 3,
+            ]);
         });
     }
 }

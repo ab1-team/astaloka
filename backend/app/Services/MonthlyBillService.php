@@ -3,10 +3,10 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Models\InstallationPackage;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
 use App\Models\Setting;
-use App\Models\WaterTariffBlock;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -85,7 +85,7 @@ class MonthlyBillService
 
             $package = $customer->ticket->package;
 
-            $usage_charge = $this->calculateTariff($usage, $package->id);
+            $usage_charge = $this->calculateTariff($usage, $package);
 
             $abodemen = $package->monthly_abodemen;
 
@@ -113,7 +113,7 @@ class MonthlyBillService
             $isNihilLegitimate = $usage <= 0 && $total <= 0;
 
             if ($usage > 0 && $total <= 0) {
-                Log::warning('Tagihan Rp 0 padahal pelanggan memakai air — konfigurasi paket kemungkinan bermasalah', [
+                Log::warning('Tagihan Rp 0 padahal pelanggan memakai layanan — konfigurasi paket kemungkinan bermasalah', [
                     'customer_id' => $reading->customer_id,
                     'package_id' => $package->id,
                     'usage_m3' => $usage,
@@ -149,35 +149,28 @@ class MonthlyBillService
         ];
     }
 
-    private function calculateTariff($usage, $package_id)
+    /**
+     * Hitung biaya pemakaian.
+     *
+     * RUMUSNYA FLAT: `pemakaian × harga paket per m³` -- sama dengan
+     * aplikasi LAMA (dibuktikan dari 25.569 baris pemakaian yang dihitung
+     * aplikasi di `pamsides_dump.usages`, di mana rumus flat cocok 25.540
+     * baris (99,89%) sedangkan rumus progresif hanya 11.832 baris (46,27%)).
+     *
+     * Blok tarif dipakai untuk MEMILIH harga per m³, bukan untuk membagi
+     * pemakaian jadi beberapa bagian dengan harga berbeda. Blok pertama
+     * yang batas atasnya (inklusif) sudah >= pemakaian yang dipakai.
+     *
+     * CATATAN KONSISTENSI: rumus ini memanggil
+     * `BillingService::calculateUsageCharge()` -- bukan menyalin logikanya.
+     * Dulu logika ini ditulis ulang (disalin) di sini, dan dua salinan itu
+     * bisa saja berbeda satu rupiah tanpa ada yang sadar. Sekarang ada
+     * SATU tempat yang menentukan rumusnya, jadi "tagihan berbeda antar
+     * lokasi" tidak mungkin terjadi karena salinan yang tidak sinkron.
+     */
+    private function calculateTariff($usage, InstallationPackage $package): float
     {
-        $blocks = WaterTariffBlock::where('package_id', $package_id)
-            ->orderBy('usage_min_m3')
-            ->get();
-
-        if ($blocks->isEmpty()) {
-            return 0;
-        }
-
-        $remaining = $usage;
-        $total = 0;
-
-        foreach ($blocks as $block) {
-            if ($remaining <= 0) {
-                break;
-            }
-
-            $min = (int) $block->usage_min_m3;
-            $max = $block->usage_max_m3 !== null ? (int) $block->usage_max_m3 : PHP_INT_MAX;
-
-            $range = max(0, $max - $min);
-            $used = min($remaining, $range);
-
-            $total += $used * (float) $block->price_per_m3;
-            $remaining -= $used;
-        }
-
-        return $total;
+        return app(BillingService::class)->calculateUsageCharge($package, (float) $usage);
     }
 
     private function calculatePenalty($customer_id, $bulan, $tahun, $package)
@@ -196,12 +189,14 @@ class MonthlyBillService
         return 0;
     }
 
+    /**
+     * Tanggal jatuh tempo tagihan untuk satu periode pemakaian.
+     *
+     * Menuju ke `BillingDueDate` supaya rumusnya cuma ada di satu tempat.
+     * Lihat service itu untuk penjelasan aturan "dibayar bulan berikutnya".
+     */
     public function computeDueDate(int $year, int $month, int $day = 27): string
     {
-        $carbon = Carbon::create($year, $month, 1);
-        $maxDay = $carbon->daysInMonth;
-        $day = min($day, $maxDay);
-
-        return $carbon->setDay($day)->toDateString();
+        return BillingDueDate::compute($year, $month, $day);
     }
 }

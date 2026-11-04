@@ -1,11 +1,51 @@
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useRoute, useRouter } from 'vue-router'
 
 import { useInstalasiStore } from '@/stores/instalasiStore'
 import { INSTALASI_MENU_LIST } from '@/types/instalasiStatus'
+import ticketService from '@/services/ticket.service'
+import { filterRowsBySearch } from '@/utils/instalasiStatus'
+import { showErrorToast, showSuccessToast } from '@/utils/swal'
 
 const ALLOWED_FILTERS = INSTALASI_MENU_LIST.map((m) => m.key)
+
+/**
+ * Path halaman cetak status instalasi.
+ *
+ * Sengaja DIPISAH dari `/app/instalasi/status` (path aslinya): halaman
+ * cetak memakai kerangka preview sendiri -- tanpa sidebar, dengan toolbar
+ * zoom dan thumbnail -- persis seperti halaman cetak modul lain
+ * (`/app/pelaporan/preview`, `/usages/cetak_*`).
+ */
+export const CETAK_STATUS_PATH = '/app/instalasi/status/cetak'
+
+/**
+ * Ambil pesan error dari balasan blob.
+ *
+ * Request ekspor memakai `responseType: 'blob'`, jadi ketika backend
+ * membalas JSON (mis. 422 kategori tidak dikenal, atau 500), body-nya
+ * sampai di browser sebagai Blob -- bukan objek biasa. Tanpa dibaca ulang
+ * sebagai teks, `error.response.data.message` selalu `undefined` dan user
+ * hanya melihat pesan generik.
+ */
+const pesanDariBlob = async (data) => {
+  if (!data) return ''
+  if (typeof data === 'string') return data
+
+  try {
+    if (typeof data.text === 'function') {
+      const teks = await data.text()
+      const json = JSON.parse(teks)
+      return json?.message || json?.error || teks
+    }
+  } catch {
+    // Body blob bukan JSON (mis. halaman error HTML dari proxy).
+    return 'Gagal mengekspor data. Silakan coba lagi.'
+  }
+
+  return ''
+}
 
 export function useInstalasiStatus() {
   const store = useInstalasiStore()
@@ -109,16 +149,15 @@ export function useInstalasiStatus() {
 
   const currentData = computed(() => store.dataMap[store.activeStatus] || [])
 
-  const filteredData = computed(() => {
-    if (!store.searchQuery) return currentData.value
-    const q = store.searchQuery.toLowerCase()
-    return currentData.value.filter(
-      (item) =>
-        item.name.toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q) ||
-        item.address.toLowerCase().includes(q),
-    )
-  })
+  /*
+   * Baris yang tampil setelah pencarian.
+   *
+   * Memakai `filterRowsBySearch` dari `utils/instalasiStatus.js` -- helper
+   * yang sama dengan yang dipakai backend saat ekspor Excel. Kalau
+   * aturannya berbeda, hasil ekspor akan berisi baris yang tidak terlihat
+   * di layar (atau sebaliknya), dan user mengira salah satu dari keduanya.
+   */
+  const filteredData = computed(() => filterRowsBySearch(currentData.value, store.searchQuery))
 
   const totalPages = computed(() =>
     Math.max(1, Math.ceil(filteredData.value.length / store.perPage)),
@@ -167,8 +206,116 @@ export function useInstalasiStatus() {
     },
   )
 
-  const exportData = () => { /* debug log removed */ }
-  const printData = () => { /* debug log removed */ }
+  /*
+   * Status request ekspor -- dipakai tombol "Export Excel" untuk
+   * menampilkan spinner di tombolnya.
+   */
+  const isExporting = ref(false)
+
+  /**
+   * Nama file hasil ekspor.
+   *
+   * Dipakai kalau server tidak mengirim header `Content-Disposition`
+   * (mis. lewat proxy yang membuang header). Formatnya sama dengan yang
+   * dibuat backend, dan selalu ASCII supaya aman di semua sistem file.
+   */
+  const namaFileEkspor = () => {
+    const label = activeLabel.value || 'Semua'
+    const slug = label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+
+    return `Status_Instalasi_${slug || 'semua'}_${new Date().toISOString().slice(0, 10)}.xlsx`
+  }
+
+  /**
+   * Export data status instalasi ke file Excel.
+   *
+   * Filenya dibuat DI BACKEND (`GET /installation-tickets/export-status`)
+   * memakai PhpSpreadsheet, jadi hasilnya file `.xlsx` sungguhan dengan
+   * kop surat, border, dan pengaturan cetak -- bukan CSV yang disamarkan
+   * dengan ekstensi `.xlsx`.
+   *
+   * Parameter yang dikirim PERSIS sama dengan yang sedang aktif di
+   * layar: kategori tab dan kata kunci pencarian. Backend memetakan
+   * kategori ke status mentah dan menyaring dengan tiga field yang sama
+   * (nama, kode instalasi, alamat), jadi "yang terlihat di layar" =
+   * "yang keluar di file".
+   */
+  const exportData = async () => {
+    if (isExporting.value) return
+
+    isExporting.value = true
+
+    try {
+      const params = { kategori: store.activeStatus }
+      const pencarian = (store.searchQuery || '').trim()
+
+      if (pencarian !== '') {
+        params.search = pencarian
+      }
+
+      const blob = await ticketService.exportStatusExcel(params)
+
+      if (!blob) {
+        throw new Error('File ekspor kosong.')
+      }
+
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+
+      link.href = url
+      link.download = namaFileEkspor()
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+
+      // Object URL disimpan di memori browser sampai di-revoke. Kalau
+      // tidak, tiap ekspor meninggalkan salinan file yang tidak pernah
+      // dibebaskan -- dan mengunduh berkali-kali bisa membuat tab berat.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+
+      showSuccessToast('File Excel berhasil diunduh.')
+    } catch (error) {
+      const pesan = await pesanDariBlob(error?.response?.data)
+
+      showErrorToast({
+        message: pesan || error?.message || 'Gagal mengekspor data status instalasi.',
+      })
+    } finally {
+      isExporting.value = false
+    }
+  }
+
+  /**
+   * Buka halaman cetak status instalasi di tab baru.
+   *
+   * Halaman cetaknya menerima `filter` (kategori tab) dan `q` (kata kunci
+   * pencarian) lewat query string, lalu memuat datanya sendiri. Jadi
+   * cetakan selalu berisi SELURUH baris yang lolos filter -- bukan hanya
+   * halaman tabel yang sedang terlihat.
+   */
+  const printData = () => {
+    const url = router.resolve({
+      path: CETAK_STATUS_PATH,
+      query: {
+        filter: store.activeStatus,
+        q: store.searchQuery || '',
+      },
+    }).href
+
+    const newTab = window.open(url, '_blank')
+
+    if (!newTab) {
+      showErrorToast({
+        message: 'Popup diblokir browser. Izinkan popup untuk membuka halaman cetak.',
+      })
+      return
+    }
+
+    newTab.focus?.()
+  }
 
   return {
     activeStatus: computed({
@@ -208,6 +355,7 @@ export function useInstalasiStatus() {
     goToPage,
     exportData,
     printData,
+    isExporting,
     fetchData: store.fetchData,
     fetchError: computed(() => store.fetchError),
     isLoading: computed(() => store.isLoading),

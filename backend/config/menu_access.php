@@ -108,21 +108,21 @@ return [
     |
     */
     'jabatan_roles' => [
-        'admin'       => 'admin',
-        'direktur'    => 'admin',
-        'sekretaris'  => 'admin',
-        'bendahara'   => 'admin',
-        'pengawas'    => 'admin',
-        'pos bayar'   => 'admin',
-        'ketua'       => 'admin',
+        'admin' => 'admin',
+        'direktur' => 'admin',
+        'sekretaris' => 'admin',
+        'bendahara' => 'admin',
+        'pengawas' => 'admin',
+        'pos bayar' => 'admin',
+        'ketua' => 'admin',
 
-        'surveyor'    => 'surveyor',
-        'pelanggan'   => 'pelanggan',
+        'surveyor' => 'surveyor',
+        'pelanggan' => 'pelanggan',
 
         // Satu tempat untuk cater dan teknisi.
-        'teknisi'     => 'teknisi',
-        'cater'       => 'teknisi',
-        'caters'      => 'teknisi',
+        'teknisi' => 'teknisi',
+        'cater' => 'teknisi',
+        'caters' => 'teknisi',
     ],
 
     /*
@@ -214,10 +214,22 @@ return [
     |          `admin` hanya melihat entri bertanda `admin`; jabatan Teknisi
     |          hanya melihat entri bertanda `teknisi`.
     |
-    | `hidden` Tampil di halaman Hak Akses (supaya bisa dicentang), tapi
-    |          tidak dirender sebagai entri menu baru di sidebar. Dipakai
-    |          untuk halaman yang sudah ada di router dan diakses dari
-    |          dashboard, seperti Arsip.
+    | `hidden` TIDAK tampil di sidebar DAN TIDAK tampil di daftar centang
+    |          Hak Akses -- jadi tidak bisa dicabut dari panel pusat. Dipakai
+    |          untuk halaman yang tetap hidup tapi tidak boleh jadi pilihan.
+    |
+    |          Bandingkan dengan `tanpa_sidebar`: yang itu tidak tampil di
+    |          sidebar, TETAP tampil di daftar centang, dan tetap bisa
+    |          dicabut -- jadi endpointnya masih bisa ditutup per jabatan.
+    |          Perbedaannya bukan soal tampilan, tapi soal APAKAH hak aksesnya
+    |          masih bisa dicabut.
+    |
+    | `terkunci` berarti menu ini TIDAK PERNAH bisa dicabut, dan checkbox-nya
+    |          mati di panel pusat. Dipakai untuk "Dashboard" milik teknisi:
+    |          halaman tujuan setelah login, sama seperti "Beranda". Kalau
+    |          boleh dicabut, `allowsPath()` akan menolak `/app/teknisi` dan
+    |          router guard akan mengarahkan ke `/app/teknisi` juga -- redirect
+    |          ke dirinya sendiri.
     |
     */
     'items' => [
@@ -241,46 +253,46 @@ return [
 
         // ---- Pengaturan -------------------------------------------------
         [
-            'key'   => 'settings.sop',
+            'key' => 'settings.sop',
             'label' => 'Personalisasi (SOP)',
             'group' => 'Pengaturan',
-            'icon'  => 'sliders',
-            'path'  => '/app/settings/personalisasi-sop',
+            'icon' => 'sliders',
+            'path' => '/app/settings/personalisasi-sop',
             // `settings/sop` dipakai BillingForm (semua role) dan Tagihan
             // Bulanan lewat settingsStore -- bukan cuma halaman SOP.
             // Menguncinya akan merusak form pembayaran di halaman yang hak
             // aksesnya justru TIDAK dicabut.
-            'api'   => [],
+            'api' => [],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'settings.coa',
+            'key' => 'settings.coa',
             'label' => 'Chart of Account (CoA)',
             'group' => 'Pengaturan',
-            'icon'  => 'sitemap',
-            'path'  => '/app/settings/coa',
+            'icon' => 'sitemap',
+            'path' => '/app/settings/coa',
             // Hanya `accounts/by-level` yang dipanggil halaman ini.
             // `GET /accounts` dipakai form Jurnal Umum juga, jadi tidak
             // ikut dikunci -- memotongnya akan membuat dropdown akun di
             // Jurnal Umum kosong.
-            'api'   => ['accounts/by-level'],
+            'api' => ['accounts/by-level'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'settings.package',
+            'key' => 'settings.package',
             'label' => 'Paket & Tarif Layanan',
             'group' => 'Pengaturan',
-            'icon'  => 'boxes',
-            'path'  => '/app/kelas-biaya',
+            'icon' => 'boxes',
+            'path' => '/app/kelas-biaya',
             // `installation-packages` juga dibutuhkan Daftar Instalasi dan
             // Registrasi, jadi ketiga menunya ikut menyebutnya. Kalau hanya
             // menu ini yang menyebutnya, mencabut menu ini akan ikut
             // membuat dua halaman lain kehilangan dropdown paketnya --
             // padahal dua halaman itu tetap terlihat karena dicentang.
-            'api'   => ['installation-packages'],
+            'api' => ['installation-packages'],
             'roles' => ['admin'],
         ],
-/*
+        /*
  * Entri `settings.hak-akses` DIHAPUS, karena halamannya pindah ke panel
  * pusat (`/central/lokasi`, accordion per baris tenant).
  *
@@ -306,11 +318,11 @@ return [
 
         // ---- Basis Data -------------------------------------------------
         [
-            'key'   => 'master.pelanggan',
+            'key' => 'master.pelanggan',
             'label' => 'Pelanggan',
             'group' => 'Basis Data',
-            'icon'  => 'users',
-            'path'  => '/app/data-pelanggan',
+            'icon' => 'users',
+            'path' => '/app/data-pelanggan',
             // `/customers` dipakai halaman Instalasi juga
             // (`useInstalasiActions` menghapus pelanggan dari situ), jadi
             // kedua menunya ikut menyebutnya. Tanpa itu, mencabut menu ini
@@ -328,68 +340,68 @@ return [
             // `allowedKeysFor()` membuang menu milik role lain dari daftar
             // user, jadi admin yang jabatan-nya dibatasi ikut kehilangan
             // kemampuan mengelola laporan gangguan.
-            'api'   => ['customers', 'trouble-reports'],
+            'api' => ['customers', 'trouble-reports'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'master.desa',
+            'key' => 'master.desa',
             'label' => 'Desa',
             'group' => 'Basis Data',
-            'icon'  => 'map-marker-alt',
-            'path'  => '/app/data-desa',
+            'icon' => 'map-marker-alt',
+            'path' => '/app/data-desa',
             // `registrasi.vue` memakainya untuk dropdown desa, jadi kedua
             // menunya ikut menyebutnya. Tanpa itu, mencabut menu Desa akan
             // membuat dropdown desa di form registrasi kosong sementara
             // halaman registrasi sendiri tetap terbuka.
-            'api'   => ['villages'],
+            'api' => ['villages'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'master.instalasi',
+            'key' => 'master.instalasi',
             'label' => 'Daftar Instalasi',
             'group' => 'Basis Data',
-            'icon'  => 'building',
-            'path'  => '/app/dataInstalasi',
+            'icon' => 'building',
+            'path' => '/app/dataInstalasi',
             // `installation-packages` dipakai `useDataInstalasi` untuk
             // nama paket, jadi ikut disebut agar penolakannya konsisten
             // dengan menu Paket & Tarif.
-            'api'   => ['installation-tickets', 'installation-packages'],
+            'api' => ['installation-tickets', 'installation-packages'],
             'roles' => ['admin'],
         ],
 
         // ---- Master Instalasi -------------------------------------------
         [
-            'key'   => 'instalasi.register',
+            'key' => 'instalasi.register',
             'label' => 'Registrasi Instalasi',
             'group' => 'Master Instalasi',
-            'icon'  => 'file-signature',
-            'path'  => '/app/instalasi/register',
-            'api'   => ['installation-tickets', 'villages', 'installation-packages'],
+            'icon' => 'file-signature',
+            'path' => '/app/instalasi/register',
+            'api' => ['installation-tickets', 'villages', 'installation-packages'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'instalasi.status',
+            'key' => 'instalasi.status',
             'label' => 'Status Instalasi',
             'group' => 'Master Instalasi',
-            'icon'  => 'clipboard-list',
-            'path'  => '/app/instalasi/status',
+            'icon' => 'clipboard-list',
+            'path' => '/app/instalasi/status',
             // `customers` ikut disebut karena `useInstalasiActions`
             // menghapus pelanggan dari halaman ini.
-            'api'   => ['installation-tickets', 'customers'],
+            'api' => ['installation-tickets', 'customers'],
             'roles' => ['admin'],
         ],
         /*
          * Menu TEKNISI. `admin` sengaja TIDAK ada di `roles`.
          *
          * Sebelumnya ikut berperan, dan itu membuat admin melihat menu
-         * "Input Pemakaian Air" di group "Master Instalasi" -- halaman
+         * "Input Pemakaian" di group "Master Instalasi" -- halaman
          * milik teknisi. Akibatnya admin punya DUA halaman untuk satu
          * pekerjaan yang sama:
          *
          *   - `/app/instalasi/teknisiPemakaianAir` (menu ini), tanpa
          *     filter cater, jadi admin yang sebenarnya mau menilai
          *     satu cater saja harus tahu lebih dulu dia pencatat yang mana.
-         *   - `/app/instalasi/pemakaian-air` (`tagihan.input` di bawah),
+         *   - `/app/instalasi/pemakaian` (`tagihan.input` di bawah),
          *     yang memang punya filter "Pilih Teknisi" dan menolak memuat
          *     data sebelum cater dipilih.
          *
@@ -398,23 +410,39 @@ return [
          * berdasarkan `roles`, jadi admin tidak lagi melihat entri ini
          * tanpa perlu menyentuh halamannya sama sekali.
          *
-         * `label` juga diubah ke "Input Pemakaian": kata "Air" tidak
-         * diperlukan di sidebar karena setiap menu di grup ini soal air,
-         * dan "Input Pemakaian Air" hanya berdampingan dengan "Input
-         * Tagihan" milik admin -- yang buat orang membacanya jadi dua
-         * menu yang terdengar sama.
+         * LABEL: "Input Pemakaian Air" -- mengikuti desain role teknisi
+         * yang memakai warna cyan (lihat `views/app/teknisi/*`).
+         *
+         * Dahulu labelnya "Input Pemakaian" dengan alasan "air" mengunci
+         * satu jenis usaha. Alasan itu benar untuk TEKS UMUM, tapi menu ini
+         * adalah menu TEKNISI: halaman-halaman teknisi semuanya berlabel
+         * "air" dan berwarna cyan (Pencatatan Pemakaian Air, Daftar Tagihan
+         * Air, Laporan Hasil Instalasi). Menu yang kehilangan kata "air"
+         * sementara halaman-halamannya masih memakainya = satu role dengan
+         * dua bahasa.
+         *
+         * `group` juga dikembalikan ke "Master Instalasi" supaya SUSUNAN
+         * sidebar teknisi sama persis dengan desain per-role yang diminta:
+         * group "Master Instalasi" berisi satu anak.
+         *
+         * `group_tetap` mempertahankan group itu apa adanya. Tanpa flag
+         * itu, `SidebarView` mem-flatten group satu-anak menjadi link
+         * langsung -- hasilnya "Input Pemakaian Air" sebagai menu tingkat
+         * atas. Itu BEDA dari desain per-role, di mana teknisi membuka
+         * group "Master Instalasi" lalu memilih anaknya.
          */
         [
-            'key'   => 'instalasi.pemakaian',
-            'label' => 'Input Pemakaian',
+            'key' => 'instalasi.pemakaian',
+            'label' => 'Input Pemakaian Air',
             'group' => 'Master Instalasi',
-            'icon'  => 'faucet',
-            'path'  => '/app/instalasi/teknisiPemakaianAir',
+            'icon' => 'faucet',
+            'path' => '/app/instalasi/teknisiPemakaianAir',
             // `meter-readings/pending` dan `POST /meter-readings` dipakai
             // PemakaianAir (teknisi) DAN dashboard teknisi, jadi keduanya
             // ikut tertutup bersama menu ini.
-            'api'   => ['meter-readings'],
+            'api' => ['meter-readings'],
             'roles' => ['teknisi'],
+            'group_tetap' => true,
         ],
 
         /*
@@ -455,30 +483,59 @@ return [
          * dan tidak ada masalah -- tapi itulah sebabnya `always` diperiksa
          * lebih dulu di middleware.
          */
+        /*
+         * `survey.daftar` -- TIDAK tampil sebagai entri sidebar.
+         *
+         * Desain per-role surveyor hanya punya SATU menu: "Buat Survey
+         * Baru". Daftar tiket yang sedang disurvei dibuka dari dashboard
+         * surveyor (`/app/surveyor`), bukan dari sidebar. Jadi menu ini
+         * memakai `tanpa_sidebar` -- bukan `hidden`.
+         *
+         * Bedanya penting: `hidden` berarti "tidak tampil di sidebar DAN
+         * tidak bisa dicentang di panel pusat Hak Akses". Yang ini hanya
+         * tidak tampil di sidebar -- checkbox-nya di panel pusat tetap ada
+         * dan masih bisa dicabut, jadi endpointnya tetap bisa ditutup per
+         * jabatan. Kalau pakai `hidden`, superadmin tidak akan pernah bisa
+         * mencabut hak akses menu ini.
+         */
         [
-            'key'   => 'survey.daftar',
+            'key' => 'survey.daftar',
             'label' => 'Daftar Survey',
             'group' => 'Survey',
-            'icon'  => 'clipboard-check',
-            'path'  => '/app/surveyor',
+            'icon' => 'clipboard-check',
+            'path' => '/app/surveyor',
             // `DashboardMain` mengambil tiket `pending` dan `surveyed`.
-            'api'   => ['installation-tickets*'],
+            'api' => ['installation-tickets*'],
             'roles' => ['surveyor'],
+            'tanpa_sidebar' => true,
         ],
+        /*
+         * `survey.create` -- menu yang BENAR-BENAR terlihat di sidebar
+         * surveyor, dan labelnya harus persis seperti desain per-role:
+         * "Buat Survey Baru" (bukan "Input Survey").
+         *
+         * `top_level` membuat ia dirender sebagai link TINGKAT ATAS, di luar
+         * group "Survey" -- persis seperti desain pamsides-v2, di mana
+         * "Buat Survey Baru" berdiri sendiri dan bukan anak sebuah group.
+         *
+         * `group` tetap "Survey" supaya panel pusat Hak Akses masih
+         * mengelompokkannya bersama "Daftar Survey" (yang `tanpa_sidebar`).
+         */
         [
-            'key'   => 'survey.create',
-            'label' => 'Input Survey',
+            'key' => 'survey.create',
+            'label' => 'Buat Survey Baru',
             'group' => 'Survey',
-            'icon'  => 'map-location-dot',
-            'path'  => '/app/survey/create',
+            'icon' => 'plus-circle',
+            'path' => '/app/survey/create',
             // Dua prefix, dan keduanya wajib:
             //   - `installation-tickets*` : daftar tiket `pending` yang
-            //     jadi bahan中选择 di form ini.
+            //     jadi bahan pilih di form ini.
             //   - `installation-tickets/*/survey` : POST simpan hasil survey.
             //     ID-nya berupa angka yang tidak bisa diprediksi, jadi
             //     wildcard-nya tidak mungkin menabrak halaman lain.
-            'api'   => ['installation-tickets*', 'installation-tickets/*/survey'],
+            'api' => ['installation-tickets*', 'installation-tickets/*/survey'],
             'roles' => ['surveyor'],
+            'top_level' => true,
         ],
 
         /*
@@ -489,16 +546,112 @@ return [
          * melihat daftar centang yang PERSIS SAMA dan tidak bisa memakai
          * hak akses yang berbeda satu sama lain.
          *
+         * DUA entri di bawah, dan itulah daftar lengkap yang boleh dilihat
+         * superadmin untuk jabatan Teknisi/Cater di panel pusat Hak Akses:
+         *
+         *   1. "Dashboard"           (`teknisi.dashboard`)
+         *   2. "Input Pemakaian Air" (`instalasi.pemakaian`, di atas)
+         *
+         * "Hasil Instalasi" (`teknisi.hasil-instalasi`) dan "Daftar Tagihan"
+         * (`teknisi.daftar-tagihan`) TIDAK termasuk: keduanya `hidden`, jadi
+         * tidak muncul di daftar centang. Alasannya sama -- keduanya dibuka
+         * dari tombol/kartu di DASHBOARD teknisi, bukan dari entri sidebar
+         * mana pun, jadi tidak ada "menu" yang bisa dicentang atau dicabut.
+         *
+         * Di SIDEBAR, desain per-role teknisi cuma punya satu menu: group
+         * "Master Instalasi" -> "Input Pemakaian Air". "Dashboard" tetap
+         * halaman milik teknisi, tapi entri sidebarnya adalah "Beranda" --
+         * item TETAP yang ditambahkan `SidebarView.vue` di luar katalog --
+         * jadi ia memakai `tanpa_sidebar`.
+         *
+         * `tanpa_sidebar` BUKAN `hidden`: `hidden` berarti menu tidak tampil
+         * di sidebar DAN tidak bisa dicentang di panel pusat Hak Akses.
+         * `tanpa_sidebar` hanya tidak tampil di sidebar -- checkbox-nya di
+         * panel pusat tetap ada dan masih bisa dicabut, jadi endpointnya
+         * tetap bisa ditutup per jabatan.
+         *
          * Prefix `installation-tickets` + wildcard + `installation-result`
          * adalah POST dari InstallationResult.vue. Wildcard-nya satu segmen
          * disengaja: bentuknya `installation-tickets/{id}/...`.
          */
+        /*
+         * `teknisi.dashboard` -- "Dashboard", halaman TUJUAN teknisi.
+         *
+         * Dahulu "Beranda" sengaja TIDAK ada di katalog: `/app` dianggap
+         * halaman tujuan setelah login, bukan pekerjaan yang bisa dikunci.
+         *
+         * Untuk role teknisi, keputusan itu berubah. Di desain per-role
+         * pamsides-v2 sidebar teknisi MEMUAT "Beranda" sebagai entri
+         * pertamanya -- jadi "Dashboard" bukan lagi sekadar tempat login,
+         * tapi menu yang benar. Panel pusat Hak Akses harus mencerminkan itu:
+         * daftar centang teknisi yang tidak memuat "Dashboard" tidak akan
+         * pernah cocok dengan tampilan yang dilihat teknisi setiap hari.
+         *
+         * Group "Utama" dipakai supaya entri ini berdiri sendiri, terpisah
+         * dari "Master Instalasi" (tempat "Input Pemakaian Air").
+         *
+         * `path` menunjuk dashboard teknisi, BUKAN kosong, dan alasannya
+         * teknis: `allowsPath()` dipakai router guard untuk menolak halaman
+         * yang haknya sudah dicabut. Kalau `path`-nya kosong, entri ini TIDAK
+         * pernah dipadankan -- dan centangnya jadi tidak berarti apa pun.
+         *
+         * Yang membuatnya aman: `terkunci` di bawah. Menu terkunci selalu
+         * diizinkan (`allowedKeysFor()`), jadi `allowsPath('/app/teknisi')`
+         * tidak akan pernah menolak -- dan tidak akan pernah terjadi
+         * redirect ke dirinya sendiri.
+         *
+         * `tanpa_sidebar` karena "Beranda" di sidebar adalah item TETAP
+         * yang ditambahkan `SidebarView.vue` di luar katalog. Kalau entri
+         * ini tidak memakai flag itu, sidebar teknisi akan punya dua
+         * entri yang menunjuk halaman yang sama.
+         *
+         * `terkunci` memastikan entri ini tidak PERNAH bisa dicabut, jadi
+         * daftar teknisi di panel pusat selalu punya "Dashboard" sebagai
+         * salah satu dari DUA menu -- persis seperti yang diminta.
+         */
         [
-            'key'   => 'teknisi.hasil-instalasi',
+            'key' => 'teknisi.dashboard',
+            'label' => 'Dashboard',
+            'group' => 'Utama',
+            'icon' => 'home',
+            'path' => '/app/teknisi',
+            // Tidak ada prefix API milik sendiri.
+            //
+            // Endpoint dashboard (`dashboard/statistics`) dipakai SEMUA role
+            // dan sudah ada di `always_allowed_api`. Kalau entri ini
+            // mengklaimnya, maka mencabut "Dashboard" akan ikut menutup
+            // dashboard admin -- dan `allowedKeysFor()` membuang menu milik
+            // role lain, jadi admin yang jabatan-nya dibatasi kehilangan
+            // kemampuan itu. Gejalanya: dashboard admin kosong.
+            //
+            // Endpoint lain yang dipakai dashboard teknisi
+            // (`meter-readings/pending`, `monthly-bills`) sudah dimiliki
+            // menu lain, jadi ikut tertutup bersama menu itu.
+            'api' => [],
+            'roles' => ['teknisi'],
+            'tanpa_sidebar' => true,
+            'terkunci' => true,
+        ],
+        /*
+         * `teknisi.hasil-instalasi` -- "hidden".
+         *
+         * `hidden` berarti: tidak tampil di sidebar, DAN tidak tampil di
+         * daftar centang Hak Akses. Yang KEDUA untuk teknisi -- Dashboard
+         * dan Input Pemakaian Air -- sudah ada di atas, dan halaman ini
+         * bukan salah satunya: ini bagian dari pekerjaan Dashboard (tombol
+         * tugas di kartu), bukan pekerjaan terpisah.
+         *
+         * `hidden` TIDAK membuat halamannya mati. Prefix API-nya tetap di
+         * katalog, jadi `EnforceMenuAccess` tetap memblokir endpointnya
+         * kalau jabatan tidak punya key-nya. Yang hilang cuma tempatnya
+         * untuk dicentang.
+         */
+        [
+            'key' => 'teknisi.hasil-instalasi',
             'label' => 'Hasil Instalasi',
             'group' => 'Pusat Teknis',
-            'icon'  => 'screwdriver-wrench',
-            'path'  => '/app/teknisi/hasil-instalasi/:id',
+            'icon' => 'screwdriver-wrench',
+            'path' => '/app/teknisi/hasil-instalasi/:id',
             // Dua prefix, dan KEDUANYA wajib.
             //
             // Yang kedua (satu segmen wildcard + `installation-result`) adalah
@@ -515,18 +668,43 @@ return [
             // Wildcard polos ini HANYA berlaku untuk role `teknisi`: menu ini
             // tidak punya role `admin`, jadi admin tetap memakai pemiliknya
             // sendiri (menu admin yang menyebut `installation-tickets`).
-            'api'   => ['installation-tickets/*', 'installation-tickets/*/installation-result'],
+            'api' => ['installation-tickets/*', 'installation-tickets/*/installation-result'],
             'roles' => ['teknisi'],
+            'hidden' => true,
         ],
+        /*
+         * `teknisi.daftar-tagihan` -- "hidden", sama seperti "Hasil
+         * Instalasi".
+         *
+         * Halaman ini dibuka dari KARTU "Daftar Tagihan" di dashboard
+         * teknisi (`teknisi/DashboardMain.vue`), bukan dari entri sidebar.
+         * Karena tidak ada menu yang bisa dicentang, ia tidak boleh muncul
+         * di daftar centang panel pusat: superadmin akan melihat checkbox
+         * untuk sesuatu yang tidak pernah tampil sebagai menu.
+         *
+         * Dua flag, dan keduanya perlu:
+         *
+         *   - `hidden`    : tidak tampil di sidebar DAN tidak bisa dicentang
+         *                   di panel pusat Hak Akses.
+         *
+         *   - `terkunci`  : endpointnya (`monthly-bills*`) SELALU diizinkan
+         *                   untuk role teknisi. Tanpa ini, jabatan yang
+         *                   sudah dikonfigurasi tanpa key ini akan mendapat
+         *                   403 di halaman yang justru dibuka dari
+         *                   dashboard -- dan karena checkbox-nya sudah
+         *                   tidak ada, tidak ada cara memperbaikinya dari
+         *                   panel. (Persis alasan `teknisi.dashboard` juga
+         *                   `terkunci`.)
+         */
         [
-            'key'   => 'teknisi.daftar-tagihan',
+            'key' => 'teknisi.daftar-tagihan',
             'label' => 'Daftar Tagihan',
             'group' => 'Pusat Teknis',
-            'icon'  => 'receipt',
-            'path'  => '/app/teknisi/daftar-tagihan',
-            // `DaftarTagihan.vue` memanggil `getAllBills()` yang ber-paging
-            // ke `monthly-bills`. Prefix-nya `monthly-bills*`, bukan
-            // `bills`: `bills` dipakai `tagihan.daftar` milik admin dan
+            'icon' => 'receipt',
+            'path' => '/app/teknisi/daftar-tagihan',
+            // `DaftarTagihan.vue` memanggil `billingService.getBills()` yang
+            // ber-paging ke `monthly-bills`. Prefix-nya `monthly-bills*`,
+            // bukan `bills`: `bills` dipakai `tagihan.daftar` milik admin dan
             // tidak pernah dipanggil dari halaman teknisi.
             //
             // Bentuk `monthly-bills*` (wildcard di akhir) penting: ia hanya
@@ -537,8 +715,14 @@ return [
             // di `tagihan.input` dan `transaksi.tagihan-bulanan`, dan
             // `CheckRole` menutupnya untuk teknisi -- jadi yang hilang
             // hanya hak akses jabatan, bukan keamanan.
-            'api'   => ['monthly-bills*'],
+            //
+            // `whatsapp/*` : menyusun pesan WA dari template SOP. Prefix
+            // yang sama dipakai menu admin (`tagihan.daftar`), jadi keduanya
+            // harus menyebutnya.
+            'api' => ['monthly-bills*', 'whatsapp/*'],
             'roles' => ['teknisi'],
+            'hidden' => true,
+            'terkunci' => true,
         ],
 
         /*
@@ -574,33 +758,33 @@ return [
          * tapi tetap bisa dicentang dari halaman Hak Akses.
          */
         [
-            'key'    => 'pelanggan.tagihan',
-            'label'  => 'Tagihan Saya',
-            'group'  => 'Layanan Pelanggan',
-            'icon'   => 'file-invoice-dollar',
-            'path'   => '/app/pelanggan/tagihan-detail',
+            'key' => 'pelanggan.tagihan',
+            'label' => 'Tagihan Saya',
+            'group' => 'Layanan Pelanggan',
+            'icon' => 'file-invoice-dollar',
+            'path' => '/app/pelanggan/tagihan-detail',
             // `bill-detail` punya `{id?}` di route-nya, jadi prefix tanpa
             // id tetap ikut cocok dengan `/pelanggan/bill-detail/12`.
-            'api'    => ['pelanggan/bill-detail'],
-            'roles'  => ['pelanggan'],
+            'api' => ['pelanggan/bill-detail'],
+            'roles' => ['pelanggan'],
             'hidden' => true,
         ],
         [
-            'key'    => 'pelanggan.riwayat',
-            'label'  => 'Riwayat Tagihan',
-            'group'  => 'Layanan Pelanggan',
-            'icon'   => 'clock-rotate-left',
-            'path'   => '/app/pelanggan/riwayat-tagihan',
-            'api'    => ['pelanggan/bill-history'],
-            'roles'  => ['pelanggan'],
+            'key' => 'pelanggan.riwayat',
+            'label' => 'Riwayat Tagihan',
+            'group' => 'Layanan Pelanggan',
+            'icon' => 'clock-rotate-left',
+            'path' => '/app/pelanggan/riwayat-tagihan',
+            'api' => ['pelanggan/bill-history'],
+            'roles' => ['pelanggan'],
             'hidden' => true,
         ],
         [
-            'key'   => 'pelanggan.lapor-gangguan',
+            'key' => 'pelanggan.lapor-gangguan',
             'label' => 'Lapor Gangguan',
             'group' => 'Layanan Pelanggan',
-            'icon'  => 'triangle-exclamation',
-            'path'  => '/app/pelanggan/lapor-gangguan',
+            'icon' => 'triangle-exclamation',
+            'path' => '/app/pelanggan/lapor-gangguan',
             // Hanya POST-nya. Prefix `trouble-reports` (bentuk jamak) TIDAK
             // ikut: itu endpoint ADMIN -- daftar, detail, dan ubah status
             // laporan. Kalau ikut di sini, satu-satunya pemilik endpoint
@@ -608,32 +792,60 @@ return [
             // `allowedKeysFor()` membuang menu itu dari daftar user admin
             // -- artinya admin yang jabatan-nya DIBATASI ikut kehilangan
             // kemampuan mengelola laporan gangguan.
-            'api'   => ['pelanggan/trouble-report'],
+            'api' => ['pelanggan/trouble-report'],
             'roles' => ['pelanggan'],
         ],
 
         // ---- Pencatatan Tagihan ------------------------------------------
+        /*
+         * `tagihan.input` -- "Input Tagihan", halaman milik ADMIN.
+         *
+         * `roles` TIDAK lagi memuat `teknisi`. Sebelumnya memuat, dan itu
+         * membuat sidebar teknisi punya DUA menu input meter:
+         *
+         *   - "Input Pemakaian Air" (`instalasi.pemakaian`) -- halaman
+         *     MILIK teknisi, tanpa filter teknisi.
+         *   - "Input Tagihan" (`tagihan.input` ini) -- halaman dengan
+         *     filter "Pilih Teknisi", milik admin.
+         *
+         * Desain per-role teknisi hanya punya yang pertama. Teknisi
+         * mencatat meter untuk pelanggan yang ia tangani; halaman berfilter
+         * teknisi milik admin yang mau menilai satu teknisi saja.
+         *
+         * `roles` adalah BATAS ATAS, jadi teknisi masih boleh memakai
+         * halamannya lewat URL (`/app/instalasi/pemakaian` -- route
+         * itu memang mengizinkan `admin` dan `teknisi`, lihat `ROLE_GUARDS`
+         * di router) dan `CheckRole` tetap mengizinkan endpoint-nya. Yang
+         * dicabut hanya ENTRI MENUNYA, supaya sidebar teknisi persis sama
+         * dengan desain pamsides-v2.
+         *
+         * Satu-satunya efek samping yang perlu diketahui: `meter-readings`
+         * ikut dikuasai menu ini, dan `instalasi.pemakaian` (teknisi) juga
+         * memegangnya -- jadi mencabut `tagihan.input` dari jabatan teknisi
+         * tidak membuat endpoint meter tertutup, karena `instalasi.pemakaian`
+         * masih memegangnya. Itu memang yang dikehendaki.
+         */
         [
-            'key'   => 'tagihan.input',
+            'key' => 'tagihan.input',
             'label' => 'Input Tagihan',
             'group' => 'Pencatatan Tagihan',
-            'icon'  => 'pen-to-square',
-            'path'  => '/app/instalasi/pemakaian-air',
+            'icon' => 'pen-to-square',
+            'path' => '/app/instalasi/pemakaian',
             // `monthly-bills/generate` hanya milik menu ini -- endpoint
             // pembuatan tagihan bulanan, bukan milik daftar tagihan.
             //
             // `meter-readings` dipakai `detailPemakaianAir.vue` (halaman
             // input meter) dan `PemakaianAir.vue` (teknisi), jadi keduanya
             // ikut tertutup bersama menu ini.
-            'api'   => ['monthly-bills/generate', 'meter-readings'],
-            'roles' => ['admin', 'teknisi'],
+            'api' => ['monthly-bills/generate', 'meter-readings'],
+            'roles' => ['admin'],
         ],
         [
-            'key'   => 'tagihan.daftar',
+            'key' => 'tagihan.daftar',
             'label' => 'Daftar Tagihan',
             'group' => 'Pencatatan Tagihan',
-            'icon'  => 'receipt',
-            'path'  => '/app/instalasi/daftar-tagihan',
+            'icon' => 'receipt',
+            'path' => '/app/instalasi/daftar-tagihan',
             // DUA prefix, dan keduanya wajib:
             //
             //   - `bills` : `GET /bills/recap` dan `GET /bills/{id}` yang
@@ -653,96 +865,102 @@ return [
             // sehingga halaman ini tidak ikut membuka endpoint TULIS
             // (`/monthly-bills/{id}/pay`, `/monthly-bills/generate`) yang
             // bukan miliknya.
-            'api'   => ['bills', 'monthly-bills*'],
+            //
+            // `whatsapp/*` : menyusun pesan WA dari template SOP. Dipakai
+            // juga oleh menu teknisi (halaman "Daftar Tagihan" versi
+            // teknisi), jadi kedua pemilik harus menyebutnya -- kalau
+            // hanya menu ini, `whatsapp/*` ikut terblokir untuk teknisi
+            // dan pesan yang disusunnya tidak pernah sampai.
+            'api' => ['bills', 'monthly-bills*', 'whatsapp/*'],
             'roles' => ['admin'],
         ],
 
         // ---- Transaksi ---------------------------------------------------
         [
-            'key'   => 'transaksi.jurnal-umum',
+            'key' => 'transaksi.jurnal-umum',
             'label' => 'Jurnal Umum',
             'group' => 'Transaksi',
-            'icon'  => 'book',
-            'path'  => '/app/transaksi/jurnal-umum',
-            'api'   => ['transactions', 'jenis-transactions', 'generate-amount'],
+            'icon' => 'book',
+            'path' => '/app/transaksi/jurnal-umum',
+            'api' => ['transactions', 'jenis-transactions', 'generate-amount'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'transaksi.tagihan-bulanan',
+            'key' => 'transaksi.tagihan-bulanan',
             'label' => 'Tagihan Bulanan',
             'group' => 'Transaksi',
-            'icon'  => 'file-invoice-dollar',
-            'path'  => '/app/transaksi/tagihan-bulanan',
+            'icon' => 'file-invoice-dollar',
+            'path' => '/app/transaksi/tagihan-bulanan',
             // `bills`        : rekap & detail tagihan lama.
             // `monthly-bills*`: daftar tagihan bulanan (dipakai
             //                   `billingStore.fetchBillingPeriods`).
-            // `tunggakan`    : generate tunggakan.
+            // `piutang`      : generate piutang.
             //
             // Yang TIDAK ikut: `monthly-bills/{id}/pay`,
             // `monthly-bills/{id}` (hapus), dan `monthly-bills/generate`.
             // Ketiganya punya pemiliknya sendiri di `tagihan.input` --
             // dan prefix `monthly-bills*` sengaja berhenti di `/monthly-bills`
             // supaya tidak ikut membukanya.
-            'api'   => ['bills', 'monthly-bills*', 'tunggakan'],
+            'api' => ['bills', 'monthly-bills*', 'piutang'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'transaksi.tagihan-instalasi',
+            'key' => 'transaksi.tagihan-instalasi',
             'label' => 'Tagihan Instalasi',
             'group' => 'Transaksi',
-            'icon'  => 'file-invoice',
-            'path'  => '/app/transaksi/tagihan-instalasi',
+            'icon' => 'file-invoice',
+            'path' => '/app/transaksi/tagihan-instalasi',
             // `installation-tickets-unpaid` dipakai dashboard juga, jadi
             // tidak dikunci. Yang dikunci `installation-tickets` sudah
             // tercakup oleh menu lain di bawah.
-            'api'   => [],
+            'api' => [],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'transaksi.ebudgeting',
+            'key' => 'transaksi.ebudgeting',
             'label' => 'E-Budgeting',
             'group' => 'Transaksi',
-            'icon'  => 'piggy-bank',
-            'path'  => '/app/transaksi/E-budgeting',
-            'api'   => ['ebudgeting'],
+            'icon' => 'piggy-bank',
+            'path' => '/app/transaksi/E-budgeting',
+            'api' => ['ebudgeting'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'transaksi.tutup-buku',
+            'key' => 'transaksi.tutup-buku',
             'label' => 'Tutup Buku',
             'group' => 'Transaksi',
-            'icon'  => 'lock',
-            'path'  => '/app/transaksi/tutup-buku',
-            'api'   => ['tutup-buku', 'neraca-saldo'],
+            'icon' => 'lock',
+            'path' => '/app/transaksi/tutup-buku',
+            'api' => ['tutup-buku', 'neraca-saldo'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'transaksi.alokasi-laba',
+            'key' => 'transaksi.alokasi-laba',
             'label' => 'Alokasi Laba',
             'group' => 'Transaksi',
-            'icon'  => 'calculator',
-            'path'  => '/app/transaksi/alokasi-laba',
-            'api'   => ['alokasi-laba'],
+            'icon' => 'calculator',
+            'path' => '/app/transaksi/alokasi-laba',
+            'api' => ['alokasi-laba'],
             'roles' => ['admin'],
         ],
         [
-            'key'   => 'transaksi.komisi-sps',
+            'key' => 'transaksi.komisi-sps',
             'label' => 'Komisi SPS',
             'group' => 'Transaksi',
-            'icon'  => 'money-bill-wave',
-            'path'  => '/app/transaksi/komisi-sps',
-            'api'   => ['komisi-sps'],
+            'icon' => 'money-bill-wave',
+            'path' => '/app/transaksi/komisi-sps',
+            'api' => ['komisi-sps'],
             'roles' => ['admin'],
         ],
 
         // ---- Pelaporan ----------------------------------------------------
         [
-            'key'   => 'pelaporan',
+            'key' => 'pelaporan',
             'label' => 'Pelaporan',
             'group' => 'Pelaporan',
-            'icon'  => 'file-alt',
-            'path'  => '/app/pelaporan',
-            'api'   => ['pelaporan'],
+            'icon' => 'file-alt',
+            'path' => '/app/pelaporan',
+            'api' => ['pelaporan'],
             'roles' => ['admin'],
         ],
 
@@ -751,11 +969,11 @@ return [
         // muncul sebagai entri sidebar. Tetap bisa dicentang di Hak Akses
         // supaya halamannya ikut tertutup kalau jabatan tidak boleh.
         [
-            'key'     => 'arsip.tagihan',
-            'label'   => 'Arsip Tagihan',
-            'group'   => 'Arsip',
-            'icon'    => 'archive',
-            'path'    => '/app/arsip/tagihan',
+            'key' => 'arsip.tagihan',
+            'label' => 'Arsip Tagihan',
+            'group' => 'Arsip',
+            'icon' => 'archive',
+            'path' => '/app/arsip/tagihan',
             // `monthly-bills*` -- bentuk yang sama dengan yang dipakai
             // `tagihan.daftar` dan `transaksi.tagihan-bulanan`, karena ketiganya
             // memanggil endpoint yang sama: `GET /monthly-bills`.
@@ -766,39 +984,67 @@ return [
             // membukanya lewat menu Arsip bukan hal yang benar: mencabut
             // menu Arsip tidak akan menutup pembayaran tagihan, dan
             // sebaliknya mencentang Arsip akan membuka jalur pembayaran.
-            'api'     => ['monthly-bills*'],
-            'roles'   => ['admin'],
-            'hidden'  => true,
+            'api' => ['monthly-bills*'],
+            'roles' => ['admin'],
+            'hidden' => true,
         ],
         [
-            'key'     => 'arsip.tunggakan',
-            'label'   => 'Arsip Tunggakan',
-            'group'   => 'Arsip',
-            'icon'    => 'hourglass-half',
-            'path'    => '/app/arsip/tunggakan',
-            'api'     => ['tunggakan'],
-            'roles'   => ['admin'],
-            'hidden'  => true,
+            'key' => 'arsip.piutang',
+            'label' => 'Arsip Piutang',
+            'group' => 'Arsip',
+            'icon' => 'hourglass-half',
+            'path' => '/app/arsip/piutang',
+            // Prefix `piutang` (tanpa `*`) sudah cukup: ia cocok dengan
+            // `/piutang/arsip` DAN `/piutang/generate`.
+            //
+            // Bentuk polos (bukan `piutang*`) dipakai dengan sengaja:
+            // `piutang*` hanya cocok dengan `/piutang` itu sendiri --
+            // turunannya seperti `/piutang/arsip` TIDAK ikut. Padahal
+            // endpoint arsip itu yang paling butuh dikunci.
+            //
+            // `POST /piutang/generate` ikut tertutup oleh prefix ini --
+            // generate piutang dan membaca arsip piutang adalah satu hal
+            // yang sama, jadi mencabut hak akses Arsip Piutang harus
+            // menutup keduanya.
+            //
+            // Perhatikan: prefix `piutang` juga dimiliki menu
+            // `transaksi.tagihan-bulanan`. `EnforceMenuAccess` menolak
+            // HANYA kalau SEMUA pemilik prefix itu tidak diizinkan, jadi
+            // admin yang punya "Tagihan Bulanan" tapi tidak punya "Arsip
+            // Piutang" tetap boleh memanggil endpoint ini. Itu perilaku
+            // yang disengaja dan sama seperti `bills`/`monthly-bills` di
+            // bawah -- satu endpoint dipakai beberapa menu, dan hak akses
+            // diambil dari gabungan pemilik itu.
+            'api' => ['piutang'],
+            'roles' => ['admin'],
+            'hidden' => true,
+            /*
+             * `hidden` tetap true: halamannya TIDAK muncul di sidebar.
+             *
+             * Jalan masuknya dari dropdown avatar (pojok kanan atas), di
+             * sebelah "Profil" dan "Logout" -- dipakai admin untuk melihat
+             * siapa yang punya piutang bulan ini.
+             */
         ],
         [
-            'key'     => 'arsip.pemakaian',
-            'label'   => 'Arsip Pemakaian',
-            'group'   => 'Arsip',
-            'icon'    => 'droplet',
-            'path'    => '/app/arsip/pemakaian',
-            'api'     => ['meter-readings'],
-            'roles'   => ['admin'],
-            'hidden'  => true,
+            'key' => 'arsip.pemakaian',
+            'label' => 'Arsip Pemakaian',
+            'group' => 'Arsip',
+            'icon' => 'droplet',
+            'path' => '/app/arsip/pemakaian',
+            'api' => ['meter-readings'],
+            'roles' => ['admin'],
+            'hidden' => true,
         ],
         [
-            'key'     => 'arsip.instalasi',
-            'label'   => 'Arsip Instalasi',
-            'group'   => 'Arsip',
-            'icon'    => 'boxes',
-            'path'    => '/app/arsip/instalasi',
-            'api'     => ['installation-tickets'],
-            'roles'   => ['admin'],
-            'hidden'  => true,
+            'key' => 'arsip.instalasi',
+            'label' => 'Arsip Instalasi',
+            'group' => 'Arsip',
+            'icon' => 'boxes',
+            'path' => '/app/arsip/instalasi',
+            'api' => ['installation-tickets'],
+            'roles' => ['admin'],
+            'hidden' => true,
         ],
     ],
 
@@ -861,6 +1107,10 @@ return [
         // jadi menguncinya akan merusak ekspor laporan.
         'settings/sop',
         'settings/sop/*',
+        // Pengaturan pencatatan meteran. Dibaca popup input meter, jadi
+        // dipakai admin DAN teknisi -- bukan cuma halaman SOP. Kalau ikut
+        // dikunci, popup meter akan diam-diam memakai perilaku bawaan.
+        'settings/pemakaian-air',
         'settings/signatures',
         'settings/signatures/*',
 

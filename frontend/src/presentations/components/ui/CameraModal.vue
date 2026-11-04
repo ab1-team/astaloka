@@ -93,6 +93,7 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue'
 import BaseButton from '@/presentations/components/ui/BaseButton.vue'
+import { bukaKameraPadaVideo, matikanKamera, jelaskanErrorKamera } from '@/utils/cameraStream.js'
 
 const props = defineProps({
   show: Boolean,
@@ -121,19 +122,21 @@ const startCamera = async () => {
   stopCamera() // Ensure old stream is stopped
 
   try {
-    stream.value = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: facingMode.value,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
+    stream.value = await bukaKameraPadaVideo({
+      facingMode: facingMode.value,
+      video: videoRef.value,
+      // Resolusi ini `ideal`, bukan syarat -- perangkat yang tidak mendukungnya
+      // tetap boleh jalan dengan resolusi yang tersedia.
+      tambahan: { width: { ideal: 1280 }, height: { ideal: 720 } },
     })
-    if (videoRef.value) {
-      videoRef.value.srcObject = stream.value
-      loading.value = false
-    }
-  } catch {
-    alert('Gagal mengakses kamera. Pastikan izin kamera sudah diberikan.')
+    loading.value = false
+  } catch (error) {
+    // Dulu pesannya `alert(...)` generik. Sekarang penyebabnya disebutkan
+    // apa adanya -- izin ditolak, tidak ada kamera, atau halaman bukan
+    // secure context -- karena ketiganya cara perbaikannya berbeda.
+    loading.value = false
+    const pesan = jelaskanErrorKamera(error)
+    window.alert(`${pesan.title}\n\n${pesan.text}`)
     closeModal()
   }
 }
@@ -144,10 +147,8 @@ const toggleCamera = () => {
 }
 
 const stopCamera = () => {
-  if (stream.value) {
-    stream.value.getTracks().forEach((track) => track.stop())
-    stream.value = null
-  }
+  matikanKamera(stream.value, videoRef.value)
+  stream.value = null
 }
 
 const capturePhoto = () => {

@@ -306,7 +306,7 @@ class EnforceMenuAccessTest extends TestCase
     #[Test]
     public function katalog_tidak_lagi_memakai_menu_hak_akses(): void
     {
-        $keys = array_column(app(\App\Services\MenuAccessService::class)->catalog(), 'key');
+        $keys = array_column(app(MenuAccessService::class)->catalog(), 'key');
 
         $this->assertNotContains('settings.hak-akses', $keys);
     }
@@ -551,7 +551,11 @@ class EnforceMenuAccessTest extends TestCase
                 'transaksi.tagihan-bulanan',
                 'arsip.tagihan',
             ],
-            'tunggakan' => ['transaksi.tagihan-bulanan', 'arsip.tunggakan'],
+            'whatsapp/*' => [
+                'teknisi.daftar-tagihan',
+                'tagihan.daftar',
+            ],
+            'piutang' => ['transaksi.tagihan-bulanan', 'arsip.piutang'],
             'bills' => ['tagihan.daftar', 'transaksi.tagihan-bulanan'],
         ];
 
@@ -600,7 +604,7 @@ class EnforceMenuAccessTest extends TestCase
                 $bersama,
                 "Prefix `{$prefix}` dipakai lebih dari satu menu ("
                 .implode(', ', $pemilik)
-                .") tapi tidak dicatat sebagai prefix bersama. Kalau salah "
+                .') tapi tidak dicatat sebagai prefix bersama. Kalau salah '
                 .'satu pemiliknya dicabut, endpoint ini ikut terblokir -- dan '
                 .'tidak ada yang memperingatkan.',
             );
@@ -667,8 +671,9 @@ class EnforceMenuAccessTest extends TestCase
             'installation-packages',
             'meter-readings',
             'monthly-bills*',
-            'tunggakan',
+            'piutang',
             'bills',
+            'whatsapp/*',
         ] as $prefix) {
             $this->assertGreaterThan(
                 1,

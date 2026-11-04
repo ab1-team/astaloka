@@ -12,6 +12,7 @@
         <BaseButton
           variant="success-gradient"
           size="md"
+          :loading="isExporting"
           @click="exportData"
           class="w-full! lg:w-auto! rounded-xl! shadow-lg! shadow-emerald-200/50!"
           icon="file-export"
@@ -22,7 +23,7 @@
         <BaseButton
           variant="primary-gradient"
           size="md"
-          @click="handlePrintData"
+          @click="printData"
           class="w-full! lg:w-auto! rounded-xl! shadow-lg! shadow-indigo-200/50!"
           icon="print"
         >
@@ -204,9 +205,11 @@
           </div>
 
           <div class="relative!">
-            <span class="absolute! left-3! top-1/2! -translate-y-1/2! text-[10px]! text-slate-400!"
-              >🔍</span
+            <span
+              class="absolute! left-3! top-1/2! -translate-y-1/2! text-[10px]! text-slate-400! pointer-events-none!"
             >
+              <font-awesome-icon icon="search" />
+            </span>
             <input
               v-model="searchQuery"
               type="text"
@@ -313,6 +316,8 @@ const {
   prevPage,
   nextPage,
   exportData,
+  printData,
+  isExporting,
   fetchData,
   fetchError,
   isLoading,
@@ -345,32 +350,4 @@ const tableColumns = [
   { key: 'status', title: 'STATUS', tdClass: '' },
   { key: 'action', title: 'AKSI', tdClass: 'w-12 text-center' },
 ]
-
-const handlePrintData = () => {
-  const printWindow = window.open('', '_blank')
-  printWindow.document.write(`
-    <!DOCTYPE html><html><head>
-    <title>Cetak Data ${activeLabel.value}</title>
-    <style>
-      body{font-family:Arial,sans-serif;margin:20px}
-      h1{text-align:center;margin-bottom:20px}
-      table{width:100%;border-collapse:collapse}
-      th,td{border:1px solid #ddd;padding:8px;text-align:left}
-      th{background:#f2f2f2;font-weight:bold}
-      tr:nth-child(even){background:#f9f9f9}
-      @media print{body{margin:10px}}
-    </style></head><body>
-    <h1>Data ${activeLabel.value}</h1>
-    <table><thead><tr><th>Nama Pelanggan</th><th>Type</th><th>Alamat</th><th>Status</th></tr></thead>
-    <tbody>${filteredData.value
-      .map(
-        (r) =>
-          `<tr><td>${r.name}</td><td>${r.type}</td><td>${r.address}</td><td>${r.status}</td></tr>`,
-      )
-      .join('')}</tbody>
-    </table></body></html>
-  `)
-  printWindow.document.close()
-  printWindow.print()
-}
 </script>

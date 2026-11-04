@@ -1,14 +1,26 @@
 <template>
   <div :class="cardClasses" @click="handleClick">
-    <div v-if="$slots.header" class="content-card__header!">
+    <!--
+      Nama kelas di sini TANPA sufiks `!`.
+
+      `!` itu modifier "important" milik Tailwind, dan hanya berlaku untuk
+      utility yang dikenal Tailwind (`flex!`, `min-h-0!`, ...). Untuk kelas
+      custom seperti `content-card__body`, Tulang akan tetap menulis
+      `content-card__body!` apa adanya ke DOM, bukan `.content-card__body!`.
+      Akibatnya selector `.content-card__body` TIDAK PERNAH cocok, aturan
+      `flex: 1` mati, dan isi card tidak pernah ikut mengisi ruang sisa --
+      tabel di dalam popup dashboard jadi melebar, terpotong `overflow-hidden`,
+      dan tidak bisa digulir.
+    -->
+    <div v-if="$slots.header" class="content-card__header">
       <slot name="header" />
     </div>
 
-    <div class="content-card__body!">
+    <div class="content-card__body">
       <slot />
     </div>
 
-    <div v-if="$slots.footer" class="content-card__footer!">
+    <div v-if="$slots.footer" class="content-card__footer">
       <slot name="footer" />
     </div>
   </div>

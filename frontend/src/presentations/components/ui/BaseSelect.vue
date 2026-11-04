@@ -56,6 +56,7 @@
     :filter="filter"
     :filter-placeholder="filterPlaceholder"
     :filter-match-mode="filterMatchMode"
+    :reset-filter-on-hide="resetFilterOnHide"
     :show-clear="showClear"
     :disabled="disabled || !!error"
     :loading="loading"
@@ -115,6 +116,29 @@ const props = defineProps({
   // juga pada domain atau slug, itu harus lewat label gabungan yang
   // sudah disiapkan, bukan lewat prop yang tidak ada.
   filterMatchMode: { type: String, default: 'contains' },
+
+  /*
+   * Apakah teks pencarian di dalam dropdown dikosongkan lagi saat dropdown
+   * ditutup.
+   *
+   * Bawaan PrimeVue adalah `false`, dan itu MENYISIRKAN teks pencarian yang
+   * diketik user.
+   *
+   * Akibatnya: user mengetik "mei", memilih Mei, lalu menutup dropdown.
+   * Teks "mei" masih tertinggal di kotak pencarian. Waktu dropdown dibuka
+   * lagi, daftar opsi yang tampil HANYA yang cocok dengan "mei" -- dan kalau
+   * "Mei" tidak ada di sana, PrimeVue tidak menemukan opsi terpilih sama
+   * sekali, sehingga LABEL select berubah jadi placeholder (teks "Semua
+   * Bulan") padahal nilainya masih terisi.
+   *
+   * Gejalanya persis "kepilih bulan, tapi select-nya kosong lagi".
+   * Box pencarian harus kembali kosong setiap kali dropdown ditutup -- apa
+   * yang diketik adalah milik satu sesi pencarian, bukan milik select.
+   */
+  resetFilterOnHide: {
+    type: Boolean,
+    default: true,
+  },
 
   // Tombol "Hapus filter". Halaman yang sudah menyediakan "Semua ..."
   // di daftar opsi sebaiknya memematikannya: tombolnya akan jadi

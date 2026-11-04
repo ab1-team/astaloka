@@ -21,19 +21,13 @@ import { useUiStore } from '@/stores/uiStore'
  *      berhasil, tagihan menunggak tidak pernah dijurnalkan sama sekali --
  *      tanpa error dan tanpa log.
  *
- *   2. Gate-nya `hari ini == tanggal generate`. Kalau tidak ada staff yang
- *      login pada TANGGAL TEPAT itu, generate tidak pernah jalan untuk bulan
- *      itu. Tidak ada yang gagal, tidak ada yang menyadarinya. `monthly_bills`
- *      tetap `unpaid`, tapi akun Piutang Usaha `1.1.03.01` tidak pernah ditambah,
- *      sehingga Neraca dan daftar tagihan jadi dua sumber kebenaran yang
- *      berbeda.
+ *   2. Gate-nya di backend, jadi frontend tidak bisa memutuskan sendiri.
  *
- *   3. Gate `===` membuat tanggal 29, 30, dan 31 tidak pernah bisa menjadi
- *      tanggal generate.
+ * Pemicunya sekarang `day === tanggal generate`, di backend.
  *
- * Pemicunya sekarang `day >= tanggal generate`, di backend. Tanggal yang
- * terlewat tetap tertangani: begitu tanggalnya lewat, generate tetap boleh
- * jalan, dan hasilnya sama apakah dijalankan pagi atau malam.
+ * GATE `===`: generate HANYA pada tanggal yang sudah diset di SOP.
+ * `toleransiTunggakan` = 28 berarti generate jalan pada tanggal 28, dan
+ * TIDAK pada tanggal 29, 30, maupun 31.
  *
  * Yang tersisa di sini:
  *   - Normalisasi bentuk ringkasan (`jurnal_*` dari backend vs
@@ -43,16 +37,18 @@ import { useUiStore } from '@/stores/uiStore'
  *     `LoginView` terpanggil dua kali berdekatan.
  *
  * Aturan pemicu (sesuai SOP Personalisasi / Toleransi Menunggak):
- *   - Field `toleransiTunggakan` di settings SOP adalah TANGGAL (1-28).
- *   - Bila tanggal hari ini sudah lewat atau sama dengan tanggal itu,
- *     backend menjalankan `billing:generate-overdue-transactions` saat login
+ *   - Field `toleransiTunggakan` di settings SOP adalah TANGGAL (1-31).
+ *   - Bila tanggal hari ini PERSIS sama dengan tanggal itu, backend
+ *     menjalankan `billing:generate-overdue-transactions` saat login
  *     (membuat jurnal piutang abodemen, pemakaian, dan denda).
- *   - Pada tanggal tersebut, proses hanya boleh jalan sekali: mutex per tanggal
- *     generate. Duplikasi dicegah berlapis di dalam command lewat pasangan
- *     `reverence_id|account_kredit`.
+ *   - Generate boleh dijalankan BERULANG di tanggal itu -- setiap login
+ *     memicu generate lagi. Duplikasi dicegah di dalam command lewat
+ *     pasangan `reverence_id|account_kredit`, bukan lewat penguncian
+ *     tanggal. Jadi lima orang login pada tanggal yang sama = lima kali
+ *     generate, tapi jurnal yang dibuat tetap satu per tagihan.
  *   - Selama proses berjalan, modal loading tampil tanpa tombol apa pun.
  *   - Setelah selesai, hasil ditampilkan via SweetAlert2 lengkap dengan
- *     tombol "Tutup" / "Lihat Arsip Tunggakan".
+ *     tombol "Tutup" / "Lihat Arsip Piutang".
  *
  * Cara pakai di komponen:
  *   const { checkOverdueGenOnMount } = useOverdueGenNotification()
@@ -76,6 +72,75 @@ let inFlight = null
 // Keamanannya sekarang ada di dedup transaksi milik command backend, bukan di
 // flag browser.
 
+/*
+ * Serah-terima ringkasan generate piutang untuk login PINTASAN.
+ *
+ * Kenapa perlu
+ * ------------
+ *
+ * Login biasa (`LoginView.vue`) menampilkan popup di halaman yang sama, jadi
+ * ringkasannya bisa langsung dipakai. Login pintasan (`ShortcutLoginView.vue`)
+ * TIDAK bisa: halaman itu memuat ulang seluruh aplikasi lewat
+ * `window.location.href`, jadi apa pun yang-held di memori JS lenyap sebelum
+ * popup sempat tampil.
+ *
+ * Tanpa serah-terima, konsekuensinya: backend sudah menjalankan generate
+ * (dan sudah menjurnalkan tagihan menunggak), tapi user tidak pernah melihat
+ * popup-nya. Di aplikasi demo/development yang dipakai tiap hari, gejalanya
+ * persis seperti "generate tidak jalan" — padahal jurnalnya sudah terbentuk.
+ *
+ * Bentuknya disimpan sebagai JSON di `sessionStorage`, bukan `localStorage`:
+ * `sessionStorage` ikut terhapus saat tab ditutup, jadi ringkasan yang
+ * tertinggal tidak akan muncul lagi di login berikutnya -- dan login
+ * berikutnya memang menjalankan generate sendiri.
+ *
+ * Kunci dipanggil "sekali pakai": dibaca lalu dihapus, supaya satu ringkasan
+ * tidak pernah ditampilkan dua kali.
+ */
+const SERAH_TERIMA_KEY = 'overdue_gen_serah_terima'
+
+/**
+ * Simpan ringkasan generate piutang untuk ditampilkan setelah reload halaman.
+ *
+ * Dipanggil dari login pintasan sebelum `window.location.href`.
+ */
+export function simpanRingkasanPiutang(ringkasan) {
+  try {
+    if (!ringkasan) {
+      sessionStorage.removeItem(SERAH_TERIMA_KEY)
+      return
+    }
+
+    sessionStorage.setItem(SERAH_TERIMA_KEY, JSON.stringify(ringkasan))
+  } catch {
+    // `sessionStorage` bisa tidak tersedia (mode privat, storage penuh).
+    // Tidak apa-apa: ringkasan hanya untuk tampilan, generate-nya sendiri
+    // sudah jalan di backend dan tidak bergantung pada ini.
+  }
+}
+
+/**
+ * Ambil ringkasan generate piutang yang ditinggalkan login pintasan.
+ *
+ * `null` kalau tidak ada -- atau kalau yang tersimpan bukan generate yang
+ * benar-benar jalan.
+ */
+export function ambilRingkasanPiutang() {
+  try {
+    const mentah = sessionStorage.getItem(SERAH_TERIMA_KEY)
+    if (!mentah) return null
+
+    // Sekali pakai: hapus sekarang, sebelum popup sempat tampil.
+    sessionStorage.removeItem(SERAH_TERIMA_KEY)
+
+    const parsed = JSON.parse(mentah)
+
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export function useOverdueGenNotification() {
   const router = useRouter()
   const uiStore = useUiStore()
@@ -91,7 +156,7 @@ export function useOverdueGenNotification() {
    * cancel, bukan tombol close "X"). Semua opsi non-interaktif dipaksa
    * false supaya satu-satunya jalan keluar adalah proses yang selesai.
    * Setelah selesai, `showOverdueGenResult()` yang menampilkan notifikasi
-   * berhasil lengkap dengan tombolnya ("Tutup" / "Lihat Arsip Tunggakan").
+   * berhasil lengkap dengan tombolnya ("Tutup" / "Lihat Arsip Piutang").
    */
   const showGeneratingLoader = () => {
     const startedAt = Date.now()
@@ -306,7 +371,7 @@ export function useOverdueGenNotification() {
       width: 560,
       confirmButtonText: 'Tutup',
       confirmButtonColor: 'var(--color-primary, #3b82f6)',
-      // Hanya admin yang boleh membuka halaman /app/arsip/tunggakan
+      // Hanya admin yang boleh membuka halaman /app/arsip/piutang
       // (lihat router/index.js role-specific routes). Tombol ini
       // ditampilkan hanya untuk admin supaya teknisi tidak dialihkan
       // ke halaman terlarang.
@@ -315,7 +380,7 @@ export function useOverdueGenNotification() {
       // tunggakan tetap relevan untuk dilihat walau tidak ada jurnal
       // baru hari ini.
       showCancelButton: uiStore.userRole === 'admin',
-      cancelButtonText: 'Lihat Arsip Tunggakan',
+      cancelButtonText: 'Lihat Arsip Piutang',
       cancelButtonColor: '#64748b',
       customClass: {
         popup: 'rounded-2xl!',
@@ -329,9 +394,9 @@ export function useOverdueGenNotification() {
       // padahal backend sekarang sengaja menjalankan ulang di setiap login
       // dan mengandalkan dedup transaksinya sendiri.
 
-      // Jika user pilih "Lihat Arsip Tunggakan", arahkan ke halaman arsip.
+      // Jika user pilih "Lihat Arsip Piutang", arahkan ke halaman arsip.
       if (result.isDismissed && result.dismiss === MySwal.DismissReason.cancel) {
-        router.push('/app/arsip/tunggakan')
+        router.push('/app/arsip/piutang')
       }
       return result
     })
@@ -532,7 +597,10 @@ export function useOverdueGenNotification() {
         // menjalankan ulang command. Backend yang menentukan mana yang perlu
         // dibuat (tagihan yang sudah punya jurnal dilewati), jadi popup ini
         // selalu menampilkan ringkasan terbaru tanpa risiko data ganda.
-        if (res?.success && (res?.ran === true || res?.busy === true || res?.already_ran === true)) {
+        if (
+          res?.success &&
+          (res?.ran === true || res?.busy === true || res?.already_ran === true)
+        ) {
           // SweetAlert2 menutup instance sebelumnya otomatis saat `fire()`
           // baru dipanggil, jadi popup hasil langsung menggantikan popup
           // loading tanpa jeda.
@@ -558,9 +626,7 @@ export function useOverdueGenNotification() {
         // boleh dibiarkan popup loading-nya hilang begitu saja tanpa
         // penjelasan — itu terlihat seperti aplikasi hang.
         const pesan =
-          err?.response?.data?.message ||
-          err?.message ||
-          'Terjadi kesalahan saat generate piutang.'
+          err?.response?.data?.message || err?.message || 'Terjadi kesalahan saat generate piutang.'
 
         showOverdueGenError(pesan, null)
         console.warn('[overdue-gen] auto generate gagal:', err?.message || err)

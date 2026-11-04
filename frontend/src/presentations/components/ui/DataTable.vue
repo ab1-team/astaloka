@@ -2,13 +2,13 @@
   <div
     :class="
       props.noCard
-        ? 'h-full! flex! flex-col!'
+        ? 'h-full! min-h-0! flex! flex-col!'
         : 'bg-white! rounded-xl! shadow-sm! overflow-hidden! transition-all!'
     "
   >
     <div
       v-if="showToolbar"
-      class="flex! flex-col! sm:flex-row! sm:items-center! justify-between! p-3! border-b! border-slate-100! gap-4!"
+      class="flex! flex-col! sm:flex-row! sm:items-center! justify-between! p-3! border-b! border-slate-100! gap-4! shrink-0!"
     >
       <div class="flex! items-center! gap-4!">
         <span v-if="title" class="text-sm! font-semibold! text-slate-900!">{{ title }}</span>
@@ -34,8 +34,24 @@
 
       <div class="flex! items-center! gap-2! w-full! sm:w-auto!">
         <div class="relative! flex-1! sm:w-auto!">
-          <span class="absolute! left-3.5! top-1/2! -translate-y-1/2! text-sm! text-slate-400!">
-            🔍
+          <!--
+            Ikon pakai FontAwesome, bukan emoji.
+
+            Emoji `🔍` digambar oleh sistem operasi dengan gayanya sendiri:
+            di Windows dia berwarna-warni (kaca pembesar biru-merah) dan
+            bentuknya jauh lebih besar daripada ikon garis yang dipakai
+            komponen lain. Akibatnya ikon search di header tabel terlihat
+            "beda" dari ikon search di dalam dropdown -- keduanya sebenarnya
+            ikon yang sama untuk aksi yang sama.
+
+            `pointer-events-none` supaya klik yang mendarat di ikon tetap
+            regarded sebagai klik di input, bukan ke elemen yang menutupi
+            input.
+          -->
+          <span
+            class="absolute! left-3.5! top-1/2! -translate-y-1/2! text-sm! text-slate-400! pointer-events-none!"
+          >
+            <font-awesome-icon icon="search" />
           </span>
           <input
             v-model="searchQuery"
@@ -48,7 +64,24 @@
       </div>
     </div>
 
-    <div :class="props.noCard ? 'overflow-x-auto! flex-1!' : 'overflow-x-auto!'">
+    <!--
+      Area tabel = satu-satunya elemen yang boleh digulir (vertikal & horizontal).
+
+      `min-h-0!` WAJIB: wrapper ini flex item di kolom flex, dan flex item punya
+      `min-height: auto` secara default, artinya ia tidak boleh menyusut di bawah
+      tinggi isinya. Tanpa itu, wrapper ikut grows melebihi ruang panel, isinya
+      terpotong `overflow-hidden` di atas, dan tidak ada scrollbar sama sekali --
+      persis gejala "ngak bisa discroll, cuma segitu datanya".
+
+      `overflow-y-auto!` dipakai eksplisit (Tailwind `overflow-x-auto` saja
+      sebenarnya juga membuat `overflow-y` jadi `auto` per spesifikasi, tapi
+      tidak banyak orang tahu itu dan mudah pecah kalau aturan diubah).
+    -->
+    <div
+      :class="
+        props.noCard ? 'overflow-x-auto! overflow-y-auto! flex-1! min-h-0!' : 'overflow-x-auto!'
+      "
+    >
       <table class="w-full! text-left!">
         <thead class="bg-slate-50! border-b! border-slate-200!">
           <tr>
@@ -195,11 +228,15 @@
       </div>
     </Transition>
 
+    <!--
+      Pagination menempel di bawah, jadi tidak ikut tergulir bersama tabel.
+      `shrink-0!` mencegah flex secara default memampetkannya kalau ruang mepet.
+    -->
     <div
       v-if="showPagination"
       :class="
         props.noCard
-          ? 'flex! flex-col! sm:flex-row! sm:items-center! justify-between! p-3! border-t! border-slate-100! gap-4!'
+          ? 'flex! flex-col! sm:flex-row! sm:items-center! justify-between! p-3! border-t! border-slate-100! gap-4! shrink-0!'
           : 'flex! flex-col! sm:flex-row! sm:items-center! justify-between! p-3! border-t! border-slate-100! bg-slate-50! gap-4!'
       "
     >

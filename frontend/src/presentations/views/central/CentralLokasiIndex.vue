@@ -160,6 +160,29 @@
             :title="row.is_active ? 'Nonaktifkan' : 'Aktifkan kembali'"
             :icon="row.is_active ? 'ban' : 'rotate-left'"
           />
+          <!--
+            Hapus permanen. Tombol keempat, dan yang paling berbeda dari
+            ketiganya.
+
+            Ikon `trash-can` dipakai, bukan `trash` yang biasa, karena
+            `trash` dipakai untuk "hapus tagihan" dan "hapus domain" --
+            dan orang yang sudah terbiasa menekan `trash` di panel ini akan
+            menekan `trash-can` dengan harapan yang sama. Yang di sini
+            menghapus database beserta seluruh isinya, jadi harus terlihat
+            berbeda bahkan di tingkat ikon.
+
+            Warnanya tetap `hover:text-red-600` yang sama dengan tombol
+            nonaktifkan. Bedanya di BENTUK: yang ini memakai ikon tempat
+            sampah, dan konfirmasinya jauh lebih berat.
+          -->
+          <BaseButton
+            variant="ghost"
+            size="sm"
+            @click="handleForceDelete(row)"
+            class="w-8! h-8! p-0! rounded-lg! border! border-slate-100! hover:border-red-200! hover:bg-red-50! text-slate-600! hover:text-red-600! shadow-sm!"
+            title="Hapus permanen beserta database"
+            icon="trash-can"
+          />
         </div>
       </template>
     </DataTable>
@@ -284,6 +307,12 @@ const goToEdit = (row) => {
  * ikonnya berubah menjadi "aktifkan kembali" saat lokasi sudah nonaktif --
  * punitive wording "hapus" akan membuat user takut menekan tombol yang
  * sebenarnya tidak menghapus apa pun.
+ *
+ * Mengaktifkan kembali TIDAK memakai endpoint yang sama. `locationService`
+ * punya `deactivate()` dan `activate()` yang terpisah, dan itu bukan
+ * pemisahan yang kebetulan: DELETE di sini berarti "matikan", jadi
+ * menggunakan DELETE untuk membangunkan kembali lokasi akan membuat satu
+ * request berarti dua hal yang bertentangan.
  */
 const handleToggleActive = async (row) => {
   if (row.is_active) {
@@ -303,8 +332,92 @@ const handleToggleActive = async (row) => {
   }
 
   try {
-    const res = await locationService.deactivate(row.id)
+    const res = row.is_active
+      ? await locationService.deactivate(row.id)
+      : await locationService.activate(row.id)
+
     showSuccessToast(res.data?.message || 'Status lokasi diperbarui.')
+    await loadData()
+  } catch (error) {
+    showErrorToast(error)
+  }
+}
+
+/**
+ * Hapus lokasi permanen, beserta database dan seluruh datanya.
+ *
+ * Berbeda dari "Nonaktifkan" di sebelahnya, yang ini BENAR-BENAR menghapus:
+ * database lokasi ikut dibuang, jadi tidak ada yang bisa dipulihkan kalau
+ * ternyata salah dihapus.
+ *
+ * Karena itu konfirmasinya dua tahap:
+ *
+ *   1. Dialog pertama -- kalimat yang menyebut apa yang hilang.
+ *   2. Dialog kedua -- slug lokasi harus DIKETIK ULANG. Mengetik ulang
+ *      memang lebih lambat daripada satu klik, dan itulah tujuannya:
+ *      kehilangan database beserta seluruh data lokasi karena salah klik
+ *      adalah kerusakan yang tidak bisa diperbaiki.
+ *
+ * Dialog kedua memakai `input` bawaan SweetAlert2, bukan `html` biasa.
+ * Alasannya `html` mengizinkan HTML yang bisa disisipkan, dan isinya di
+ * sini memuat nama lokasi yang berasal dari database -- jadi slug-nya
+ * ditampilkan sebagai teks, bukan markup.
+ */
+const handleForceDelete = async (row) => {
+  const konfirmasi = await MySwal.fire({
+    title: 'Hapus Lokasi Permanen?',
+    html: `Lokasi <strong>${row.label}</strong> akan dihapus <strong>permanen</strong>.<br><br>
+      Database <code>${row.database}</code> beserta <strong>seluruh data di dalamnya</strong>
+      akan ikut dihapus, dan <strong>tidak ada cara memulihkannya</strong>.<br><br>
+      Kalau hanya ingin menonaktifkan sementara, gunakan tombol "Nonaktifkan" -- datanya tetap utuh.`,
+    icon: 'error',
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Lanjut',
+    cancelButtonText: 'Batal',
+  })
+
+  if (!konfirmasi.isConfirmed) return
+
+  /*
+   * Tahap kedua: slug harus diketik ulang.
+   *
+   * `input: 'text'` + `inputValidator` dipakai, bukan `html` yang memuat
+   * `<input>` sendiri. SweetAlert2 punya validator bawaan yang menolak
+   * input kosong, dan pesannya bisa ditulis sendiri -- jadi orang tahu
+   * persis apa yang harus diketik, bukan hanya "salah".
+   */
+  const ketikSlug = await MySwal.fire({
+    title: 'Ketik slug untuk konfirmasi',
+    html: `Ketik <code>${row.slug}</code> untuk menghapus lokasi ini secara permanen.`,
+    icon: 'warning',
+    input: 'text',
+    inputAttributes: {
+      autocapitalize: 'none',
+      autocorrect: 'off',
+      spellcheck: 'false',
+    },
+    inputPlaceholder: row.slug,
+    inputValidator: (value) => {
+      if (!value || value.trim() !== row.slug) {
+        return `Slug harus persis sama: ${row.slug}`
+      }
+
+      return null
+    },
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Hapus permanen',
+    cancelButtonText: 'Batal',
+  })
+
+  if (!ketikSlug.isConfirmed) return
+
+  try {
+    const res = await locationService.forceDelete(row.id, row.slug)
+    showSuccessToast(res.data?.message || 'Lokasi dihapus permanen.')
     await loadData()
   } catch (error) {
     showErrorToast(error)

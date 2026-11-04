@@ -64,16 +64,10 @@
                 :loading="loadingTickets"
                 :disabled="ticketSelectedFromUrl"
               />
-              <p
-                v-if="invalidTicketId"
-                class="mt-2! text-xs! text-red-500! font-bold!"
-              >
+              <p v-if="invalidTicketId" class="mt-2! text-xs! text-red-500! font-bold!">
                 * Tiket dari tautan tidak valid. Silakan pilih tiket lain di bawah.
               </p>
-              <p
-                v-else-if="ticketLoadFailed"
-                class="mt-2! text-xs! text-red-500! font-bold!"
-              >
+              <p v-else-if="ticketLoadFailed" class="mt-2! text-xs! text-red-500! font-bold!">
                 * Gagal memuat daftar permohonan. Periksa koneksi lalu muat ulang.
               </p>
               <p
@@ -189,7 +183,7 @@
 
           <div class="mt-8! md:mt-10! space-y-4!">
             <BaseButton
-              variant="secondary"
+              variant="primary-gradient"
               block
               size="lg"
               class="submit-btn h-12! md:h-14!"
@@ -432,9 +426,7 @@ const submitSurvey = async () => {
     // satu kalimat generik sehingga surveyor tidak pernah tahu apa yang salah.
     const validationMessage = Object.values(err.response?.data?.errors || {})[0]?.[0]
     uiStore.error(
-      validationMessage ||
-        err.response?.data?.message ||
-        'Gagal mengirim data survey. Coba lagi.',
+      validationMessage || err.response?.data?.message || 'Gagal mengirim data survey. Coba lagi.',
     )
   } finally {
     isSubmitting.value = false

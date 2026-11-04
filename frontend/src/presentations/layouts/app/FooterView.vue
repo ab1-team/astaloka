@@ -1,6 +1,8 @@
 <template>
   <footer class="dashboard-footer">
-    <span class="footer-copy">© 2026 ASTALOKA. Sistem Air Tanah Berkelanjutan.</span>
+    <span class="footer-copy"
+      >© 2026 ASTALOKA. Asta Layanan Operasional, Keuangan, dan Administrasi.</span
+    >
     <div class="footer-links">
       <a href="#" class="footer-link">Kebijakan Privasi</a>
       <a href="#" class="footer-link">Ketentuan Layanan</a>

@@ -53,10 +53,44 @@ export const sopService = {
 
   /**
    * Sistem Tagihan
-   * Payload: { jatuhTempo, toleransiTunggakan }
+   *
+   * Payload: { toleransiTunggakan, batasTagihan, batasBulanTunggakan }
+   *
+   * - `toleransiTunggakan`  : TANGGAL (1-31) untuk semua aturan berbasis
+   *                            tanggal -- jatuh tempo tagihan bulanan,
+   *                            generate piutang tiap bulan, ambang piutang,
+   *                            dan deteksi advance payment.
+   * - `batasTagihan`        : alias lama dari `toleransiTunggakan`. Kalau
+   *                            dikirim, HARUS sama dengan
+   *                            `toleransiTunggakan`, kalau tidak backend
+   *                            menolak dengan 422.
+   * - `batasBulanTunggakan` : JUMLAH BULAN tunggakan yang boleh ditoleransi
+   *                            sebelum sambungan pelanggan diputus (0-24).
    */
   async saveSistemTagihan(payload) {
     const response = await api.post('/settings/sop/sistem-tagihan', payload)
+    return response.data
+  },
+
+  /**
+   * Pengaturan pencatatan meteran (kamera otomatis atau tidak).
+   *
+   * Endpoint ini BUKAN `role:admin` seperti `getAll()` -- popup input meter
+   * membacanya, dan popup itu dipakai teknisi juga. Kalau hanya ada di
+   * `settings/sop`, teknisi selalu kena 403 dan camerasnya tidak pernah
+   * terbuka untuk mereka.
+   */
+  async getPemakaianAir() {
+    const response = await api.get('/settings/pemakaian-air')
+    return response.data
+  },
+
+  /**
+   * Simpan pengaturan pencatatan meteran.
+   * Payload: { autoOpenMeterCamera: boolean }
+   */
+  async savePemakaianAir(payload) {
+    const response = await api.post('/settings/sop/pemakaian-air', payload)
     return response.data
   },
 

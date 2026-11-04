@@ -34,8 +34,11 @@ export const dashboardService = {
   /**
    * Auto-generate piutang/abodemen/denda untuk tagihan menunggak
    * ketika hari ini == toleransiTunggakan (dari SOP).
-   * Idempotent per TANGGAL (satu hari = satu proses). Admin berikutnya
-   * menerima `already_ran: true` beserta ringkasan hasil yang sama.
+   *
+   * Generate HANYA jalan pada tanggal itu -- bukan tanggal-tanggal
+   * sesudahnya. Dan generate boleh diulang pada tanggal itu sebanyak
+   * apa pun: yang mencegah jurnal dobel adalah command-nya sendiri
+   * (pasangan `reverence_id|account_kredit`), bukan penguncian tanggal.
    */
   async autoGenerateOverdue() {
     const response = await api.post('/dashboard/auto-generate-overdue')

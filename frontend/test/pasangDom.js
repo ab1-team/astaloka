@@ -92,6 +92,32 @@ globalThis.Event = window.Event
 globalThis.CustomEvent = window.CustomEvent
 
 /*
+ * `location`.
+ *
+ * `vue-router` v5 memakai `createWebHistory()` yang membaca `location`
+ * sebagai identifier GLOBAL -- bukan `window.location`. Tanpa ini, memuat
+ * `src/router/index.js` gagal dengan:
+ *
+ *     ReferenceError: location is not defined
+ *       at createWebHistory (vue-router/dist/vue-router.js:...)
+ *
+ * Yang membuat ini penting: router itu yang Holds definisi SEMUA route,
+ * termasuk redirect path lama `/app/arsip/tunggakan`. Tanpa `location`,
+ * tabel route tidak bisa diuji sama sekali di Node.
+ *
+ * `history` (yang sudah dipasang di atas) menunjuk ke `window.history`
+ * yang sama, jadi keduanya tetap konsisten -- `history.state` dan
+ * `location.pathname` menggambarkan halaman yang sama.
+ */
+if (globalThis.location === undefined) {
+  Object.defineProperty(globalThis, 'location', {
+    value: window.location,
+    configurable: true,
+    writable: true,
+  })
+}
+
+/*
  * Vue memanggil `app.mount()` yang mengecek `instanceof SVGElement` untuk
  * menentukan namespace sebuah elemen. Tanpa ini, mount komponen yang elemen
  * utamanya adalah SVG (ikon di sini) melempar ReferenceError sebelum badan

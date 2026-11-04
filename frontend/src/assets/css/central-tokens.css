@@ -69,7 +69,34 @@
   /* Permukaan & garis */
   --ct-line: var(--color-border, #e2e8f0);
   --ct-line-strong: var(--color-gray-300, #cbd5e1);
+
+  /*
+   * Permukaan ada tiga tingkat, dan NOMINYA bukan urutan terang-gelap --
+   * yang dimaksud adalah "seberapa dalam" isiannya dari kartu:
+   *
+   *   --ct-surface     kartu itu sendiri (putih)
+   *   --ct-surface-2   isian kecil di dalamnya: chip, pil, header tabel
+   *   --ct-surface-3   panel besar di dalamnya: kotak referensi, kotak angka
+   *
+   * Kenapa `--ct-surface` (putih) baru ditambahkan di sini, padahal
+   * `--color-card-bg` sudah ada dan sudah dipakai halaman panel pusat lain
+   * untuk kartu utamanya:
+   *
+   * Karena `--ct-surface-2` SELALU berarti abu, dan dipakai dashboard dan
+   * kedua pop-up untuk isian di dalam kartu. Halaman migrasi data memakai
+   * satu token abu yang sama untuk kartu utamanya -- dan fallback di file
+   * itu ditulis `#fff`. Hasilnya: fallback menjanjikan putih, token
+   * memberi abu. Kartu jadi abu tua di tengah panel pusat yang seluruhnya
+   * kartunya putih, dan tidak ada error yang bisa disalahkan -- token-nya
+   * memang ada, hanya bukan yang dimaksud.
+   *
+   * Jadi kartu putih punya token sendiri. `--ct-surface-3` sengaja lebih
+   * muda dari `--ct-surface-2`: panel besar di dalam kartu putih akan
+   * "berteriak" kalau warnanya sama dengan chip kecil di dalamnya.
+   */
+  --ct-surface: var(--color-card-bg, #ffffff);
   --ct-surface-2: var(--color-gray-100, #f1f5f9);
+  --ct-surface-3: var(--color-gray-50, #f8fafc);
 
   /* Teks */
   --ct-text: var(--color-text-main, #1e293b);

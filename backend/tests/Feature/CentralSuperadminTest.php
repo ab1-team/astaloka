@@ -273,6 +273,56 @@ class CentralSuperadminTest extends TestCase
     }
 
     #[Test]
+    public function mengganti_password_benar_benar_menyimpan_password_baru(): void
+    {
+        /*
+         * Test di atas ("mencabut token lama") memeriksa efek sampingnya saja,
+         * dan efek samping itu terjadi BAHKAN KETIKA password-nya sendiri tidak
+         * pernah tersimpan. Jadi test itu lulus meski fiturnya tidak
+         * berfungsi sama sekali.
+         *
+         * Yang diperiksa di sini adalah hal yang paling mendasar: password
+         * barunya benar-benar bisa dipakai untuk login. Kalau hash barunya
+         * tidak tersimpan, server tetap membalas "berhasil" -- superadmin lalu
+         * kehilangan akses tanpa tahu kenapa.
+         */
+        $lain = $this->makeSuperadmin('rekan', password: 'rahasia-lama');
+
+        $this->actingAsSuperadmin();
+
+        $this->patchJson("/api/central/superadmins/{$lain->id}", [
+            'password' => 'sandi-baru-123',
+            'password_confirmation' => 'sandi-baru-123',
+        ])->assertOk();
+
+        $hash = DB::connection(self::CENTRAL)->table('users')
+            ->where('id', $lain->id)
+            ->value('password');
+
+        $this->assertTrue(
+            Hash::check('sandi-baru-123', (string) $hash),
+            'Password baru tidak tersimpan -- hashnya masih yang lama.',
+        );
+
+        $this->assertFalse(
+            Hash::check('rahasia-lama', (string) $hash),
+            'Password lama masih berlaku setelah diganti.',
+        );
+
+        // Dan yang paling menentukan: password barunya bisa dipakai login.
+        $res = $this->postJson('/api/central/login', [
+            'email' => $this->mail('rekan'),
+            'password' => 'sandi-baru-123',
+        ])->assertOk();
+
+        $this->assertNotEmpty($res->json('data.token'));
+
+        DB::connection(self::CENTRAL)->table('personal_access_tokens')
+            ->where('tokenable_id', $lain->id)
+            ->delete();
+    }
+
+    #[Test]
     public function password_kosong_tidak_mengubah_password_lama(): void
     {
         $lain = $this->makeSuperadmin('rekan', password: 'rahasia-panjang');

@@ -5,17 +5,25 @@
         <!-- HEADER -->
         <div class="header">
           <div class="meta-left">
-            <div><span class="lbl-meta">TEKNISI</span><span>:</span><span>{{ (payload?.cater || '-').toString().toUpperCase() }}</span></div>
-            <div><span class="lbl-meta">NO URUT</span><span>:</span><span>{{ item.customer.noUrut || '-' }}</span></div>
-            <div><span class="lbl-meta">PEMAKAIAN</span><span>:</span><span>{{ periodeText }}</span></div>
+            <div>
+              <span class="lbl-meta">TEKNISI</span><span>:</span
+              ><span>{{ (payload?.cater || '-').toString().toUpperCase() }}</span>
+            </div>
+            <div>
+              <span class="lbl-meta">NO URUT</span><span>:</span
+              ><span>{{ item.customer.noUrut || '-' }}</span>
+            </div>
+            <div>
+              <span class="lbl-meta">PEMAKAIAN</span><span>:</span><span>{{ periodeText }}</span>
+            </div>
           </div>
 
           <div class="header-center">
             <div class="logo-l"></div>
             <div class="t">
-              <div class="tm">STRUK TAGIHAN PEMAKAIAN AIR</div>
+              <div class="tm">STRUK TAGIHAN PEMAKAIAN</div>
               <div class="tm">BADAN USAHA MILIK DESA (BUMDes)</div>
-              <div class="tm">UNIT AIR</div>
+              <div class="tm">UNIT LAYANAN</div>
             </div>
             <div class="logo-r"></div>
           </div>
@@ -25,7 +33,12 @@
         <table class="tbl">
           <thead>
             <tr>
-              <th>NAMA PELANGGAN</th><th>NO INDUK</th><th>ALAMAT</th><th>METER AWAL</th><th>METER AKHIR</th><th>PEMAKAIAN</th>
+              <th>NAMA PELANGGAN</th>
+              <th>NO INDUK</th>
+              <th>ALAMAT</th>
+              <th>METER AWAL</th>
+              <th>METER AKHIR</th>
+              <th>PEMAKAIAN</th>
             </tr>
           </thead>
           <tbody>
@@ -44,11 +57,26 @@
         <div class="c">
           <div class="r">
             <div class="rb">RINCIAN BIAYA</div>
-            <div class="r-item"><span class="lbl-rincian">Pemakaian Air</span><span>:</span><span>Rp. {{ rupiah(item.rincian.pemakaianAir) }}</span></div>
-            <div class="r-item"><span class="lbl-rincian">Beban Tetap</span><span>:</span><span>Rp. {{ rupiah(item.rincian.bebanTetap) }}</span></div>
-            <div class="r-item"><span class="lbl-rincian">Denda</span><span>:</span><span>Rp. {{ rupiah(item.rincian.denda) }}</span></div>
-            <div class="r-item tot"><span class="lbl-rincian">Total</span><span>:</span><span class="val-bold">Rp. {{ rupiah(item.rincian.total) }}</span></div>
-            <div class="r-item terbilang-row"><span class="lbl-rincian">Terbilang</span><span>:</span><span class="i">{{ bilang(item.rincian.total) }}</span></div>
+            <div class="r-item">
+              <span class="lbl-rincian">Pemakaian</span><span>:</span
+              ><span>Rp. {{ rupiah(item.rincian.pemakaianAir) }}</span>
+            </div>
+            <div class="r-item">
+              <span class="lbl-rincian">Beban Tetap</span><span>:</span
+              ><span>Rp. {{ rupiah(item.rincian.bebanTetap) }}</span>
+            </div>
+            <div class="r-item">
+              <span class="lbl-rincian">Denda</span><span>:</span
+              ><span>Rp. {{ rupiah(item.rincian.denda) }}</span>
+            </div>
+            <div class="r-item tot">
+              <span class="lbl-rincian">Total</span><span>:</span
+              ><span class="val-bold">Rp. {{ rupiah(item.rincian.total) }}</span>
+            </div>
+            <div class="r-item terbilang-row">
+              <span class="lbl-rincian">Terbilang</span><span>:</span
+              ><span class="i">{{ bilang(item.rincian.total) }}</span>
+            </div>
           </div>
           <div class="ttd">
             <div>{{ tempat }}, {{ tanggalCetak }}</div>
@@ -67,10 +95,12 @@
           </div>
 
           <div class="cat">
-            Seluruh pelanggan "Tirto Mulo" wajib mematuhi segala ketentuan manajemen pengelolaan oleh
-            BUMDes BANGUN KENCANA MULO, sesuai dengan Peraturan Desa Mulo Nomor 3 Tahun 2018.<br>
-            Keluhan pelanggan bisa WA Nomor 0882-1673-8479 (Iswanto) 0878-0484-5880 (Nurli).<br>
-            NB. Terlambat 2 bulan akan diterbitkan Surat Peringatan, Terlambat 3 bulan akan diterbitkan Surat Pemutusan Sementara.
+            Seluruh pelanggan "Tirto Mulo" wajib mematuhi segala ketentuan manajemen pengelolaan
+            oleh BUMDes BANGUN KENCANA MULO, sesuai dengan Peraturan Desa Mulo Nomor 3 Tahun
+            2018.<br />
+            Keluhan pelanggan bisa WA Nomor 0882-1673-8479 (Iswanto) 0878-0484-5880 (Nurli).<br />
+            NB. Terlambat 2 bulan akan diterbitkan Surat Peringatan, Terlambat 3 bulan akan
+            diterbitkan Surat Pemutusan Sementara.
           </div>
         </div>
       </div>
@@ -105,7 +135,9 @@ const buildRincian = (c) => {
 const strukList = computed(() => {
   const list = Array.isArray(props.payload?.customers)
     ? props.payload.customers
-    : (props.payload?.customer ? [props.payload.customer] : [])
+    : props.payload?.customer
+      ? [props.payload.customer]
+      : []
   return list.map((c) => ({ customer: c, rincian: buildRincian(c) }))
 })
 
@@ -114,11 +146,25 @@ const periodeText = computed(() => {
   return f.bulan ? `${f.bulan} ${f.tahun}` : '-'
 })
 
-const rupiah = (val) => Number(val || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const rupiah = (val) =>
+  Number(val || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const tempat = 'Mulo'
 
-const bulanId = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+const bulanId = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
 
 const tanggalCetak = computed(() => {
   const f = props.payload?.filter || {}
@@ -126,14 +172,29 @@ const tanggalCetak = computed(() => {
   const bulanStr = String(f.bulan || '').trim()
   const bulanIdx = bulanId.findIndex((b) => b.toLowerCase() === bulanStr.toLowerCase())
   if (bulanIdx === -1) {
-    return new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    return new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
   }
   const lastDay = new Date(tahun, bulanIdx + 1, 0).getDate()
   return `${lastDay} ${bulanId[bulanIdx]} ${tahun}`
 })
 
 const SATUAN = ['', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan']
-const BELASAN = ['Sepuluh', 'Sebelas', 'Dua Belas', 'Tiga Belas', 'Empat Belas', 'Lima Belas', 'Enam Belas', 'Tujuh Belas', 'Delapan Belas', 'Sembilan Belas']
+const BELASAN = [
+  'Sepuluh',
+  'Sebelas',
+  'Dua Belas',
+  'Tiga Belas',
+  'Empat Belas',
+  'Lima Belas',
+  'Enam Belas',
+  'Tujuh Belas',
+  'Delapan Belas',
+  'Sembilan Belas',
+]
 
 const tigaDigit = (n) => {
   if (n === 0) return ''
@@ -170,107 +231,264 @@ const bilang = (val) => {
 </script>
 
 <style scoped>
-.struk-page { display: flex; flex-direction: column; gap: 24px; }
-.struk { font: 11px Arial; padding: 3px; border: 0.75px solid #6d6969; background: #fff; color: #575757; width: 100%; box-sizing: border-box; }
+/* Tampilan struk: gaya awal (gap 24px, logo 48px, .sp 35px, dll).
+   Yang dikecilkan hanya nilai yang membuat 4 struk TIDAK muat satu
+   halaman A4 -- dengan nilai awal, tinggi halaman jadi 299,6mm (> 297mm)
+   sehingga Chrome memecah 4 struk jadi 2 halaman dan menyisakan
+   halaman kosong.
+
+   KNOB: kalau struk masih terpotong, kecilkan `gap` dan `.sp` lagi. */
+.struk-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.struk {
+  font: 11px Arial;
+  padding: 3px;
+  border: 0.75px solid #6d6969;
+  background: #fff;
+  color: #575757;
+  width: 100%;
+  box-sizing: border-box;
+}
 
 /* Garis pemisah dibuat tipis dan pas melebar */
-.div { border: none; border-top: 0.75px solid #666; margin: 8px 0; width: 100%; }
+.div {
+  border: none;
+  border-top: 0.75px solid #666;
+  margin: 8px 0;
+  width: 100%;
+}
 
 /* Header Layout */
-.header { display: flex; justify-content: space-between; align-items: center; }
-.meta-left { font-size: 10px; line-height: 1.4; }
-.meta-left div { display: flex; gap: 4px; }
-.lbl-meta { font-weight: normal !important; width: 65px; }
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.meta-left {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.meta-left div {
+  display: flex;
+  gap: 4px;
+}
+.lbl-meta {
+  font-weight: normal !important;
+  width: 65px;
+}
 
-.header-center { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-start; padding-left: 90px; }
-.logo-l { width: 48px; height: 48px; background-image: url('/logo2.png'); background-size: contain; background-repeat: no-repeat; background-position: center; flex-shrink: 0; }
-.logo-r { width: 48px; height: 48px; background-image: url('/logo1.png'); background-size: contain; background-repeat: no-repeat; background-position: center; flex-shrink: 0; }
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  justify-content: flex-start;
+  padding-left: 90px;
+}
+.logo-l {
+  width: 44px;
+  height: 44px;
+  background-image: url('/logo2.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  flex-shrink: 0;
+}
+.logo-r {
+  width: 44px;
+  height: 44px;
+  background-image: url('/logo1.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  flex-shrink: 0;
+}
 
-.t { text-align: center; font-size: 9.5px; font-weight: 700; text-transform: uppercase; }
-.tm { 
-  font-size: 12px; 
-  text-transform: uppercase; 
-  line-height: 1.0; 
-  color: #353535; 
+.t {
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.tm {
+  font-size: 12px;
+  text-transform: uppercase;
+  line-height: 1;
+  color: #353535;
 }
 
 /* Table */
-.tbl { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 9px; }
-.tbl th, .tbl td { border: 1px solid #6d6969; padding: 2px 6px; text-align: center; }
-.tbl th { font-weight: 700; text-transform: uppercase; background: #fdfdfd; }
-.tbl td { text-transform: uppercase; }
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  margin-top: 9px;
+}
+.tbl th,
+.tbl td {
+  border: 1px solid #6d6969;
+  padding: 2px 6px;
+  text-align: center;
+}
+.tbl th {
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #fdfdfd;
+}
+.tbl td {
+  text-transform: uppercase;
+}
 
 /* Content (Rincian & TTD) */
-.c { display: flex; justify-content: space-between; margin-top: 5px; align-items: flex-start; }
-.rb { 
-  font-weight: 700; 
+.c {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  align-items: flex-start;
+}
+.rb {
+  font-weight: 700;
   text-transform: uppercase;
-  margin-bottom: 4px; 
-  display: inline-block; 
-  border-bottom: 1px solid #6d6969; 
-  padding-bottom: 1px; 
+  margin-bottom: 4px;
+  display: inline-block;
+  border-bottom: 1px solid #6d6969;
+  padding-bottom: 1px;
 }
 .r {
-  margin-left: 30px; 
+  margin-left: 30px;
 }
-.r-item { 
-  display: flex; 
-  gap: 9px; 
-  line-height: 1.4; 
-  font-size: 11px; 
-  margin-left: 0px; 
+.r-item {
+  display: flex;
+  gap: 9px;
+  line-height: 1.4;
+  font-size: 11px;
+  margin-left: 0px;
 }
-.lbl-rincian { font-weight: normal !important; width: 95px; }
-.val-bold { font-weight: 700; }
-.tot { font-weight: 700; }
-.terbilang-row { border-top: none !important; }
-.i { font-style: italic; text-transform: capitalize; }
+.lbl-rincian {
+  font-weight: normal !important;
+  width: 95px;
+}
+.val-bold {
+  font-weight: 700;
+}
+.tot {
+  font-weight: 700;
+}
+.terbilang-row {
+  border-top: none !important;
+}
+.i {
+  font-style: italic;
+  text-transform: capitalize;
+}
 
-.ttd { width: 180px; text-align: center; font-size: 11px; margin-left: auto; padding-top: 15px; }
-.sp { margin-bottom: 35px; }
-.nb { font-weight: 700; }
+.ttd {
+  width: 180px;
+  text-align: center;
+  font-size: 11px;
+  margin-left: auto;
+  padding-top: 15px;
+}
+.sp {
+  margin-bottom: 20px;
+}
+.nb {
+  font-weight: 700;
+}
 
 /* Bottom Section (Transfer & Catatan) */
-.bottom-section { display: flex; justify-content: space-between; align-items: flex-end; gap: 15px; margin-top: 2px; }
-.rek { border: 1px solid #585858; padding: 4px 8px; min-width: 200px; line-height: 1.15; }
-
-.rt { 
-  font-size: 8px; 
-  font-weight: 700; 
-  margin-bottom: 1px; 
-  text-align: left; 
+.bottom-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 15px;
+  margin-top: 2px;
+}
+.rek {
+  border: 1px solid #585858;
+  padding: 4px 8px;
+  min-width: 200px;
+  line-height: 1.15;
 }
 
-.rek-bold { 
-  font-size: 10px; 
-  font-weight: 700; 
-  text-align: center; 
+.rt {
+  font-size: 8px;
+  font-weight: 700;
+  margin-bottom: 1px;
+  text-align: left;
+}
+
+.rek-bold {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
   line-height: 1.1;
 }
 
-.nr { 
-  font-family: monospace; 
-  font-size: 13px; 
-  font-weight: 800;  
-  text-align: center; 
+.nr {
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
   line-height: 1.1;
   margin: 1px 0;
 }
 
-.an { 
-  font-size: 8px; 
-  margin-top: 1px; 
-  font-weight: 700; 
-  text-align: center; 
+.an {
+  font-size: 8px;
+  margin-top: 1px;
+  font-weight: 700;
+  text-align: center;
 }
 
-.cat { font-size: 8.5px; line-height: 1.3; flex: 1; text-align: center; align-self: flex-end; margin-bottom: 2px; }
-</style>
+.cat {
+  font-size: 8.5px;
+  line-height: 1.3;
+  flex: 1;
+  text-align: center;
+  align-self: flex-end;
+  margin-bottom: 2px;
+}
 
-<style>
-/* Override padding BaseReportLayout untuk struk (global agar menembus scoped parent) */
+/* Override padding BaseReportLayout untuk struk.
+   Selector dipindah ke scoped block (bukan global) supaya TIDAK bocor ke
+   laporan lain (daftar tagihan / form input) yang punya kebutuhan margin
+   berbeda. Nilai padding tetap sama seperti sebelumnya: 17px 30px.
+
+   Catatan: `.report-page` adalah elemen milik BaseReportLayout (parent).
+   Komponen child (file ini) tidak bisa menambah class ke sana, dan
+   `:deep()` juga tidak cocok karena elemen itu ROOT (bukan descendant).
+   Yang bekerja: selector `.report-page.surat-page` di scoped block ini,
+   karena root child mewarisi scope-id parent. */
 .report-page.surat-page {
   padding: 17px 30px !important;
 }
-.struk { break-inside: avoid; page-break-inside: avoid; }
+</style>
+
+<style>
+.struk {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Aturan cetak struk.
+   1) `@page margin` WAJIB 0. BaseReportLayout meng-imposed `margin: 15mm`
+      pada @page, yang BERTAHAP dengan padding di dalam elemen. Hasilnya
+      area cetak jadi sempit dan muncul ruang kosong di kiri/kanan.
+   2) `break-after` TIDAK dipasang di .report-page: pemenggalan halaman
+      dilakukan oleh .report-page-wrap di cetakStruk.vue. Kalau dua-duanya
+      dipasang, Chrome menyisipkan halaman kosong di antar halaman. */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  .struk {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
 </style>

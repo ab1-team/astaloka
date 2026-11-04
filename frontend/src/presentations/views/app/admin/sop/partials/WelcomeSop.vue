@@ -42,15 +42,14 @@
           belakangnya, hampir selalu penyebabnya kedua kelas ini terhapus,
           bukan warnanya salah.
         -->
-        <span
-          class="bg-linear-brand! bg-clip-text! text-transparent! drop-shadow-xs!"
+        <span class="bg-linear-brand! bg-clip-text! text-transparent! drop-shadow-xs!"
           >Pusat Kendali SOP</span
         >
       </h1>
 
       <p class="text-xs! md:text-sm! text-slate-500! font-medium! max-w-xl! leading-relaxed!">
         Sistem manajemen konfigurasi sentral untuk menyelaraskan operasional, biaya, serta siklus
-        tagihan air bersih <span class="text-indigo-600! font-bold!">Tirto Mulo</span> demi
+        tagihan layanan <span class="text-indigo-600! font-bold!">Tirto Mulo</span> demi
         keberlanjutan layanan.
       </p>
     </div>

@@ -68,6 +68,18 @@ export const billingService = {
   },
 
   /**
+   * Ubah meter akhir pemakaian + hitung ulang tagihannya di backend.
+   *
+   * Backend-lah yang menghitung tagihan (tarif progresif paket, abodemen,
+   * denda beku) supaya angka yang tampil di daftar selalu sama dengan
+   * yang tersimpan — bukan hasil hitungan frontend yang bisa meleset.
+   */
+  async updateUsage(payload = {}) {
+    const response = await api.put('/monthly-bills/usage', payload)
+    return response.data
+  },
+
+  /**
    * Ambil rekap tagihan
    */
   async getRecap(params = {}) {
@@ -85,10 +97,15 @@ export const billingService = {
   },
 
   /**
-   * Detail tagihan
+   * Detail tagihan.
+   *
+   * Memakai `/monthly-bills/{id}` (shared admin+teknisi), BUKAN `/bills/{id}`.
+   * Route `/bills/{monthlyBill}` hanya dibuka untuk `role:admin`, jadi
+   * teknisi yang memanggilnya langsung kena 403 dan modal rincian tagihan
+   * tidak pernah terbuka.
    */
   async getBillDetail(id) {
-    const response = await api.get(`/bills/${id}`)
+    const response = await api.get(`/monthly-bills/${id}`)
     return response.data
   },
 

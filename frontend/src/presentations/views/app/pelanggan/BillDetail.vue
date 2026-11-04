@@ -113,9 +113,7 @@
                       >
                         Nomor Invoice
                       </p>
-                      <p class="text-xs! lg:text-sm! font-black!">
-                        #{{ invoiceNumber }}
-                      </p>
+                      <p class="text-xs! lg:text-sm! font-black!">#{{ invoiceNumber }}</p>
                     </div>
                     <div
                       class="w-12! h-12! lg:w-16! lg:h-16! bg-white! p-1! rounded-xl! shadow-lg! flex! items-center! justify-center! flex-shrink-0!"
@@ -489,7 +487,7 @@ const breakdownItems = computed(() => {
 
   const items = [
     {
-      name: 'Biaya Penggunaan Air',
+      name: 'Biaya Penggunaan',
       sub: `${formatNumber(bill.value.usage_m3)} m³ x Pemakaian`,
       price: Number(bill.value.usage_charge || 0),
       icon: 'tint',

@@ -94,4 +94,23 @@ class MonthlyBill extends Model
     {
         return $this->morphMany(Transaction::class, 'reverence');
     }
+
+    /**
+     * Jurnal piutang tunggakan milik tagihan ini.
+     *
+     * BUKAN `transactions()`: relasi itu `morphMany` dengan tipe
+     * `reverence_type = 'monthly_bill'`, sedangkan jurnal piutang tunggakan
+     * memakai tipe `overdue_bill` -- sehingga relasi `transactions()` tidak
+     * pernah menemukan satu pun jurnal piutang.
+     *
+     * Relasi ini yang dipakai Arsip Piutang sebagai sumber kebenaran:
+     * tagihan dianggap punya piutang kalau jurnal `overdue_bill`-nya ada,
+     * bukan kalau `penalty_amount`-nya lebih besar dari nol (proxy itu
+     * sudah ditolak di `MonthlyBillController::pay`).
+     */
+    public function overdueJournals()
+    {
+        return $this->hasMany(Transaction::class, 'reverence_id', 'id')
+            ->where('reverence_type', 'overdue_bill');
+    }
 }

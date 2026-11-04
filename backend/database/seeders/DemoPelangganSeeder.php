@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\BillPayment;
 use App\Models\Customer;
 use App\Models\InstallationPackage;
 use App\Models\InstallationTicket;
@@ -16,7 +17,6 @@ use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 class DemoPelangganSeeder extends Seeder
 {
@@ -28,11 +28,11 @@ class DemoPelangganSeeder extends Seeder
             $this->ensureCoreUsers();
             $this->ensureVillages();
 
-            $admin    = User::where('role', 'admin')->first();
+            $admin = User::where('role', 'admin')->first();
             $surveyor = User::where('role', 'surveyor')->first();
-            $teknisi  = User::where('role', 'teknisi')->first();
-            $pkgReg   = InstallationPackage::where('name', 'Paket Reguler')->first();
-            $pkgSos   = InstallationPackage::where('name', 'Paket Sosial')->first();
+            $teknisi = User::where('role', 'teknisi')->first();
+            $pkgReg = InstallationPackage::where('name', 'Paket Reguler')->first();
+            $pkgSos = InstallationPackage::where('name', 'Paket Sosial')->first();
 
             $villages = Village::orderBy('id')->get();
 
@@ -61,18 +61,18 @@ class DemoPelangganSeeder extends Seeder
                 $hasTunggakan = $row['tunggakan'];
 
                 $idx = $i + 1;
-                $nik   = (string) ($baseNik + $idx);
-                $phone = $basePhone . str_pad((string) (100 + $idx), 4, '0', STR_PAD_LEFT);
+                $nik = (string) ($baseNik + $idx);
+                $phone = $basePhone.str_pad((string) (100 + $idx), 4, '0', STR_PAD_LEFT);
                 $email = "demo{$idx}@ASTALOKA.test";
-                $name  = "Pelanggan Demo {$idx}";
+                $name = "Pelanggan Demo {$idx}";
 
                 $user = User::updateOrCreate(
                     ['email' => $email],
                     [
-                        'name'       => $name,
-                        'role'       => 'pelanggan',
+                        'name' => $name,
+                        'role' => 'pelanggan',
                         'jabatan_id' => null,
-                        'password'   => Hash::make('password'),
+                        'password' => Hash::make('password'),
                     ]
                 );
 
@@ -81,21 +81,21 @@ class DemoPelangganSeeder extends Seeder
                 $orderDate = $now->copy()->subMonths(rand(2, 5))->subDays(rand(0, 25));
 
                 $ticket = InstallationTicket::create([
-                    'package_id'     => $pkg->id,
-                    'user_id'        => $user->id,
+                    'package_id' => $pkg->id,
+                    'user_id' => $user->id,
                     'applicant_name' => $name,
-                    'nik'            => $nik,
-                    'phone'          => $phone,
-                    'gender'         => $i % 2 === 0 ? 'male' : 'female',
-                    'birth_place'    => 'Magelang',
-                    'birth_date'     => '199' . ($i % 9) . '-0' . (($i % 9) + 1) . '-1' . ($i % 9),
-                    'address'        => 'Jl. Demo No. ' . $idx . ', ' . $village->village_name,
-                    'lat'            => -7.4700 + ($i * 0.001),
-                    'lng'            => 110.2100 + ($i * 0.001),
-                    'status'         => $status,
-                    'village_id'     => $village->id,
-                    'created_by'     => $admin->id,
-                    'order_date'     => $orderDate->toDateString(),
+                    'nik' => $nik,
+                    'phone' => $phone,
+                    'gender' => $i % 2 === 0 ? 'male' : 'female',
+                    'birth_place' => 'Magelang',
+                    'birth_date' => '199'.($i % 9).'-0'.(($i % 9) + 1).'-1'.($i % 9),
+                    'address' => 'Jl. Demo No. '.$idx.', '.$village->village_name,
+                    'lat' => -7.4700 + ($i * 0.001),
+                    'lng' => 110.2100 + ($i * 0.001),
+                    'status' => $status,
+                    'village_id' => $village->id,
+                    'created_by' => $admin->id,
+                    'order_date' => $orderDate->toDateString(),
                 ]);
 
                 $this->command->info("  [#{$idx}] {$status} → {$name} ({$pkg->name})");
@@ -103,44 +103,44 @@ class DemoPelangganSeeder extends Seeder
                 // SURVEYED → tambahkan survey
                 if ($status === 'surveyed') {
                     SurveyResult::create([
-                        'ticket_id'          => $ticket->id,
-                        'surveyor_id'        => $surveyor->id,
+                        'ticket_id' => $ticket->id,
+                        'surveyor_id' => $surveyor->id,
                         'distance_to_pipe_m' => rand(5, 40),
-                        'material_notes'     => 'Material standar, akses mudah ke titik sambungan.',
-                        'photo_url'          => 'survey-photos/demo_' . $idx . '.jpg',
-                        'surveyed_at'        => $now->copy()->subDays(rand(1, 10)),
+                        'material_notes' => 'Material standar, akses mudah ke titik sambungan.',
+                        'photo_url' => 'survey-photos/demo_'.$idx.'.jpg',
+                        'surveyed_at' => $now->copy()->subDays(rand(1, 10)),
                     ]);
                 }
 
                 // UNPAID → ada payment sebagian
                 if ($status === 'unpaid') {
                     Payment::create([
-                        'ticket_id'    => $ticket->id,
-                        'amount'       => (int) round($pkg->installation_fee * 0.5),
-                        'type'         => 'installation_fee',
-                        'status'       => 'confirmed',
+                        'ticket_id' => $ticket->id,
+                        'amount' => (int) round($pkg->installation_fee * 0.5),
+                        'type' => 'installation_fee',
+                        'status' => 'confirmed',
                         'confirmed_by' => $admin->id,
-                        'paid_at'      => $now->copy()->subDays(rand(5, 15)),
+                        'paid_at' => $now->copy()->subDays(rand(5, 15)),
                     ]);
                 }
 
                 // PROCESSING → sudah lunas + survey
                 if ($status === 'processing') {
                     SurveyResult::create([
-                        'ticket_id'          => $ticket->id,
-                        'surveyor_id'        => $surveyor->id,
+                        'ticket_id' => $ticket->id,
+                        'surveyor_id' => $surveyor->id,
                         'distance_to_pipe_m' => rand(5, 40),
-                        'material_notes'     => 'Material standar, akses mudah ke titik sambungan.',
-                        'photo_url'          => 'survey-photos/demo_' . $idx . '.jpg',
-                        'surveyed_at'        => $now->copy()->subDays(rand(10, 20)),
+                        'material_notes' => 'Material standar, akses mudah ke titik sambungan.',
+                        'photo_url' => 'survey-photos/demo_'.$idx.'.jpg',
+                        'surveyed_at' => $now->copy()->subDays(rand(10, 20)),
                     ]);
                     Payment::create([
-                        'ticket_id'    => $ticket->id,
-                        'amount'       => $pkg->installation_fee,
-                        'type'         => 'installation_fee',
-                        'status'       => 'confirmed',
+                        'ticket_id' => $ticket->id,
+                        'amount' => $pkg->installation_fee,
+                        'type' => 'installation_fee',
+                        'status' => 'confirmed',
                         'confirmed_by' => $admin->id,
-                        'paid_at'      => $now->copy()->subDays(rand(2, 8)),
+                        'paid_at' => $now->copy()->subDays(rand(2, 8)),
                     ]);
                 }
 
@@ -149,38 +149,38 @@ class DemoPelangganSeeder extends Seeder
                     $initial = rand(0, 20);
 
                     $yearMonth = $now->copy()->format('Ym');
-                    $latest = Customer::where('customer_code', 'like', 'PAM-' . $yearMonth . '-%')
+                    $latest = Customer::where('customer_code', 'like', 'PAM-'.$yearMonth.'-%')
                         ->orderBy('customer_code', 'desc')
                         ->first();
                     $next = $latest
                         ? str_pad((int) substr($latest->customer_code, -4) + 1, 4, '0', STR_PAD_LEFT)
                         : '0001';
-                    $customerCode = 'PAM-' . $yearMonth . '-' . $next;
+                    $customerCode = 'PAM-'.$yearMonth.'-'.$next;
 
                     $customer = Customer::create([
-                        'ticket_id'             => $ticket->id,
-                        'user_id'               => $user->id,
-                        'customer_code'         => $customerCode,
+                        'ticket_id' => $ticket->id,
+                        'user_id' => $user->id,
+                        'customer_code' => $customerCode,
                         'initial_meter_reading' => $initial,
-                        'meter_photo_url'       => 'meter-photos/demo_' . $idx . '.jpg',
-                        'activated_at'          => $now->copy()->subDays(rand(15, 40)),
+                        'meter_photo_url' => 'meter-photos/demo_'.$idx.'.jpg',
+                        'activated_at' => $now->copy()->subDays(rand(15, 40)),
                     ]);
 
                     SurveyResult::create([
-                        'ticket_id'          => $ticket->id,
-                        'surveyor_id'        => $surveyor->id,
+                        'ticket_id' => $ticket->id,
+                        'surveyor_id' => $surveyor->id,
                         'distance_to_pipe_m' => rand(5, 40),
-                        'material_notes'     => 'Material standar.',
-                        'photo_url'          => 'survey-photos/demo_' . $idx . '.jpg',
-                        'surveyed_at'        => $now->copy()->subDays(rand(30, 50)),
+                        'material_notes' => 'Material standar.',
+                        'photo_url' => 'survey-photos/demo_'.$idx.'.jpg',
+                        'surveyed_at' => $now->copy()->subDays(rand(30, 50)),
                     ]);
                     Payment::create([
-                        'ticket_id'    => $ticket->id,
-                        'amount'       => $pkg->installation_fee,
-                        'type'         => 'installation_fee',
-                        'status'       => 'confirmed',
+                        'ticket_id' => $ticket->id,
+                        'amount' => $pkg->installation_fee,
+                        'type' => 'installation_fee',
+                        'status' => 'confirmed',
                         'confirmed_by' => $admin->id,
-                        'paid_at'      => $now->copy()->subDays(rand(20, 35)),
+                        'paid_at' => $now->copy()->subDays(rand(20, 35)),
                     ]);
 
                     // Meter readings untuk Maret, April, Mei (2026) → menghasilkan monthly_bills
@@ -192,38 +192,38 @@ class DemoPelangganSeeder extends Seeder
                     $initial = rand(0, 20);
 
                     $yearMonth = $now->copy()->format('Ym');
-                    $latest = Customer::where('customer_code', 'like', 'PAM-' . $yearMonth . '-%')
+                    $latest = Customer::where('customer_code', 'like', 'PAM-'.$yearMonth.'-%')
                         ->orderBy('customer_code', 'desc')
                         ->first();
                     $next = $latest
                         ? str_pad((int) substr($latest->customer_code, -4) + 1, 4, '0', STR_PAD_LEFT)
                         : '0001';
-                    $customerCode = 'PAM-' . $yearMonth . '-' . $next;
+                    $customerCode = 'PAM-'.$yearMonth.'-'.$next;
 
                     $customer = Customer::create([
-                        'ticket_id'             => $ticket->id,
-                        'user_id'               => $user->id,
-                        'customer_code'         => $customerCode,
+                        'ticket_id' => $ticket->id,
+                        'user_id' => $user->id,
+                        'customer_code' => $customerCode,
                         'initial_meter_reading' => $initial,
-                        'meter_photo_url'       => 'meter-photos/demo_' . $idx . '.jpg',
-                        'activated_at'          => $now->copy()->subMonths(6),
+                        'meter_photo_url' => 'meter-photos/demo_'.$idx.'.jpg',
+                        'activated_at' => $now->copy()->subMonths(6),
                     ]);
 
                     SurveyResult::create([
-                        'ticket_id'          => $ticket->id,
-                        'surveyor_id'        => $surveyor->id,
+                        'ticket_id' => $ticket->id,
+                        'surveyor_id' => $surveyor->id,
                         'distance_to_pipe_m' => rand(5, 40),
-                        'material_notes'     => 'Material standar.',
-                        'photo_url'          => 'survey-photos/demo_' . $idx . '.jpg',
-                        'surveyed_at'        => $now->copy()->subMonths(7),
+                        'material_notes' => 'Material standar.',
+                        'photo_url' => 'survey-photos/demo_'.$idx.'.jpg',
+                        'surveyed_at' => $now->copy()->subMonths(7),
                     ]);
                     Payment::create([
-                        'ticket_id'    => $ticket->id,
-                        'amount'       => $pkg->installation_fee,
-                        'type'         => 'installation_fee',
-                        'status'       => 'confirmed',
+                        'ticket_id' => $ticket->id,
+                        'amount' => $pkg->installation_fee,
+                        'type' => 'installation_fee',
+                        'status' => 'confirmed',
                         'confirmed_by' => $admin->id,
-                        'paid_at'      => $now->copy()->subMonths(6),
+                        'paid_at' => $now->copy()->subMonths(6),
                     ]);
 
                     $this->seedMeterReadingsAndBills($customer, $pkg, $initial, $tunggakanMonths, true);
@@ -232,12 +232,12 @@ class DemoPelangganSeeder extends Seeder
                 // TERMINATED → ada payment sebagian lalu dibatalkan
                 if ($status === 'terminated') {
                     Payment::create([
-                        'ticket_id'    => $ticket->id,
-                        'amount'       => (int) round($pkg->installation_fee * 0.3),
-                        'type'         => 'installation_fee',
-                        'status'       => 'confirmed',
+                        'ticket_id' => $ticket->id,
+                        'amount' => (int) round($pkg->installation_fee * 0.3),
+                        'type' => 'installation_fee',
+                        'status' => 'confirmed',
                         'confirmed_by' => $admin->id,
-                        'paid_at'      => $now->copy()->subMonths(2),
+                        'paid_at' => $now->copy()->subMonths(2),
                     ]);
                 }
             }
@@ -283,7 +283,7 @@ class DemoPelangganSeeder extends Seeder
      */
     private function seedMeterReadingsAndBills(
         Customer $customer,
-        \App\Models\InstallationPackage $pkg,
+        InstallationPackage $pkg,
         int $initialMeter,
         array $months,
         bool $unpaid
@@ -301,13 +301,13 @@ class DemoPelangganSeeder extends Seeder
             $running += $usage;
 
             $reading = MeterReading::create([
-                'customer_id'   => $customer->id,
-                'recorded_by'   => $teknisi->id,
-                'reading_year'  => $year,
+                'customer_id' => $customer->id,
+                'recorded_by' => $teknisi->id,
+                'reading_year' => $year,
                 'reading_month' => $month,
-                'meter_value'   => $running,
-                'photo_url'     => 'meter-readings/demo_' . $customer->id . '_' . $month . '.jpg',
-                'recorded_at'   => Carbon::create($year, $month, 25),
+                'meter_value' => $running,
+                'photo_url' => 'meter-readings/demo_'.$customer->id.'_'.$month.'.jpg',
+                'recorded_at' => Carbon::create($year, $month, 25),
             ]);
 
             $start = $previousReading
@@ -315,7 +315,7 @@ class DemoPelangganSeeder extends Seeder
                 : $customer->initial_meter_reading;
 
             $usageM3 = max(0, $running - $start);
-            $usageCharge = $billingService->calculateProgressiveCharge($pkg, $usageM3);
+            $usageCharge = $billingService->calculateUsageCharge($pkg, $usageM3);
             $abodemen = $pkg->monthly_abodemen;
 
             // Denda hanya jika ada tunggakan 2 bulan sebelumnya
@@ -336,26 +336,26 @@ class DemoPelangganSeeder extends Seeder
             $dueDate = Carbon::create($year, $month, 1)->addMonth()->setDay(20);
 
             $bill = MonthlyBill::create([
-                'customer_id'           => $customer->id,
-                'billing_period_year'   => $year,
-                'billing_period_month'  => $month,
-                'meter_reading_start'   => $start,
-                'meter_reading_end'     => $running,
-                'usage_m3'              => $usageM3,
-                'usage_charge'          => $usageCharge,
-                'abodemen'              => $abodemen,
-                'penalty_amount'        => $penalty,
-                'total_amount'          => $total,
-                'status'                => $status,
-                'due_date'              => $dueDate->toDateString(),
+                'customer_id' => $customer->id,
+                'billing_period_year' => $year,
+                'billing_period_month' => $month,
+                'meter_reading_start' => $start,
+                'meter_reading_end' => $running,
+                'usage_m3' => $usageM3,
+                'usage_charge' => $usageCharge,
+                'abodemen' => $abodemen,
+                'penalty_amount' => $penalty,
+                'total_amount' => $total,
+                'status' => $status,
+                'due_date' => $dueDate->toDateString(),
             ]);
 
             if ($status === 'paid') {
-                \App\Models\BillPayment::create([
-                    'bill_id'      => $bill->id,
-                    'amount_paid'  => $total,
+                BillPayment::create([
+                    'bill_id' => $bill->id,
+                    'amount_paid' => $total,
                     'confirmed_by' => $teknisi->id,
-                    'paid_at'      => $dueDate->copy()->subDays(rand(1, 5)),
+                    'paid_at' => $dueDate->copy()->subDays(rand(1, 5)),
                 ]);
             }
 

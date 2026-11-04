@@ -13,7 +13,8 @@
     "format": "prettier --write --experimental-cli src/",
     "test:teks": "node scripts/check-text.mjs src test scripts",
     "test:unit": "node --test \"test/**/*.test.js\"",
-    "test": "run-s test:teks test:unit"
+    "test": "run-s test:teks test:unit",
+    "shot": "node scripts/shot.mjs"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.3.1",

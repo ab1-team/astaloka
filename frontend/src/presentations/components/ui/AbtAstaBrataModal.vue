@@ -79,7 +79,7 @@
           <div class="abt-modal__footer">
             <div class="abt-modal__meta">
               <font-awesome-icon icon="shield-halved" />
-              <span>ASTALOKA · Sistem Manajemen Air Bersih</span>
+              <span>ASTALOKA · Sistem Manajemen Layanan</span>
             </div>
             <BaseButton variant="info-gradient" class="abt-modal__action" @click="closeModal">
               Mengerti, Terima Kasih

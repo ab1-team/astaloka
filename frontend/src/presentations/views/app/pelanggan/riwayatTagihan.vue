@@ -15,7 +15,7 @@
               Riwayat Tagihan
             </h1>
             <p class="text-slate-500! mt-1! font-medium! text-sm! lg:text-base!">
-              Pantau penggunaan dan riwayat pembayaran air Anda.
+              Pantau penggunaan dan riwayat pembayaran Anda.
             </p>
           </div>
         </div>
@@ -209,7 +209,7 @@
                 </div>
                 <div class="w-full! h-px! bg-slate-100!"></div>
                 <div class="flex! justify-between! items-center!">
-                  <span class="text-xs! font-bold! text-slate-500!">Pemakaian Air</span>
+                  <span class="text-xs! font-bold! text-slate-500!">Pemakaian</span>
                   <span class="text-xs! font-black! text-slate-800!">
                     {{ formatMeter(bill.usage) }} m³
                   </span>
@@ -427,7 +427,20 @@ const formatDueDate = (dateStr) => {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
   if (Number.isNaN(d.getTime())) return dateStr
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mei',
+    'Jun',
+    'Jul',
+    'Agu',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Des',
+  ]
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
 }
 </script>

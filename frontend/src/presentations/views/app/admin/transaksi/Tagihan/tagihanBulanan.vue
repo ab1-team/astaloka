@@ -111,7 +111,7 @@
                   class="text-[8px]! font-extrabold! text-slate-500! uppercase! tracking-wider! mb-1! flex! items-center! gap-1.5!"
                 >
                   <span class="w-1! h-1! rounded-full! bg-blue-500!"></span>
-                  Tarif Pemakaian Air
+                  Tarif Pemakaian
                 </h4>
 
                 <div class="space-y-0.5!">
@@ -349,7 +349,7 @@
     </div>
 
     <div class="text-center py-8 text-[10px] text-slate-400 font-semibold tracking-[2px] uppercase">
-      ASTALOKA · LAYANAN AIR BERSIH MASYARAKAT
+      ASTALOKA · LAYANAN PUBLIK MASYARAKAT
     </div>
   </div>
 </template>

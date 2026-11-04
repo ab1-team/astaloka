@@ -14,7 +14,7 @@
             Lapor Gangguan
           </h1>
           <p class="text-slate-500! mt-1! font-medium! text-sm! lg:text-base!">
-            Kami siap membantu kendala air Anda dengan cepat dan sigap.
+            Kami siap membantu kendala layanan Anda dengan cepat dan sigap.
           </p>
         </div>
       </div>
@@ -177,7 +177,7 @@
             </div>
 
             <p class="text-slate-500! leading-relaxed! mb-10! font-medium!">
-              Gunakan layanan telepon untuk kendala kritis seperti pipa utama pecah atau air
+              Gunakan layanan telepon untuk kendala kritis seperti pipa utama pecah atau layanan
               berhenti total di seluruh wilayah.
             </p>
 
@@ -248,7 +248,7 @@ const { display: kontakTampil, hasNumber, waLink, telLink } = useKontakLembaga()
 const steps = [
   {
     title: 'Identifikasi Masalah',
-    desc: 'Pastikan apakah air mati total, debit kecil, atau ada kebocoran pada pipa.',
+    desc: 'Pastikan apakah layanan mati total, volume rendah, atau ada kebocoran pada pipa.',
   },
   {
     title: 'Siapkan ID Pelanggan',

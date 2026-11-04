@@ -347,7 +347,7 @@ class CentralTenantProvisionTest extends TestCase
         $this->assertSame(
             $sebelum,
             $sesudah,
-            "Seeder jabatan harus idempoten. Baris lama tidak boleh hilang atau "
+            'Seeder jabatan harus idempoten. Baris lama tidak boleh hilang atau '
             .'berlipat saat provisioning dijalankan ulang.',
         );
     }
@@ -505,6 +505,106 @@ class CentralTenantProvisionTest extends TestCase
         $this->assertSame(
             'BPD Kampung Uji',
             DB::connection(self::LOCATION)->table('settings')->value('nama_lembaga')
+        );
+    }
+
+    // ================================================================
+    // Tanggal generate piutang TIDAK boleh tertimpa
+    // ================================================================
+
+    /**
+     * `toleransi_tunggakan` = TANGGAL generate jurnal piutang tunggakan.
+     *
+     * Dulu kolom ini ikut ditulis oleh `applyTenantIdentity()` -- dengan
+     * `invoice_grace_months`, yang satuanannya BULAN. Dua satuan berbeda
+     * menulis ke satu kolom yang sama, dan akibatnya tanggal generate yang
+     * sudah diset admin hilang begitu provisioning atau reseed jalan.
+     *
+     * Gejalanya persis seperti "saya sudah set tanggal 28 tapi kok tidak
+     * ada popup generate piutangnya": nilai 28 sudah hilang jauh sebelum
+     * tanggal 28 tiba.
+     */
+    #[Test]
+    public function tanggal_generate_piutang_lokasi_baru_tidak_diisi_dengan_satuan_bulan(): void
+    {
+        $slug = $this->prefix.'tujuhb';
+
+        $this->actingAsSuperadmin();
+
+        $expected = 'astaloka_'.str_replace('-', '_', $slug);
+
+        $this->databaseDibuat[] = $expected;
+
+        $this->postJson('/api/central/locations', [
+            'slug' => $slug,
+            'nama' => 'Lokasi Tujuh B',
+        ])->assertCreated();
+
+        $nilai = DB::connection(self::LOCATION)->table('settings')->value('toleransi_tunggakan');
+
+        /*
+         * 0 berarti "belum dijadwalkan" -- generate TIDAK jalan sampai admin
+         * mengisinya. Yang TIDAK boleh terjadi di sini adalah nilai 1, karena
+         * angka itu berasal dari satuan yang salah: `invoice_grace_months`
+         * (BULAN), bukan tanggal.
+         */
+        $this->assertNotSame(
+            1,
+            (int) $nilai,
+            'toleransi_tunggakan tidak boleh diisi dengan invoice_grace_months (satuan bulan).'
+        );
+    }
+
+    /**
+     * Menjalankan provisioning ULANG pada lokasi yang sudah ada tidak boleh
+     * mengubah tanggal generate yang sudah diset admin.
+     *
+     * Ini jalur yang paling merusak: lokasi sudah jalan, admin sudah menyetel
+     * tanggal 28, lalu ada yang menjalankan `tenancy:reseed-master --identity`
+     * untuk memperbarui master data. Tanggal 28 harus tetap 28.
+     */
+    #[Test]
+    public function provisioning_ulang_tidak_menimpa_tanggal_generate_yang_sudah_diset(): void
+    {
+        $slug = $this->prefix.'tujuhc';
+
+        $this->actingAsSuperadmin();
+
+        $expected = 'astaloka_'.str_replace('-', '_', $slug);
+
+        $this->databaseDibuat[] = $expected;
+
+        $this->postJson('/api/central/locations', [
+            'slug' => $slug,
+            'nama' => 'Lokasi Tujuh C',
+        ])->assertCreated();
+
+        // Admin menyetel tanggal generate lewat halaman SOP.
+        //
+        // Kedua kolom diset sama karena sekarang cuma satu angka tanggal:
+        // `batas_tagihan` (jatuh tempo) dan `toleransi_tunggakan`
+        // (generate piutang) sudah digabung.
+        DB::connection(self::LOCATION)->table('settings')
+            ->where('id', 1)
+            ->update([
+                'batas_tagihan' => 28,
+                'toleransi_tunggakan' => 28,
+            ]);
+
+        $tenant = Tenant::where('slug', $slug)->first();
+
+        app(TenantManager::class)->applyTenantIdentity($tenant);
+
+        $this->assertSame(
+            28,
+            (int) DB::connection(self::LOCATION)->table('settings')->value('toleransi_tunggakan'),
+            'Tanggal generate yang sudah diset admin tidak boleh tertimpa saat provisioning ulang.'
+        );
+
+        $this->assertSame(
+            28,
+            (int) DB::connection(self::LOCATION)->table('settings')->value('batas_tagihan'),
+            'Tanggal jatuh tempo yang sudah diset admin tidak boleh tertimpa saat provisioning ulang.'
         );
     }
 

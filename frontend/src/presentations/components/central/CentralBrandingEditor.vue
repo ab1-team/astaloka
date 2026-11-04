@@ -93,8 +93,8 @@
             <div>
               <h3>Tampilan Halaman Login</h3>
               <p>
-                Kosongkan teks untuk kembali ke bawaan. Warna berlaku untuk seluruh aplikasi
-                lokasi ini.
+                Kosongkan teks untuk kembali ke bawaan. Warna berlaku untuk seluruh aplikasi lokasi
+                ini.
               </p>
             </div>
             <button type="button" class="branding__close" aria-label="Tutup" @click="tutup">
@@ -172,7 +172,7 @@
                 Preset berwarna: warna yang dipakai orang lain sudah terbukti
                 tidak merusak keterbacaan. Tapi daftar tertutup yang
                 memaksa memotong pilihan -- ada warna sah yang tidak ada
-                di preset (mis. warna Sparrow PDAM tertentu), dan
+                di preset (mis. warna khas PDAM tertentu), dan
                 membiarkannya berarti "warna lokasi" sebenarnya tidak
                 bisa dipakai.
 

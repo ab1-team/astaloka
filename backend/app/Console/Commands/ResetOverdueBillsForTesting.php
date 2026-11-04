@@ -16,10 +16,10 @@ use Illuminate\Support\Facades\DB;
  * - Tidak menyentuh jurnal lain (payment, bill_payment, pasang_baru, dll).
  * - TIDAK mengubah status bill (`unpaid`/`paid` tetap).
  *
- * PENTING â€” TENTANG TRIGGER MYSQL:
+ * PENTING — TENTANG TRIGGER MYSQL:
  *   Tabel `transactions` punya 3 trigger (create_amount_debit, update_amount_debit,
  *   delete_amount_debit). Trigger `update_amount_debit` melakukan SELECT SUM besar
- *   ke tabel transactions untuk setiap UPDATE â€” ini sangat lambat untuk bulk update
+ *   ke tabel transactions untuk setiap UPDATE — ini sangat lambat untuk bulk update
  *   (lebih dari 20k baris = timeout).
  *   MySQL tidak punya syntax disable trigger, jadi command ini:
  *     1. DROP trigger (App\Support\TransactionTriggers::dropAll)
@@ -51,7 +51,7 @@ class ResetOverdueBillsForTesting extends Command
         }
 
         $this->warn("Ditemukan {$count} jurnal overdue_bill.");
-        $this->warn('Bill dengan status unpaid TIDAK akan diubah â€” hanya jurnal piutang tunggakan.');
+        $this->warn('Bill dengan status unpaid TIDAK akan diubah — hanya jurnal piutang tunggakan.');
 
         $perAkun = Transaction::where('reverence_type', 'overdue_bill')
             ->whereNull('deleted_at')
@@ -92,7 +92,7 @@ class ResetOverdueBillsForTesting extends Command
 
         $deleted = 0;
         try {
-            // 2. Bulk UPDATE soft-delete â€” tanpa trigger, jauh lebih cepat.
+            // 2. Bulk UPDATE soft-delete — tanpa trigger, jauh lebih cepat.
             $now = now();
             $deleted = DB::table('transactions')
                 ->where('reverence_type', 'overdue_bill')

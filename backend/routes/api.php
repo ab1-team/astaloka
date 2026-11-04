@@ -1,11 +1,12 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ActivationController;
+use App\Http\Controllers\AlokasiLabaController;
 use App\Http\Controllers\AmountController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CustomerController;
-use App\Http\Controllers\JenisTransactionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EbudgetingController;
 use App\Http\Controllers\GenerateAmountController;
@@ -14,30 +15,30 @@ use App\Http\Controllers\InstallationResultController;
 use App\Http\Controllers\InstallationTicketController;
 use App\Http\Controllers\InstallationTicketHistoryController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\JenisTransactionController;
 use App\Http\Controllers\JurnalUmumController;
+use App\Http\Controllers\KomisiSPSController;
+use App\Http\Controllers\MenuAccessController;
 use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MonthlyBillController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PelangganPortalController;
+use App\Http\Controllers\PelaporanController;
+use App\Http\Controllers\PiutangController;
+use App\Http\Controllers\PublicBrandingController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SettingController;
+use App\Http\Controllers\ShortcutLoginController;
+use App\Http\Controllers\SignatureController;
 use App\Http\Controllers\SopController;
 use App\Http\Controllers\SurveyResultController;
-use App\Http\Controllers\TroubleReportController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\TroubleReportController;
 use App\Http\Controllers\TutupBukuController;
-use App\Http\Controllers\TunggakanController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VillageController;
-use App\Http\Controllers\PelaporanController;
-use App\Http\Controllers\PublicBrandingController;
 use App\Http\Controllers\WaterTariffBlockController;
-use App\Http\Controllers\AccountController;
-use App\Http\Controllers\AlokasiLabaController;
-use App\Http\Controllers\KomisiSPSController;
-use App\Http\Controllers\MenuAccessController;
-use App\Http\Controllers\SignatureController;
-use App\Http\Controllers\ShortcutLoginController;
+use App\Http\Controllers\WhatsappController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -122,7 +123,6 @@ Route::prefix('login-user')->middleware('throttle:60,1')->group(function () {
     Route::post('/login', [ShortcutLoginController::class, 'login']);
 });
 
-
 // Authenticated Routes (Semua Role)
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -143,6 +143,17 @@ Route::middleware('auth:sanctum')->group(function () {
     // surveyor, dan pelanggan selalu 403 dan judulnya diam-diam jatuh ke
     // teks hardcoded.
     Route::get('settings/lembaga-identity', [SopController::class, 'publicIdentity']);
+
+    /*
+     * Pengaturan pencatatan meteran -- dibaca popup input meter.
+     *
+     * Terpisah dari `GET /settings/sop` yang `role:admin`, karena yang
+     * membacanya bukan cuma admin: teknisi juga membutuhkannya, dan popup
+     * meter dipakai keduanya. Kalau hanya ada di `settings/sop`, teknisi
+     * selalu kena 403 dan kamera tidak pernah terbuka untuk mereka --
+     * gejalanya bukan "403", melainkan opsi yang diam-diam hilang.
+     */
+    Route::get('settings/pemakaian-air', [SopController::class, 'getPemakaianAir']);
 
     /*
      * Ringkasan tagihan belum bayar untuk badge icon lonceng di navbar.
@@ -191,6 +202,25 @@ Route::middleware(['auth:sanctum', 'role:admin,surveyor,teknisi'])->group(functi
     // Hanya relevan untuk admin yang mengisi formulir registrasi.
     Route::middleware('role:admin')->group(function () {
         Route::get('installation-tickets/register-dropdown', [InstallationTicketController::class, 'registerDropdown']);
+
+        /*
+         * Ekspor Excel daftar status instalasi (tombol "Export Excel" di
+         * `/app/instalasi/status`).
+         *
+         * Harus SEBELUM wildcard `installation-tickets/{installationTicket}`
+         * di bawah. Kalau tidak, path "export-status" diperlakukan sebagai
+         * nilai id dan request berakhir 404 - bukan 403 - sehingga tombolnya
+         * terlihat berfungsi tapi tidak pernah menghasilkan file.
+         *
+         * Dipakai `role:admin` karena halamannya (`/app/instalasi/status`)
+         * juga admin-only: tidak ada gunanya membiarkan role lain mengunduh
+         * daftar yang tidak bisa mereka buka.
+         *
+         * `menu_access.php` sudah mencakup path ini: prefix polos
+         * `installation-tickets` menguasai SELURUH turunannya, termasuk
+         * `/installation-tickets/export-status`.
+         */
+        Route::get('installation-tickets/export-status', [InstallationTicketController::class, 'exportStatusExcel']);
     });
 
     // Teknisi butuh detail tiket untuk mengisi Hasil Instalasi. Sebelumnya
@@ -241,9 +271,41 @@ Route::middleware(['auth:sanctum', 'role:admin,teknisi'])->group(function () {
     Route::get('monthly-bills', [MonthlyBillController::class, 'index']);
     Route::get('monthly-bills/usage', [MonthlyBillController::class, 'usage']);
 
+    // Ubah pemakaian (meter akhir) + hitung ulang tagihan. Teknisi boleh
+    // untuk pelanggan yang ia tangani; admin bebas. Tagihan yang sudah
+    // lunas ditolak di dalam controller (409).
+    Route::put('monthly-bills/usage', [MonthlyBillController::class, 'updateUsage']);
+
     // Teknisi: lihat daftar pelanggan suspended + konfirmasi restore (setelah bayar oleh admin)
     Route::get('monthly-bills/suspended', [MonthlyBillController::class, 'suspended']);
     Route::post('customers/{id}/restore', [MonthlyBillController::class, 'restoreCustomer']);
+
+    /*
+     * Susun pesan WhatsApp dari template yang diset admin di SOP.
+     *
+     * Shared admin & teknisi, sama seperti `monthly-bills` di atas --
+     * teknisi juga memakai halaman "Daftar Tagihan" versi teknisi, dan
+     * Least-privilege sudah dijaga di controller (teknisi hanya boleh
+     * menyusun pesan untuk pelanggan yang ia tangani).
+     *
+     * Endpoint ini TIDAK mengirim pesan; dia hanya mengembalikan teks
+     * dan tautan `wa.me` yang pesannya sudah terisi.
+     */
+    Route::get('whatsapp/template', [WhatsappController::class, 'template']);
+    Route::post('whatsapp/messages', [WhatsappController::class, 'messages']);
+
+    // Detail satu tagihan — shared admin & teknisi.
+    //
+    // Route BACA ini harus ada di grup shared (bukan hanya admin), karena
+    // frontend memanggilnya dari modal rincian tagihan milik teknisi juga.
+    // Kalau hanya ada di blok `role:admin`, teknisi langsung kena 403 dan
+    // modal detail tidak pernah terbuka.
+    //
+    // PENTING: route ini didaftarkan SETELAH `monthly-bills/usage` dan
+    // `monthly-bills/suspended`. Laravel mencocokkan route sesuai urutan
+    // pendaftaran, dan `{id}` tanpa batasan angka akan menelan path teks
+    // seperti "usage" atau "suspended" (jadi 404, bukan 403).
+    Route::get('monthly-bills/{id}', [MonthlyBillController::class, 'show'])->whereNumber('id');
 });
 
 /*
@@ -274,6 +336,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
         Route::post('/lembaga', [SopController::class, 'updateLembaga']);
         Route::post('/pasang-baru', [SopController::class, 'updatePasangBaru']);
         Route::post('/sistem-tagihan', [SopController::class, 'updateSistemTagihan']);
+        Route::post('/pemakaian-air', [SopController::class, 'updatePemakaianAir']);
         Route::post('/logo', [SopController::class, 'updateLogo']);
         Route::post('/whatsapp', [SopController::class, 'updateWhatsapp']);
 
@@ -336,8 +399,12 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('bills/generate', [BillingController::class, 'generate']);
     Route::get('bills/{monthlyBill}', [BillingController::class, 'show']);
 
-    // Tagihan bulanan — tulis hanya admin (baca sudah di grup admin+teknisi)
-    Route::get('monthly-bills/{id}', [MonthlyBillController::class, 'show']);
+    // Tagihan bulanan — tulis hanya admin.
+    // Route BACA `monthly-bills/{id}` sudah ada di grup shared admin+teknisi
+    // (lihat blok "Shared Routes (Admin & Teknisi)") supaya teknisi juga
+    // bisa membuka modal rincian tagihan. Mendaftarkannya lagi di sini
+    // hanya membuat route duplikat — dan yang menang adalah yang PERTAMA
+    // terdaftar, jadi cukup satu saja.
     Route::delete('monthly-bills/{id}', [MonthlyBillController::class, 'destroy']);
     Route::post('monthly-bills/generate', [MonthlyBillController::class, 'generate']);
     Route::post('monthly-bills/{id}/pay', [MonthlyBillController::class, 'pay']);
@@ -351,13 +418,22 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::get('reports/installation/export-csv', [ReportController::class, 'exportInstallationCsv']);
     Route::get('reports/installation/export-pdf', [ReportController::class, 'exportInstallationPdf']);
 
-    //transaction routes
+    // transaction routes
     Route::get('transactions/saldo-akun', [TransactionController::class, 'saldoAkun']);
     Route::get('transactions/buku-besar', [TransactionController::class, 'bukuBesar']);
     Route::apiResource('transactions', TransactionController::class);
     Route::get('jenis-transactions', [JenisTransactionController::class, 'index']);
     Route::post('generate-amount', [GenerateAmountController::class, 'generate']);
-    Route::post('tunggakan/generate', [TunggakanController::class, 'generate']);
+    Route::post('piutang/generate', [PiutangController::class, 'generate']);
+    /*
+     * Arsip Piutang (daftar piutang pelanggan yang belum tertagih).
+     *
+     * Punya prefix `piutang/` yang sama dengan `piutang/generate`
+     * di atas, jadi keduanya dikunci oleh menu `arsip.piutang` --
+     * mencabut hak akses Arsip Piutang sekaligus menutup jalannya
+     * generate manual.
+     */
+    Route::get('piutang/arsip', [PiutangController::class, 'arsip']);
     Route::get('accounts', [AccountController::class, 'index']);
     Route::get('accounts/by-level/{level}', [AccountController::class, 'byLevel']);
     Route::get('amount/total-saldo', [AmountController::class, 'getTotalSaldo']);
@@ -368,7 +444,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('transaksi/inventaris', [JurnalUmumController::class, 'storeInventaris']);
     Route::post('transaksi/inventaris/{inventory}/hapus', [JurnalUmumController::class, 'storeHapusInventaris']);
 
-    //tutup buku routes
+    // tutup buku routes
     Route::get('tutup-buku/check/{year}', [TutupBukuController::class, 'check']);
     Route::get('tutup-buku/accounts/{year}', [TutupBukuController::class, 'accountsWithSaldo']);
     Route::post('tutup-buku/close', [TutupBukuController::class, 'close']);
@@ -376,7 +452,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::get('tutup-buku/config', [TutupBukuController::class, 'getConfig']);
     Route::post('tutup-buku/config', [TutupBukuController::class, 'saveConfig']);
 
-    //alokasi laba routes
+    // alokasi laba routes
     Route::get('alokasi-laba/check/{year}', [AlokasiLabaController::class, 'check']);
     Route::post('alokasi-laba/calculate', [AlokasiLabaController::class, 'calculate']);
     Route::post('alokasi-laba/save', [AlokasiLabaController::class, 'save']);
@@ -384,7 +460,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('alokasi-laba/config', [AlokasiLabaController::class, 'saveConfig']);
     Route::get('alokasi-laba/accounts', [AlokasiLabaController::class, 'accountsForAllocation']);
 
-    //e-budgeting routes
+    // e-budgeting routes
     Route::get('ebudgeting/check-exists', [EbudgetingController::class, 'checkExists']);
     Route::post('ebudgeting/bulk', [EbudgetingController::class, 'bulkStore']);
     Route::apiResource('ebudgeting', EbudgetingController::class)->whereNumber('ebudgeting');

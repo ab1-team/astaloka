@@ -1,5 +1,5 @@
-import { ref, computed } from 'vue'
-import sopService from '@/services/sop.service'
+import { computed } from 'vue'
+import { useIdentitasLembaga } from '@/composables/useIdentitasLembaga'
 
 /**
  * Nomor kontak resmi organisasi (WhatsApp / telepon).
@@ -13,57 +13,29 @@ import sopService from '@/services/sop.service'
  *   tetap menampilkan yang lama — jadi pelanggan menghubungi nomor yang
  *   salah. Sekarang semua halaman membaca dari composable ini, jadi cukup
  *   ganti sekali di admin dan seluruh sisi pelanggan ikut berubah.
+ *
+ * Kenapa BACA DARI `useIdentitasLembaga`, bukan request sendiri:
+ *   `telepon` ada di respons `GET /api/settings/lembaga-identity` yang
+ *   sama. Kalau modul ini punya cache sendiri, satu sesi yang membuka
+ *   halaman pelanggan DAN halaman cetak akan menembak endpoint yang
+ *   sama dua kali -- untuk data yang isinya identik. `useIdentitasLembaga`
+ *   sudah menyimpan satu cache modul untuk seluruh field identitas, jadi
+ *   composable ini cukup membacanya.
+ *
+ *   Fungsi format (`normalizeToInternational`, `formatDisplay`) TETAP ADA
+ *   di sini: dipakai bersama oleh modul lain, dan tidak ada hubungannya
+ *   dengan pemuatan data.
  */
-
-// Dibagi antar-instance: satu request dipakai bersama di sesi ini, bukan
-// satu request per komponen yang mount bersamaan.
-const telepon = ref('')
-const isLoaded = ref(false)
-let inflight = null
-
-/**
- * @param {boolean} force Abaikan cache dan paksa request baru. Dipakai
- *   setelah admin menyimpan Profil Lembaga.
- */
-const load = async (force = false) => {
-  // Sudah punya data → jangan minta lagi, kecuali dipaksa.
-  if (isLoaded.value && !force) return telepon.value
-
-  // Beberapa komponen mount bersamaan (dashboard + halaman detail), atau
-  // admin menekan "Simpan" dua kali cepat. Request paralel akan mengembalikan
-  // data basi; pakai satu yang sedang jalan.
-  if (inflight) return inflight
-
-  inflight = (async () => {
-    try {
-      const res = await sopService.getPublicIdentity()
-      const value = res?.data?.data?.telepon ?? res?.data?.telepon ?? ''
-      telepon.value = typeof value === 'string' ? value : ''
-    } catch {
-      // Sengaja diam. Endpoint ini hanya menampilkan kontak; halaman sudah
-      // punya fallback ("Hubungi kantor ASTALOKA") sehingga kegagalan tidak
-      // boleh menggagalkan seluruh halaman. Kalau `telepon` kosong di
-      // database pun, komponen tetap menampilkan fallback-nya.
-      telepon.value = ''
-    } finally {
-      isLoaded.value = true
-      inflight = null
-    }
-    return telepon.value
-  })()
-
-  return inflight
-}
 
 /**
  * Dipanggil setelah admin menyimpan setting, agar nomor ikut terbarui.
  *
- * Karena `telepon` berupa `ref` modul (shared), semua komponen yang
- * sedang membaca `display` / `waLink` akan ikut berubah otomatis —
- * tidak perlu memuat ulang halaman.
+ * Cache identitas di modul lain juga ikut segar, jadi kop surat yang
+ * sedang terbuka langsung memakai nomor terbaru.
  */
 export const refreshKontak = async () => {
-  await load(true)
+  const { reload } = useIdentitasLembaga()
+  await reload()
 }
 
 /** Buang semua karakter non-digit. */
@@ -131,9 +103,7 @@ export function formatDisplay(value) {
  * }}
  */
 export function useKontakLembaga() {
-  if (!isLoaded.value && !inflight) {
-    load()
-  }
+  const { telepon, reload } = useIdentitasLembaga()
 
   /** Digit saja untuk wa.me / tel: (mis. 6281234567890). */
   const digits = computed(() => normalizeToInternational(telepon.value))
@@ -154,7 +124,7 @@ export function useKontakLembaga() {
     hasNumber,
     waLink,
     telLink,
-    reload: () => load(true),
+    reload: () => reload(),
   }
 }
 

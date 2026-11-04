@@ -1,5 +1,21 @@
 <template>
   <div class="flex flex-col gap-5!">
+    <!--
+      Info singkat: template ini dipakai di halaman "Daftar Tagihan" (satu per
+      satu) dan popup TAGIHAN di dashboard (banyak sekaligus).
+    -->
+    <div
+      class="px-4! py-3! bg-emerald-50! border! border-emerald-100! rounded-xl! text-xs! text-emerald-800! flex! items-start! gap-2.5!"
+    >
+      <font-awesome-icon icon="circle-info" class="text-emerald-500! mt-0.5! shrink-0!" />
+      <p class="leading-relaxed!">
+        Pesan di bawah dipakai saat mengirim pengingat WhatsApp dari
+        <strong>Daftar Tagihan</strong> (satu per satu) maupun popup <strong>Tagihan</strong> di
+        dashboard (banyak sekaligus). Isi pesannya mengikuti template ini, jadi cukup ubah di sini
+        tanpa menyunting halaman lain.
+      </p>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6!">
       <BaseInput
         v-model="form.templateTagihan"
@@ -8,7 +24,7 @@
         placeholder="Isi pesan tagihan..."
         :rows="10"
         class="w-full!"
-        hint="Gunakan tag {customer}, {desa}, {jumlah_tagihan} sebagai placeholder."
+        hint="Gunakan tag {customer}, {desa}, {jumlah_tagihan}, {periode}, {jatuh_tempo} sebagai placeholder."
       />
       <BaseInput
         v-model="form.templatePembayaran"
@@ -17,8 +33,45 @@
         placeholder="Isi pesan pembayaran..."
         :rows="10"
         class="w-full!"
-        hint="Gunakan tag {customer}, {desa}, {tagihan} sebagai placeholder."
+        hint="Gunakan tag {customer}, {desa}, {tagihan}, {periode} sebagai placeholder."
       />
+    </div>
+
+    <!--
+      Pratinjau.
+
+      Menunjukkan hasil template setelah placeholder-nya diganti data
+      CONTOH. Ini bukan data pelanggan sungguhan -- cuma supaya admin
+      bisa melihat sendiri bentuk pesannya sebelum dikirim ke pelanggan.
+    -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6!">
+      <div class="flex flex-col gap-2!">
+        <span
+          class="text-xs! font-black! text-slate-400! uppercase! tracking-widest! flex! items-center! gap-2!"
+        >
+          <font-awesome-icon icon="eye" class="text-cyan-600!" />
+          Pratinjau Pesan Tagihan
+        </span>
+        <div
+          class="bg-slate-50! border! border-slate-100! rounded-xl! p-4! text-xs! text-slate-700! leading-relaxed! whitespace-pre-wrap! min-h-[120px]! font-sans!"
+        >
+          {{ previewTagihan }}
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2!">
+        <span
+          class="text-xs! font-black! text-slate-400! uppercase! tracking-widest! flex! items-center! gap-2!"
+        >
+          <font-awesome-icon icon="eye" class="text-cyan-600!" />
+          Pratinjau Pesan Pembayaran
+        </span>
+        <div
+          class="bg-slate-50! border! border-slate-100! rounded-xl! p-4! text-xs! text-slate-700! leading-relaxed! whitespace-pre-wrap! min-h-[120px]! font-sans!"
+        >
+          {{ previewPembayaran }}
+        </div>
+      </div>
     </div>
 
     <div
@@ -188,7 +241,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BaseInput from '@/presentations/components/ui/BaseInput.vue'
 import BaseButton from '@/presentations/components/ui/BaseButton.vue'
 
@@ -210,6 +263,36 @@ const openQrModal = () => {
 const closeQrModal = () => {
   isQrModalOpen.value = false
 }
+
+/*
+ * Pratinjau pesan.
+ *
+ * Placeholder-nya diganti data CONTOH, bukan data pelanggan sungguhan --
+ * halaman SOP ini tidak tahu pelanggan mana yang akan dikirimi pesan.
+ * Tujuannya cuma supaya admin bisa melihat sendiri bentuk pesan yang akan
+ * terkirim, termasuk kalau ada placeholder yang salah ketik.
+ */
+const CONTOH = {
+  customer: 'Bapak Budi Santoso',
+  desa: 'Desa Sukamaju',
+  jumlah_tagihan: 'Rp. 125.000',
+  tagihan: 'Rp. 125.000',
+  periode: 'Agustus 2026',
+  jatuh_tempo: '10 September 2026',
+}
+
+const renderPreview = (template) => {
+  let teks = String(template || '')
+
+  for (const [key, value] of Object.entries(CONTOH)) {
+    teks = teks.split(`{${key}}`).join(value)
+  }
+
+  return teks.trim() || 'Belum ada pesan.'
+}
+
+const previewTagihan = computed(() => renderPreview(form.value?.templateTagihan))
+const previewPembayaran = computed(() => renderPreview(form.value?.templatePembayaran))
 </script>
 
 <style scoped>

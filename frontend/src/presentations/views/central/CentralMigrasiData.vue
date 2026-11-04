@@ -64,8 +64,8 @@
       <p class="mg-pick__note">
         <font-awesome-icon icon="circle-info" />
         <span>
-          Data yang diimpor <strong>langsung ditulis ke database lokasi ini</strong>. Data
-          tidak ada di panel pusat, dan tidak bisa dibatalkan dari sini setelah ditulis.
+          Data yang diimpor <strong>langsung ditulis ke database lokasi ini</strong>. Data tidak ada
+          di panel pusat, dan tidak bisa dibatalkan dari sini setelah ditulis.
         </span>
       </p>
 
@@ -160,20 +160,16 @@
         <p class="mg-card__desc">{{ jenis.deskripsi }}</p>
 
         <ol class="mg-steps">
-          <li>
-            <span class="mg-steps__n">1</span> Unduh template
-          </li>
-          <li>
-            <span class="mg-steps__n">2</span> Isi di spreadsheet
-          </li>
-          <li>
-            <span class="mg-steps__n">3</span> Unggah &amp; periksa
-          </li>
+          <li><span class="mg-steps__n">1</span> Unduh template</li>
+          <li><span class="mg-steps__n">2</span> Isi di spreadsheet</li>
+          <li><span class="mg-steps__n">3</span> Unggah &amp; periksa</li>
         </ol>
 
         <p class="mg-card__cols">
           {{ jenis.kolom.length }} kolom
-          <template v-if="jenis.punyaReferensi">&mdash; sheet Referensi diambil dari lokasi</template>
+          <template v-if="jenis.punyaReferensi"
+            >&mdash; sheet Referensi diambil dari lokasi</template
+          >
         </p>
 
         <div class="mg-card__actions">
@@ -263,8 +259,9 @@
         <summary class="mg-ref__sum">
           <font-awesome-icon icon="table-list" />
           <span>
-            {{ jenisAktif.label }} punya <strong>{{ jenisAktif.kolom.length }} kolom</strong>
-            &mdash; <strong>{{ wajibCount }}</strong> wajib diisi
+            {{ jenisAktif.label }} punya
+            <strong>{{ jenisAktif.kolom.length }} kolom</strong> &mdash;
+            <strong>{{ wajibCount }}</strong> wajib diisi
           </span>
           <font-awesome-icon icon="chevron-down" class="mg-ref__caret" />
         </summary>
@@ -319,17 +316,17 @@
           <p v-if="punyaSheetReferensi" class="mg-ref__catatan">
             <font-awesome-icon icon="circle-info" />
             <span>
-              Kolom yang isinya harus sama dengan data di lokasi punya daftar
-              lengkap di sheet <strong>Referensi</strong> pada template yang diunduh.
-              Nilai di luar daftar itu akan ditolak.
+              Kolom yang isinya harus sama dengan data di lokasi punya daftar lengkap di sheet
+              <strong>Referensi</strong> pada template yang diunduh. Nilai di luar daftar itu akan
+              ditolak.
             </span>
           </p>
 
           <p class="mg-ref__catatan mg-ref__catatan--redup">
             <font-awesome-icon icon="circle-info" />
             <span>
-              Nama dan urutan kolom harus sama persis seperti di template. Kalau
-              kolom dikosongkan, biarkan kosong -- jangan dihapus dari file.
+              Nama dan urutan kolom harus sama persis seperti di template. Kalau kolom dikosongkan,
+              biarkan kosong -- jangan dihapus dari file.
             </span>
           </p>
         </div>
@@ -373,9 +370,7 @@
             {{ serang ? 'Lepaskan di sini' : 'Tarik file ke sini, atau klik untuk memilih' }}
           </p>
 
-          <p class="mg-drop__hint">
-            {{ batasTeks }} &middot; format {{ ekstensiTeks }}
-          </p>
+          <p class="mg-drop__hint">{{ batasTeks }} &middot; format {{ ekstensiTeks }}</p>
 
           <!--
             Nama berkas yang SEDANG DIPILIH, dengan ukurannya.
@@ -445,9 +440,9 @@
         </p>
 
         <p v-if="hasil.gagal > 0" class="mg-result__note">
-          Baris yang ditolak TIDAK ikut ditulis. Perbaiki di file asal -- daftar barisnya
-          bisa diunduh di bawah -- lalu unggah ulang file itu. File yang sama bisa diunggah
-          berulang kali; yang sudah ada di lokasi akan diperbarui, bukan diduplikasi.
+          Baris yang ditolak TIDAK ikut ditulis. Perbaiki di file asal -- daftar barisnya bisa
+          diunduh di bawah -- lalu unggah ulang file itu. File yang sama bisa diunggah berulang
+          kali; yang sudah ada di lokasi akan diperbarui, bukan diduplikasi.
         </p>
 
         <!--
@@ -474,7 +469,8 @@
                 <th scope="col">Status</th>
                 <th scope="col">Keterangan</th>
                 <th v-for="kol in kolomPreview" :key="kol.key" scope="col" class="mg-table__col">
-                  {{ kol.label }}<span v-if="kol.required" class="mg-table__req" title="Wajib diisi"> *</span>
+                  {{ kol.label
+                  }}<span v-if="kol.required" class="mg-table__req" title="Wajib diisi"> *</span>
                 </th>
               </tr>
             </thead>
@@ -501,7 +497,11 @@
                     tidak ada.
                   -->
                   <span v-if="baris.status === 'siap'" class="mg-table__muted">
-                    {{ baris.aksi === 'baru' ? 'Belum ada di lokasi ini' : 'Sudah ada, akan diperbarui' }}
+                    {{
+                      baris.aksi === 'baru'
+                        ? 'Belum ada di lokasi ini'
+                        : 'Sudah ada, akan diperbarui'
+                    }}
                   </span>
                   <template v-else>
                     <span v-if="baris.kolom?.length" class="mg-table__cols">
@@ -554,9 +554,9 @@
           <font-awesome-icon icon="circle-info" />
           <span>
             Menampilkan {{ hasil.baris.length }} dari {{ hasil.total }} baris.
-            <strong>{{ hasil.disembunyikan }} baris disembunyikan</strong> karena berada di
-            tengah file yang panjang -- semuanya lolos validasi. Untuk melihat semuanya,
-            pecah file jadi beberapa bagian.
+            <strong>{{ hasil.disembunyikan }} baris disembunyikan</strong> karena berada di tengah
+            file yang panjang -- semuanya lolos validasi. Untuk melihat semuanya, pecah file jadi
+            beberapa bagian.
           </span>
         </p>
 
@@ -593,7 +593,10 @@
             :title="hasil.siap === 0 ? 'Tidak ada baris yang siap ditulis' : ''"
             @click="jalankanCommit"
           >
-            <font-awesome-icon :icon="sibukCommit ? 'spinner' : 'check-double'" :spin="sibukCommit" />
+            <font-awesome-icon
+              :icon="sibukCommit ? 'spinner' : 'check-double'"
+              :spin="sibukCommit"
+            />
             {{ sibukCommit ? 'Menulis ke Lokasi...' : `Tulis ${hasil.siap} Baris ke Lokasi` }}
           </button>
         </div>
@@ -658,8 +661,8 @@
         <p v-if="hasilCommit.disembunyikan > 0" class="mg-result__note mg-result__note--info">
           <font-awesome-icon icon="circle-info" />
           <span>
-            Menampilkan {{ hasilCommit.detail.length }} dari {{ hasilCommit.gagal }} baris
-            gagal. Unduh daftar lengkapnya lewat tombol di bawah.
+            Menampilkan {{ hasilCommit.detail.length }} dari {{ hasilCommit.gagal }} baris gagal.
+            Unduh daftar lengkapnya lewat tombol di bawah.
           </span>
         </p>
 
@@ -829,9 +832,7 @@ async function muatLokasi() {
      * salah tebaknya jauh lebih sulit.
      */
     lokasiError.value =
-      error?.response?.data?.message
-      || error?.message
-      || 'Daftar lokasi tidak bisa dimuat.'
+      error?.response?.data?.message || error?.message || 'Daftar lokasi tidak bisa dimuat.'
 
     showErrorToast(error)
   } finally {
@@ -890,9 +891,7 @@ function tandaiBerkas(berkas) {
 
   const kb = berkas.size / 1024
 
-  ukuranBerkas.value = kb < 1024
-    ? `${Math.round(kb)} KB`
-    : `${(kb / 1024).toFixed(1)} MB`
+  ukuranBerkas.value = kb < 1024 ? `${Math.round(kb)} KB` : `${(kb / 1024).toFixed(1)} MB`
 }
 
 const bukaPemilih = () => {
@@ -948,7 +947,9 @@ function periksa(berkas) {
   const boleh = batas.value.ekstensi || []
 
   if (boleh.length && !boleh.includes(ekstensi)) {
-    showErrorToast(`Format .${ekstensi || 'tanpa ekstensi'} tidak diterima. Pakai: ${ekstensiTeks.value}.`)
+    showErrorToast(
+      `Format .${ekstensi || 'tanpa ekstensi'} tidak diterima. Pakai: ${ekstensiTeks.value}.`,
+    )
 
     bersihkanPilihan()
 
@@ -1114,11 +1115,7 @@ const barisGagal = computed(() => {
 
 async function unduhLogGagal() {
   try {
-    await centralMigrationService.downloadLogGagal(
-      lokasi.value,
-      aktifType.value,
-      barisGagal.value,
-    )
+    await centralMigrationService.downloadLogGagal(lokasi.value, aktifType.value, barisGagal.value)
   } catch (error) {
     showErrorToast(error)
   }
@@ -1148,9 +1145,8 @@ async function unduhLogGagal() {
 const kolomPreview = computed(() => {
   const dariRespons = hasil.value.kolom
 
-  return (Array.isArray(dariRespons) && dariRespons.length
-    ? dariRespons
-    : jenisAktif.value?.kolom ?? []
+  return (
+    Array.isArray(dariRespons) && dariRespons.length ? dariRespons : (jenisAktif.value?.kolom ?? [])
   ).map((k) => ({
     key: k.key,
     label: k.label,
@@ -1166,9 +1162,7 @@ const kolomPreview = computed(() => {
  * menyimpannya berarti satu sumber kebenaran yang bisa basi kalau
  * jenisnya berganti tanpa daftar ikut dimuat ulang.
  */
-const wajibCount = computed(
-  () => (jenisAktif.value?.kolom ?? []).filter((k) => k.required).length,
-)
+const wajibCount = computed(() => (jenisAktif.value?.kolom ?? []).filter((k) => k.required).length)
 
 /*
  * Apakah template jenis ini punya sheet "Referensi".
@@ -1292,7 +1286,9 @@ const hasilCommit = ref({ ...kosongCommit })
 const aktifType = ref('')
 const jenisAktif = computed(() => jenisList.value.find((j) => j.type === aktifType.value))
 
-const tone = computed(() => (hasil.value.siap === 0 || hasilCommit.value.berhasil === 0 ? 'bad' : 'ok'))
+const tone = computed(() =>
+  hasil.value.siap === 0 || hasilCommit.value.berhasil === 0 ? 'bad' : 'ok',
+)
 
 const pesanValidasi = computed(() => {
   if (hasil.value.siap === 0) {
@@ -1364,6 +1360,30 @@ onMounted(async () => {
  *
  * Yang ditulis di sini sekarang hanya peran: biru untuk aksi, hijau
  * untuk berhasil, amber untuk peringatan, merah untuk kegagalan.
+ *
+ * ===== Permukaan: tiga tingkat, dipilah-pisah =====
+ *
+ * Halaman ini punya tiga ukuran kotak yang berdiri sendiri, dan ketiganya
+ * dulu memakai SATU token abu yang sama (`--ct-surface-2`) -- padahal
+ * fallback yang ditulis di sini berbeda-beda: `#fff`, `#f8fafc`, `#f1f5f9`.
+ *
+ * Fallback yang berbeda-beda itu sebenarnya sudah benar: maksudnya "kartu
+ * ini putih, panel kecil ini abu muda, isian kecil ini abu tua". Yang hilang
+ * adalah token untuk setiap tingkat itu. `--ct-surface-2` satu-satunya
+ * berarti abu, jadi dipakai untuk ketiganya -- dan yang menentukan warna
+ * sebenarnya bukan fallback, melainkan token. Hasilnya kartu utamanya ikut
+ * abu, bukan putih seperti kartu di seluruh halaman panel pusat lain.
+ *
+ * Sekarang tiap tingkat punya tokennya sendiri:
+ *
+ *   --ct-surface     kartu utama (`.mg-pick`, `.mg-card`, `.mg-work`)
+ *   --ct-surface-3   panel besar di dalam kartu (`.mg-ref`, `.mg-stat`,
+ *                    header tabel)
+ *   --ct-surface-2   isian kecil (pil langkah, chip, track progress bar)
+ *
+ * Urutannya dibalik dari yang biasa: `-2` lebih tua dari `-3` karena `-2`
+ * sudah dipakai dashboard dan kedua pop-up untuk isian kecil, dan angka itu
+ * tidak boleh diubah tanpa menyentuh tiga file lain.
  */
 .mg {
   width: 100%;
@@ -1378,7 +1398,7 @@ onMounted(async () => {
   padding: 1.25rem;
   border: 1px solid var(--ct-line, #e5e7eb);
   border-radius: var(--ct-radius, 16px);
-  background: var(--ct-surface-2, #fff);
+  background: var(--ct-surface, #fff);
   /* Elevasi penuh, sama dengan kartu utama halaman panel pusat yang lain
      (struktur akun, tagihan, daftar lokasi). Tanpa bayangan, kotak ini
      menempel rata ke latarAbuAbu dan terbaca sebagai bagian halaman,
@@ -1487,7 +1507,7 @@ onMounted(async () => {
   padding: 1.1rem;
   border: 1px solid var(--ct-line, #e5e7eb);
   border-radius: var(--ct-radius, 16px);
-  background: var(--ct-surface-2, #fff);
+  background: var(--ct-surface, #fff);
   /* Elevasi kartu utama, sama dengan kartu akun di halaman superadmin. */
   box-shadow: var(--central-shadow-card);
   transition:
@@ -1720,7 +1740,7 @@ onMounted(async () => {
   padding: 1.25rem;
   border: 1px solid var(--ct-line, #e5e7eb);
   border-radius: var(--ct-radius, 16px);
-  background: var(--ct-surface-2, #fff);
+  background: var(--ct-surface, #fff);
   /* Elevasi penuh, sama dengan kartu utama halaman panel pusat yang lain. */
   box-shadow: var(--central-shadow-card);
 }
@@ -1847,7 +1867,7 @@ onMounted(async () => {
   margin-top: 0.9rem;
   border: 1px solid var(--ct-line, #e5e7eb);
   border-radius: var(--ct-radius-sm, 10px);
-  background: var(--ct-surface-2, #f8fafc);
+  background: var(--ct-surface-3, #f8fafc);
   /* Permukaan di dalam kartu: elevasi kecil (`--central-shadow-sm`), bukan
      elevasi kartu utama. Kalau ikut setinggi kartu di luar, daftar kolom
      yang panjang ini terlihat seperti panel sepadat panel utama --
@@ -1977,7 +1997,7 @@ onMounted(async () => {
    "pilih salah satu dari ini". Warna yang sama untuk dua maksud
    berbeda itu yang membuat panel referensi terasa menegur. */
 .mg-chip--netral {
-  background: var(--ct-surface-2, #e2e8f0);
+  background: var(--ct-surface-2, #f1f5f9);
   color: var(--ct-text-dim, #64748b);
 }
 
@@ -2111,7 +2131,7 @@ onMounted(async () => {
 .mg-up__bar {
   height: 0.4rem;
   border-radius: 999px;
-  background: var(--ct-surface-2, #e2e8f0);
+  background: var(--ct-surface-2, #f1f5f9);
   overflow: hidden;
 }
 
@@ -2146,7 +2166,7 @@ onMounted(async () => {
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--ct-line, #e5e7eb);
   border-radius: var(--ct-radius-sm, 10px);
-  background: var(--ct-surface-2, #f8fafc);
+  background: var(--ct-surface-3, #f8fafc);
   /* Kotak angka: elevasi kecil, sama seperti kartu tagihan HP. */
   box-shadow: var(--central-shadow-sm);
 }
@@ -2241,7 +2261,7 @@ onMounted(async () => {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--ct-surface-2, #f8fafc);
+  background: var(--ct-surface-3, #f8fafc);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -2255,7 +2275,7 @@ onMounted(async () => {
   z-index: 1;
   width: 4.5rem;
   min-width: 4.5rem;
-  background: var(--ct-surface-2, #fff);
+  background: var(--ct-surface, #fff);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -2292,6 +2312,19 @@ onMounted(async () => {
 }
 
 .mg-table__row--bad {
+  background: var(--ct-red-tint, #fef2f2);
+}
+
+/*
+ * Sel "Baris" yang terkunci ikut merah kalau barisnya ditolak.
+ *
+ * Latar merah menempel pada `<tr>`, sedangkan sel yang terkunci punya latar
+ * sendiri -- jadi tanpa aturan ini, kolom "Baris" tetap putih di baris yang
+ * seluruhnya merah. Hasilnya kolom terkunci terlihat seperti kotak putih yang
+ * ditempel di baris merah, dan penanda "yang ditolak" hilang tepat di bagian
+ * yang paling sering dibaca: nomor baris yang salah.
+ */
+.mg-table__row--bad .mg-table__num {
   background: var(--ct-red-tint, #fef2f2);
 }
 
@@ -2452,7 +2485,7 @@ onMounted(async () => {
 
 .mg-btn--ghost {
   border-color: var(--ct-line-strong, #d1d5db);
-  background: var(--ct-surface-2, #fff);
+  background: var(--ct-surface, #fff);
   color: inherit;
 }
 

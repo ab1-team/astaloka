@@ -10,6 +10,7 @@ use App\Models\MonthlyBill;
 use App\Models\Setting;
 use App\Services\BillingService;
 use App\Services\BillingTolerance;
+use App\Services\UnpaidMonths;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -42,8 +43,22 @@ class MeterReadingController extends Controller
             ->where('reading_month', $request->month)
             ->where('reading_year', $request->year);
 
-        // Least-privilege: teknisi hanya melihat catatannya sendiri
-        $readings = $this->scopeMeterReadingsToOwner($query, $request)->latest()->get();
+        // Least-privilege: teknisi melihat catatan meter yang ia catat sendiri
+        // ATAU catatan meter pelanggan di wilayahnya (tiket yang ia tangani).
+        // Sama seperti filter di `index()` — supaya daftar "sudah dicatat"
+        // konsisten dengan daftar "menunggu dicatat".
+        if (! $this->isPrivileged($request)) {
+            $userId = $request->user()?->id;
+
+            $query->where(function ($q) use ($userId) {
+                $q->where('recorded_by', $userId)
+                    ->orWhereHas('customer.ticket', function ($t) use ($userId) {
+                        $t->where('user_id', $userId);
+                    });
+            });
+        }
+
+        $readings = $query->latest()->get();
 
         return response()->json([
             'success' => true,
@@ -89,13 +104,27 @@ class MeterReadingController extends Controller
                     ->where('reading_year', $tahun);
             });
 
-        // Least-privilege: teknisi hanya ditagih pelanggan yang sudah pernah
-        // ia tangani. Tanpa ini teknisi bisa mencatat meter untuk pelanggan
-        // teknisi lain, lalu store() ikut menagih dan menyuspend tiketnya.
+        // Least-privilege: teknisi hanya ditagih pelanggan di WILAYAHNYA —
+        // pelanggan yang tiketnya ia tangani (`installation_tickets.user_id`).
+        // Sama seperti `MonthlyBillController` (index/unpaidSummary/show),
+        // supaya satu pelanggan tidak terlihat milik teknisi A di halaman
+        // pencatatan tapi milik teknisi B di halaman tagihan.
+        //
+        // Fallback: pelanggan yang pernah ia catat meter-nya (data legacy
+        // tanpa `ticket.user_id`) tetap boleh, supaya pencatatan bulan
+        // berikutnya tidak terkunci.
+        //
+        // CATATAN: hasil `whereHas()` HARUS di-assign. Tanpa assignment,
+        // Eloquent mengembalikan builder BARU dan constrain-nya dibuang --
+        // scoping jadi tidak berlaku sama sekali.
         if (! $this->isPrivileged($request)) {
             $userId = $request->user()?->id;
-            $customers->whereHas('meterReadings', function ($query) use ($userId) {
-                $query->where('recorded_by', $userId);
+            $customers->where(function ($query) use ($userId) {
+                $query->whereHas('ticket', function ($t) use ($userId) {
+                    $t->where('user_id', $userId);
+                })->orWhereHas('meterReadings', function ($q) use ($userId) {
+                    $q->where('recorded_by', $userId);
+                });
             });
         }
 
@@ -117,7 +146,7 @@ class MeterReadingController extends Controller
         $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'meter_value' => 'required|integer|min:0|max:99999999',
-            'photo' => 'required|image|max:2048',
+            'photo' => 'nullable|image|max:2048',
             'reading_month' => 'required|integer|between:1,12',
             'reading_year' => 'required|integer|min:2000',
         ]);
@@ -137,16 +166,23 @@ class MeterReadingController extends Controller
             ], 422);
         }
 
-        // Least-privilege: teknisi hanya boleh mencatat untuk pelanggan yang
-        // sudah pernah ia tangani.store() ikut membuat MonthlyBill dan bisa
-        // menyuspend tiket, jadi tanpa cek ini teknisi bisa menagih & mengubah
-        // status pelanggan milik teknisi lain.
+        // Least-privilege: teknisi boleh mencatat untuk pelanggan di
+        // WILAYAHNYA — yaitu pelanggan yang tiketnya dia tangani
+        // (`installation_tickets.user_id`) — sama seperti admin yang
+        // bebas untuk semua pelanggan. store() ikut membuat MonthlyBill dan
+        // bisa menyuspend tiket, jadi tanpa cek ini teknisi bisa menagih &
+        // mengubah status pelanggan milik teknisi lain.
+        //
+        // Fallback: kalau tiket tidak punya user_id (data legacy), teknisi
+        // tetap boleh untuk pelanggan yang pernah ia catat meter-nya.
         if (! $this->isPrivileged($request)) {
+            $isOwnArea = $this->isWithinTechnicianArea($customer, $request);
+
             $isOwnCustomer = MeterReading::where('customer_id', $customer->id)
                 ->where('recorded_by', $request->user()?->id)
                 ->exists();
 
-            if (! $isOwnCustomer) {
+            if (! $isOwnArea && ! $isOwnCustomer) {
                 abort(403, 'Akses ditolak. Pelanggan ini bukan dalam wilayah pencatatan Anda.');
             }
         }
@@ -175,11 +211,29 @@ class MeterReadingController extends Controller
             ], 400);
         }
 
-        $fileName = $this->storeUploadedImage($request->file('photo'), 'meter-readings');
+        // Foto meteran hanya BUKTI pendukung, bukan data wajib. Teknologi
+        // lapangan sering tidak bisa memotret meteran (lampu mati, meter di
+        // bawah tanah, pelanggan tidak ada di tempat), jadi kolom
+        // `photo_url` nullable dipakai: pencatatan TIDAK boleh ditolak hanya
+        // karena foto tidak ada.
+        $fileName = $request->hasFile('photo')
+            ? $this->storeUploadedImage($request->file('photo'), 'meter-readings')
+            : null;
 
         $settings = Setting::first();
         $batasTagihan = (int) ($settings?->batas_tagihan ?? 27);
 
+        // Waktu pencatatan meter = hari `batas_tagihan` di dalam bulan
+        // PEMAKAIAN, bukan bulan tagihannya.
+        //
+        // `recorded_at` dipakai frontend sebagai "TANGGAL AKHIR" pemakaian
+        // (lihat `usePemakaianAir.js`: `tanggalAkhir = reading_recorded_at
+        // || due_date`), jadi nilainya harus menunjuk ke batas akhir periode
+        // pemakaian -- bukan ke tanggal jatuh temponya yang sudah digeser
+        // ke bulan berikutnya.
+        //
+        // Meter dibaca di sekitar hari `batas_tagihan` bulan berjalan, lalu
+        // tagihannya dibayar pada bulan berikutnya.
         $recordedAt = Carbon::create($tahun, $bulan, 1)
             ->setDay(min($batasTagihan, Carbon::create($tahun, $bulan, 1)->daysInMonth))
             ->setTimeFrom(now());
@@ -204,28 +258,29 @@ class MeterReadingController extends Controller
         $suspended = false;
 
         /*
-         * Batas tagihan menunggak sebelum sambungan diputus.
+         * Batas tunggakan sebelum sambungan diputus.
          *
-         * Nilai ini punya satuan yang BERBEDA dari `toleransi_tunggakan`
-         * yang dipakai di tempat lain: yang di sini adalah JUMLAH TAGIHAN,
-         * bukan tanggal dalam bulan dan bukan jumlah hari. Semuanya dulu
-         * dibaca dari satu kolom yang sama, sehingga admin yang ingin
-         * menunda generate ke tanggal 20 ikut mengubah batas tagihan yang
-         * boleh menunggak.
+         * Satuannya JUMLAH BULAN -- bukan tanggal dalam bulan dan bukan
+         * jumlah tagihan. Angka ini dibaca dari kolom
+         * `settings.billing_unpaid_limit`, yang terpisah dari
+         * `toleransi_tunggakan` justru karena satuannya berbeda.
          *
-         * `BillingTolerance::unpaidBillLimit()` memakai kolom terpisah
-         * (`billing_unpaid_limit`) dan kembali ke nilai lama bila kolom itu
-         * kosong -- jadi hasil angkannya sama dengan sebelumnya untuk
-         * semua lokasi yang belum mengisi kolom baru.
+         * Yang dibandingkan adalah JUMLAH BULAN menunggak, bukan jumlah
+         * baris tagihan unpaid. Alasannya: yang ditanyakan admin adalah
+         * "berapa bulan pelanggan belum bayar". Kalau yang dihitung jumlah
+         * tagihan, 4 tagihan dalam 2 bulan (mis. ada tagihan susulan)
+         * akan dihitung sama dengan 4 tagihan berjarak 4 bulan.
+         *
+         * Perhitungan bulan menunggak ada di `UnpaidMonths` -- satu tempat
+         * supaya angka ini tidak dihitung berbeda di tempat lain.
          */
         $toleransi = app(BillingTolerance::class)->unpaidBillLimit();
 
         if ($toleransi > 0) {
-            $unpaidCount = MonthlyBill::where('customer_id', $result['customer']->id)
-                ->where('status', 'unpaid')
-                ->count();
+            $unpaidMonths = app(UnpaidMonths::class)
+                ->forCustomer($result['customer']->id);
 
-            if ($unpaidCount > $toleransi && $result['customer']->ticket) {
+            if ($unpaidMonths > $toleransi && $result['customer']->ticket) {
                 $result['customer']->ticket->update(['status' => 'suspended']);
                 $suspended = true;
             }

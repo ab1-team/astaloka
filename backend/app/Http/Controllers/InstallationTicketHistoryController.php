@@ -63,7 +63,7 @@ class InstallationTicketHistoryController extends Controller
                 'ticket' => [
                     'id' => $installationTicket->id,
                     'kode_instalasi' => $customer?->customer_code
-                        ?? '#INS-' . str_pad((string) $installationTicket->id, 4, '0', STR_PAD_LEFT),
+                        ?? '#INS-'.str_pad((string) $installationTicket->id, 4, '0', STR_PAD_LEFT),
                     'nama' => $installationTicket->applicant_name,
                     'alamat' => $installationTicket->address,
                     'status' => $installationTicket->status,
@@ -82,8 +82,12 @@ class InstallationTicketHistoryController extends Controller
                     'late_penalty' => (float) $installationTicket->package->late_penalty,
                     'tariff_blocks' => $installationTicket->package->tariffBlocks->map(fn ($b) => [
                         'id' => $b->id,
-                        'min_m3' => $b->min_m3,
-                        'max_m3' => $b->max_m3,
+                        // Kolomnya `usage_min_m3` / `usage_max_m3` -- bukan
+                        // `min_m3` / `max_m3`. Atribut yang tidak ada di model
+                        // menghasilkan null, jadi blok tarif tampil kosong
+                        // di popup "Detail Paket & Tagihan".
+                        'min_m3' => (float) $b->usage_min_m3,
+                        'max_m3' => $b->usage_max_m3 !== null ? (float) $b->usage_max_m3 : null,
                         'price_per_m3' => (float) $b->price_per_m3,
                     ])->values(),
                 ] : null,
@@ -186,7 +190,7 @@ class InstallationTicketHistoryController extends Controller
 
         try {
             DB::transaction(function () use (
-                $installationTicket, $oldPackage, $newPackage, $newPackageId,
+                $installationTicket, $oldPackage, $newPackage,
                 $reason, $userId
             ) {
                 // 1) Tentukan change_type: bandingkan monthly_abodemen sebagai proksi
@@ -282,7 +286,7 @@ class InstallationTicketHistoryController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui paket: ' . $e->getMessage(),
+                'message' => 'Gagal memperbarui paket: '.$e->getMessage(),
             ], 500);
         }
 

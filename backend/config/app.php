@@ -59,13 +59,45 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | Timezone aplikasi. WAJIB mengikuti zona waktu lokal tempat aplikasi
+    | ini dipakai, bukan UTC.
+    |
+    | Kenapa bukan UTC
+    | ---------------
+    |
+    | Nilai lama `UTC` membuat tanggal yang dilihat aplikasi meleset satu
+    | hari selama 7 jam pertama hari WIB (00:00-07:00). Contoh: nyata
+    | pukul 00:30 tanggal 28, `now()->day` mengembalikan 27 -- karena
+    | `now()` dihitung dalam UTC.
+    |
+    | Yang paling dirugikan adalah gate tanggal generate piutang
+    | (`toleransi_tunggakan`). Gate itu membandingkan `now()->day` dengan
+    | tanggal generate, jadi antara pukul 00:00-07:00 WIB, generate pada
+    | tanggal 28 terlihat seperti "belum tanggal 28" dan TIDAK jalan sama
+    | sekali -- tanpa error, tanpa log, tanpa jejak. Tagihan tetap
+    | `unpaid` di `monthly_bills` tapi akun Piutang Usaha `1.1.03.01`
+    | tidak pernah ditambah, sehingga Neraca dan daftar tagihan jadi dua
+    | sumber kebenaran yang tidak sinkron.
+    |
+    | Efeknya tidak hanya pada gate itu: `created_at`/`updated_at`,
+    | `paid_at`, tanggal tagihan, dan seluruh laporan periode ikut bergeser.
+    |
+    | kenapa `config/database.php` juga ikut berubah
+    | -----------------------------------------
+    |
+    | MySQL menyimpan kolom `TIMESTAMP` dalam UTC dan mengubahnya ke
+    | timezone SESI saat dibaca. Kalau session time_zone MySQL tetap
+    | `SYSTEM` (= timezone host, di sini UTC), nilai yang ditulis Laravel
+    | dalam WIB akan dibaca kembali sebagai UTC -- jamnya meleset 7 jam ke
+    | belakang.
+    |
+    | Karena itu `config/database.php` menyetel `timezone` pada setiap
+    | koneksi MySQL dengan nilai yang SAMA. Yang penting bukan cuma PHP,
+    | tapi MySQL dan PHP harus memakai zona waktu yang sama.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Jakarta'),
 
     /*
     |--------------------------------------------------------------------------

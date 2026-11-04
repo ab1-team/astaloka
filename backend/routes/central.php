@@ -61,6 +61,36 @@ Route::prefix('central')->group(function () {
         Route::apiResource('locations', LocationController::class);
 
         /*
+         | Mengaktifkan kembali lokasi yang sudah dinonaktifkan.
+         |
+         | Endpoint TERPISAH dari `DELETE /locations/{location}` yang
+         | hanya bisa menonaktifkan. DELETE di sini berarti "matikan", dan
+         | endpoint yang sama tidak boleh dipakai untuk membalikkannya --
+         | kalau boleh, DELETE bisa mengembalikan lokasi, dan satu skrip
+         | yang salah bisa membangunkan lokasi yang sengaja dimatikan.
+         |
+         | `PATCH`, bukan `PUT`: yang diaktifkan adalah SATU bagian dari
+         | lokasi -- statusnya -- bukan seluruh isi lokasi. PUT di sini
+         | akan dibaca sebagai "ganti seluruh data lokasi ini".
+         */
+        Route::patch('locations/{location}/activate', [LocationController::class, 'activate']);
+
+        /*
+         | Hapus lokasi PERMANEN, beserta database dan seluruh datanya.
+         |
+         | Berbeda dari `DELETE /locations/{location}` yang hanya mematikan
+         | lokasi tanpa menyentuh database. Yang di sini menghapus semuanya
+         | dan tidak bisa dibatalkan -- jadi body request WAJIB berisi slug
+         | lokasi yang tepat (lihat `forceDestroy()`).
+         |
+         | Path-nya `/locations/{location}/force-delete`, bukan
+         | `/locations/{location}/hapus`: penamaan "force delete" sudah
+         | dipakai di Laravel untuk operasi yang tidak bisa dibatalkan,
+         | dan itu persis sifat yang dimiliki endpoint ini.
+         */
+        Route::delete('locations/{location}/force-delete', [LocationController::class, 'forceDestroy']);
+
+        /*
          | Daftar sektor yang boleh dipilih untuk sebuah tenant.
          |
          | Terpisah dari `apiResource` dan diletakkan SEBELUMnya dengan path

@@ -101,7 +101,7 @@ export async function muatBranding() {
 const JUDUL_BAWAAN = 'ASTALOKA'
 const SUB_JUDUL_BAWAAN = 'Digital Platform'
 const DESKRIPSI_BAWAAN =
-  'Asta Layanan Operasional, Keuangan, dan Administrasi. Satu sistem untuk air minum, internet, pembayaran sampah, dan usaha lainnya.'
+  'Asta Layanan Operasional, Keuangan, dan Administrasi. Satu sistem untuk berbagai jenis usaha: air minum, internet, pembayaran sampah, jasa, dan layanan lainnya.'
 
 export function judulLogin() {
   return branding.value?.judul || JUDUL_BAWAAN

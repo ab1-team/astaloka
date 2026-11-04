@@ -1,0 +1,452 @@
+/*
+|--------------------------------------------------------------------------
+| PALET PER ROLE -- teknisi & surveyor
+|--------------------------------------------------------------------------
+|
+| File ini menyamakan WARNA TAMPILAN role teknisi dan surveyor dengan
+| pamsides-v2, TANPA menyentuh warna branding lokasi.
+|
+| Kenapa perlu file terpisah
+| ===========================
+|
+| Aplikasi ini multi-tenant: setiap lokasi punya warna sendiri, dan warna itu
+| dipakai di seluruh aplikasi lokasi (admin, pelanggan). Palet pamsides-v2
+| berbeda -- dan itu disengaja: desain tiap role memang dibuat beda.
+|
+| Dua hal yang TIDAK boleh dicampur:
+|
+|  1. Warna lokasi untuk admin/pelanggan/panel pusat. Itu tetap milik
+|     `utils/applyTheme.js` dan tidak boleh disentuh file ini.
+|  2. Warna pamsides-v2 untuk teknisi/surveyor. Itu yang di-pin di sini.
+|
+| Kenapa ditulis sebagai CSS, bukan di `applyTheme.js`
+| ===============================================
+|
+| `applyTheme.js` menulis token sebagai GAYA INLINE di
+| `document.documentElement.style`. Gaya inline menang atas selector biasa --
+| jadi token yang ditulis di stylesheet apa pun tidak akan mengalahkannya.
+|
+| Solusinya: `!important` pada custom property. Aturan author dengan
+| `!important` menang atas custom property yang ditulis inline tanpa
+| `!important`. Ini satu-satunya cara menimpa token inline tanpa menyentuh
+| `applyTheme.js`.
+|
+| Kenapa file ini TIDAK berlapis (unlayered)
+| ==========================================
+|
+| `main.css` memakai `@layer base` dan `@layer components`. Aturan di dalam
+| layer selalu kalah dari aturan tanpa layer, apa pun spesifisitasnya.
+| Karena file ini harus menang atas `main.css`, ia harus unlayered.
+|
+| Kenapa di-scope ke `html[data-role]`, bukan ke class di body
+| ========================================================
+|
+|  1. `<Teleport to="body">` -- modal di `hasilInputModal.vue` dirender ke
+|     `body`, jadi class di dalam aplikasi tidak ikut ke sana. Atribut di
+|     `html` diwarisi ke seluruh dokumen, termasuk isi teleport.
+|  2. Konsistensi: satu penentu untuk seluruh dokumen, bukan beberapa
+|     penentu yang bisa lupa dipasang.
+|
+| Kenapa `!important` dipakai di banyak aturan
+| ==============================================
+|
+| `main.css` sendiri memakai `!important` di beberapa tempat, dan
+| `applyTheme.js` menulis token inline. Supaya hasilnya benar-benar sama
+| dengan pamsides-v2 -- bukan "kira-kira sama" -- aturan di sini memakai
+| `!important` juga.
+|
+| NILAI-NILAI DI BAWAH INI BUKAN TEBAKAN
+| ======================================
+|
+| Semua angka diambil dari `pamsides-v2/frontend/src/assets/css/`:
+|   - `main.css`     -> blok `@theme` dan `:root` dalam `@layer base`
+|   - `ui-base.css`  -> `.base-button--primary-gradient` dan `--info-gradient`
+|
+| Kalau upstream berubah, file ini harus berubah bersama -- bukan diam-diam
+| melenceng.
+|
+*/
+
+/*
+|--------------------------------------------------------------------------
+| 1. TOKEN
+|--------------------------------------------------------------------------
+|
+| Nilai pamsides-v2 yang dipakai:
+|   --color-primary        #0ea5e9
+|   --color-primary-dark   #0284c7
+|   --color-primary-light  #e0f2fe
+|   --color-blue-50        #f0f9ff
+|   --color-blue-100       #e0f2fe
+|   --color-blue-200       #bae6fd
+|   --color-blue-300       #7dd3fc
+|   --color-blue-400       #38bdf8
+|   --color-blue-500       #23bbff
+|   --color-blue-600       #0b5e86
+|   --color-blue-800       #1e3a8a
+|
+| `--color-primary-400/600/700` dan `--brand-gradient*` hanya ada di astaloka
+| (pamsides-v2 tidak punya token itu). Nilainya disamakan dengan nilai
+| pamsides-v2 yang setara, supaya gradien yang muncul di layar sama.
+*/
+html[data-role='teknisi'],
+html[data-role='surveyor'] {
+  --color-primary: #0ea5e9 !important;
+  --color-primary-dark: #0284c7 !important;
+  --color-primary-light: #e0f2fe !important;
+
+  /*
+  | Hanya astaloka yang punya ketiga token ini. Dipakai untuk gradien tombol
+  | dan `bg-linear-brand`, jadi nilainya diambil dari pamsides-v2 yang
+  | setara:
+  |   400 <- #38bdf8 (pamsides --color-blue-400)
+  |   600 <- #2563eb (pamsides --color-blue-600 untuk ujung gradien)
+  |   700 <- #1d4ed8
+  */
+  --color-primary-400: #38bdf8 !important;
+  --color-primary-600: #2563eb !important;
+  --color-primary-700: #1d4ed8 !important;
+
+  /*
+  | RGB triplet untuk `rgb(... / alpha)`.
+  |
+  | Dipakai `main.css` (`.topnav::after`, `.sidebar-nav-item.active`, dan
+  | lain-lain) serta `topnav-notifications.css`. Di pamsides-v2 angka yang
+  | muncul di beberapa tempat itu `rgba(14, 165, 233, ...)` -- jadi triplet
+  | ini harus `14 165 233`.
+  */
+  --color-primary-rgb: 14 165 233 !important;
+
+  --color-blue-50: #f0f9ff !important;
+  --color-blue-100: #e0f2fe !important;
+  --color-blue-200: #bae6fd !important;
+  --color-blue-300: #7dd3fc !important;
+  --color-blue-400: #38bdf8 !important;
+  --color-blue-500: #23bbff !important;
+  --color-blue-600: #0b5e86 !important;
+  --color-blue-800: #1e3a8a !important;
+
+  /*
+  | Gradien brand.
+  |
+  | pamsides-v2 tidak punya token `--brand-gradient*`; gradiennya ditulis
+  | langsung per file. Nilai di sini adalah padanan yang menghasilkan warna
+  | yang sama persis untuk pemakaian yang sama di astaloka.
+  |
+  | `--brand-gradient` -- TIDAK 400 -> 600.
+  |
+  | Di astaloka, `bg-linear-brand` dipakai di dua tempat yang bisa dibuka
+  | teknisi/surveyor:
+  |
+  |   1. `admin/tagihan/partials/detailPemakaianAir.vue` (avatar pelanggan
+  |      di daftar input meter) -- pamsides-v2 memakai
+  |      `bg-gradient-to-br! from-cyan-500! to-blue-600!`.
+  |   2. `NotFoundView.vue` (kotak 404) -- pamsides-v2 memakai
+  |      `bg-gradient-to-br from-cyan-500 to-blue-600`.
+  |
+  | Dua-duanya cyan-500 -> blue-600, jadi tokennya harus bernilai sama persis
+  | dengan pasangan itu:
+  |
+  |   cyan-500 = oklch(71.5% 0.143 215.221)   (sama di kedua aplikasi)
+  |   blue-600 = #0b5e86                      (sama di kedua aplikasi)
+  |
+  | Nilainya ditulis sebagai `linear-gradient(135deg, ...)`, bukan
+  | `to bottom right in oklab`. Keduanya sudah dibuktikan menghasilkan gambar
+  | yang identik byte-per-byte (lihat catatan panjang di Bagian 2.8), jadi
+  | bentuk yang lebih pendek dipakai karena warnanya sama.
+  |
+  | PERHATIAN -- jangan pakai `--color-primary-400/600` di sini.
+  |
+  | `--color-primary-400` (#38bdf8) dan `--color-primary-600` (#2563eb)
+  | adalah padanan dari `--color-blue-400/600` pamsides-v2, BUKAN dari
+  | cyan-500 -> blue-600. Pasangan itu menghasilkan gradasian biru yang
+  | lebih terang, dan persis di dua tempat di atas hasilnya melenceng dari
+  | pamsides-v2.
+  |
+  |   --brand-gradient      cyan-500 -> blue-600 (avatar + 404)
+  |   --brand-gradient-deep 500 -> 800
+  |   --brand-gradient-soft 200 -> 50
+  */
+  --brand-gradient: linear-gradient(135deg, oklch(71.5% 0.143 215.221) 0%, #0b5e86 100%) !important;
+  --brand-gradient-deep: linear-gradient(135deg, #0ea5e9 0%, #1e3a8a 100%) !important;
+  --brand-gradient-soft: linear-gradient(135deg, #bae6fd 0%, #f0f9ff 100%) !important;
+}
+
+/*
+|--------------------------------------------------------------------------
+| 2. ATURAN YANG TIDAK BISA DIPINDAI DARI TOKEN SAJA
+|--------------------------------------------------------------------------
+|
+| Beberapa aturan di pamsides-v2 menulis warna LITERAL, sementara padanannya
+| di astaloka menulis dari token. Kalau tokennya dipin, hasilnya sama -- TETAPI
+| hanya kalau token itu tepat. Ada kalanya token yang dipin menghasilkan
+| warna yang berbeda, karena pamsides-v2 memang tidak memakai token di sana.
+| Aturan-aturan ini yang kasusnya seperti itu.
+*/
+
+/*
+| 2.1 Gradien tombol
+|
+| pamsides-v2:
+|   .base-button--primary-gradient -> linear-gradient(135deg, #6366f1, #4f46e5)
+|   .base-button--info-gradient    -> linear-gradient(135deg, #06b6d4, #2563eb)
+|
+| astaloka menulis keduanya dari `--color-primary*`. Setelah token dipin ke
+| biru pamsides, hasilnya tetap bukan indigo dan bukan cyan-teal, jadi harus
+| ditulis ulang.
+|
+| Bayangan dan focus ring juga ditulis eksplisit, karena pamsides-v2 punya
+| `shadow-indigo-500/30` / `shadow-blue-500/30` yang tidak ada di astaloka.
+|
+| KENAPA TIDAK PAKAI `!important` DI SINI
+| -------------------------------------
+|
+| `--tw-shadow-color` adalah token yang BIKIN Tailwind menulis warna
+| bayangan. Hampir semua tombol di halaman teknisi/surveyor menimpanya
+| sendiri di class-nya -- misalnya `shadow-orange-500/20` di `createSurvey`
+| dan `shadow-cyan-200` di `InstallationResult`.
+|
+| Kalau aturan di sini memakai `!important`, aturan itu menang atas SEMUA
+| penimpaan itu -- hasilnya tombol "KIRIM HASIL SURVEY" pakai bayangan
+| indigo padahal pamsides-v2 pakai bayangan oranye. Itu justru membuat
+| tampilan melenceng dari acuan.
+|
+| Jadi di sini TIDAK pakai `!important`; andalkan spesifisitas saja.
+| `html[data-role='teknisi'] .base-button--primary-gradient` punya
+| spesifisitas (0,2,1), sementara `shadow-orange-500/20` punya (0,1,0) --
+| jadi aturan di sini menang atas Utilities yang-SEJENIS, dan tetap kalah
+| atas class komponen yang lebih spesifik.
+|
+| Token `--color-*` di Bagian 1 tetap pakai `!important`, karena yang
+| ditimpa sana adalah GAYA INLINE dari `applyTheme.js` -- dan tidak ada
+| cara lain untuk menimpanya.
+*/
+/*
+| CATATAN SPESIFISITAS
+| --------------------
+|
+| Aturan di sini sengaja memakai `:where(html[data-role='teknisi'], ...)`
+| -- bukan `html[data-role='teknisi']`.
+|
+| `:where()` tidak menambah spesifisitas. Efeknya: aturan di sini punya
+| spesifisitas yang SAMA dengan aturan `.base-button--primary-gradient` di
+| `ui-base.css` -- jadi aturan di sini menang karena diimpor SETELAH-nya,
+| bukan karena lebih spesifik.
+|
+| Kenapa ini penting? Karena precedence itu harus sama persis dengan
+| pamsides-v2. Di pamsides-v2:
+|
+|   .base-button--primary-gradient   -> (0,1,0), tidak berlapis
+|   .submit-btn[data-v-xxx]          -> (0,2,0), tidak berlapis
+|   .shadow-orange-500\/20!          -> (0,1,0), berlapis + !important
+|
+| Kalau aturan di sini memakai (0,2,1) seperti `html[data-role=...] .tombol`,
+| aturan itu akan mengalahkan `.submit-btn[data-v-xxx]` -- dan tombol
+| "KIRIM HASIL SURVEY" akan dapat bayangan indigo, bukan oranye seperti
+| di pamsides-v2. Kalau tombolnya sudah diuji, itu berarti "persis sama"
+| tidak bisa dijamin hanya dari warna gradiennya.
+|
+| Dengan `:where()`, urutan precedence-nya:
+|   - `.shadow-orange-500\/20!` (penting) tetap menang -> benar
+|   - `.submit-btn[data-v-xxx]` tetap menang -> benar
+|   - `.base-button--primary-gradient` di ui-base.css kalah -> aturan ini
+|     yang menentukan -> benar
+|
+| Warna shadow yang dipakai:
+|   pamsides-v2 `shadow-indigo-500\/30` -> `--color-indigo-500` = #625fff
+|   pamsides-v2 `shadow-blue-500\/30`   -> `--color-blue-500`   = #23bbff
+|
+| Catatan: `indigo-500` di Tailwind v4 adalah #625fff, bukan #6366f1 --
+| angka #6366f1 milik Tailwind v3 dan hanya dipakai sebagai warna AWAL
+| gradien di pamsides-v2.
+*/
+:where(html[data-role='teknisi'], html[data-role='surveyor']) .base-button--primary-gradient {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  --tw-shadow-color: rgb(98 95 255 / 0.3);
+}
+
+@media (hover: hover) {
+  :where(html[data-role='teknisi'], html[data-role='surveyor'])
+    .base-button--primary-gradient:hover {
+    --tw-shadow-color: rgb(98 95 255 / 0.5);
+  }
+}
+
+/*
+| Ring fokus tombol primary: pamsides-v2 memakai `focus:ring-indigo-500`,
+| astaloka memakai `focus:ring-blue-500`. Tailwind menulis warna ring ke
+| `--tw-ring-color`, jadi yang perlu ditulis ulang adalah token itu.
+|
+| Spesifisitasnya tetap (0,2,0) -- sama dengan utilitas
+| `focus:ring-blue-500` yang digabung ke `ui-base.css`, dan menang karena
+| diimpor lebih akhir.
+*/
+:where(html[data-role='teknisi'], html[data-role='surveyor'])
+  .base-button--primary-gradient:focus {
+  --tw-ring-color: #625fff;
+}
+
+:where(html[data-role='teknisi'], html[data-role='surveyor']) .base-button--info-gradient {
+  background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%);
+  --tw-shadow-color: rgb(35 187 255 / 0.3);
+}
+
+@media (hover: hover) {
+  :where(html[data-role='teknisi'], html[data-role='surveyor'])
+    .base-button--info-gradient:hover {
+    --tw-shadow-color: rgb(35 187 255 / 0.5);
+  }
+}
+
+/*
+| 2.2 `.topnav::after`
+|
+| pamsides-v2 menulis literal `rgba(59, 130, 246, ...)` -- biru Tailwind,
+| BUKA `--color-primary`. Setelah token dipin ke `14 165 233`, aturan
+| astaloka (`rgb(var(--color-primary-rgb) / ...)`) jadi `rgba(14,165,233,...)`.
+| Warnanya beda, jadi ditulis literal seperti di pamsides-v2.
+*/
+html[data-role='teknisi'] .topnav::after,
+html[data-role='surveyor'] .topnav::after {
+  background: linear-gradient(
+    to bottom,
+    rgba(59, 130, 246, 0.15),
+    rgba(59, 130, 246, 0.05),
+    transparent
+  ) !important;
+}
+
+/*
+| 2.3 Penanda menu aktif di sidebar
+|
+| pamsides-v2: `border-right: 6px solid #00a3ff` -- literal.
+| astaloka:   `border-right: 6px solid var(--color-primary, #00a3ff)`.
+|
+| Setelah token dipin, astaloka jadi `#0ea5e9`, bukan `#00a3ff`. Ini garis
+| penanda utama menu aktif -- yang paling sering dilihat -- jadi harus sama.
+*/
+html[data-role='teknisi'] .sidebar-nav-item.active::after,
+html[data-role='surveyor'] .sidebar-nav-item.active::after {
+  border-right: 6px solid #00a3ff !important;
+}
+
+/*
+| 2.4 Ikon notifikasi di topnav
+|
+| pamsides-v2: `background: rgba(35, 187, 255, 0.25)`.
+| astaloka:   `rgb(var(--color-primary-rgb, 35 187 255) / 0.25)`.
+|
+| Setelah token dipin, astaloka jadi `rgba(14,165,233,0.25)`. pamsides-v2
+| memakai `--color-blue-500` (#23bbff) di sini -- angka 35 187 255 itu
+| persis #23bbff. Jadi ditulis literal.
+*/
+html[data-role='teknisi'] .topnav-icon-btn.is-active,
+html[data-role='surveyor'] .topnav-icon-btn.is-active {
+  background: rgba(35, 187, 255, 0.25) !important;
+}
+
+/*
+| 2.5 Kartu "Hubungi Kami" di dropdown notifikasi
+|
+| Sama seperti di atas: pamsides-v2 memakai rgba(35, 187, 255, ...).
+*/
+html[data-role='teknisi'] .support-contact-card,
+html[data-role='surveyor'] .support-contact-card {
+  background: linear-gradient(135deg, rgba(35, 187, 255, 0.12), rgba(35, 187, 255, 0.04)) !important;
+  border: 1px solid rgba(35, 187, 255, 0.28) !important;
+}
+
+/*
+| 2.6 Toast informasi (SweetAlert)
+|
+| pamsides-v2: `border-color: #3b82f6; color: #3b82f6`.
+| astaloka:   `var(--color-primary)`.
+|
+| Toast muncul di semua role, jadi digabung di sini.
+*/
+html[data-role='teknisi'] .swal2-toast .swal2-icon.swal2-info,
+html[data-role='surveyor'] .swal2-toast .swal2-icon.swal2-info {
+  border-color: #3b82f6 !important;
+  color: #3b82f6 !important;
+}
+
+/*
+| 2.7 Checkbox putih di modal hasil input
+|
+| pamsides-v2 menulis literal `#0891b2` (cyan-700). astaloka memakai
+| `var(--color-primary, #0891b2)` -- setelah token dipin, hasilnya
+| `#0ea5e9`, bukan `#0891b2`.
+|
+| Aturan `<style scoped>` di `hasilInputModal.vue` punya spesifisitas
+| (0,2,0) untuk `.cb-white[data-v-xxx]`. Selector di sini (0,2,1) -- satu
+| tingkat lebih tinggi -- jadi menang.
+|
+| Penting: aturan ini harus berlaku untuk isi `<Teleport to="body">`, dan
+| `html[data-role]` memang diwarisi ke sana.
+*/
+html[data-role='teknisi'] .cb-white:hover,
+html[data-role='surveyor'] .cb-white:hover {
+  border-color: #0891b2 !important;
+}
+
+html[data-role='teknisi'] .cb-white:checked,
+html[data-role='surveyor'] .cb-white:checked {
+  border-color: #0891b2 !important;
+}
+
+html[data-role='teknisi'] .cb-white:checked::after,
+html[data-role='surveyor'] .cb-white:checked::after {
+  border-color: #0891b2 !important;
+}
+
+html[data-role='teknisi'] .cb-white:focus,
+html[data-role='surveyor'] .cb-white:focus {
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.2) !important;
+}
+
+/*
+|--------------------------------------------------------------------------
+| 3. YANG SENGAJA TIDAK DIUBAH
+|--------------------------------------------------------------------------
+|
+| Perbedaan berikut tetap ada di role teknisi/surveyor, dan itu disengaja.
+|
+| - `.base-button--secondary` (tombol abu "simpan"): astaloka memakai satu
+|   token abu sendiri (`--btn-save-bg`, #64748b) supaya tombol simpan seragam
+|   di seluruh aplikasi. pamsides-v2 memakai `bg-slate-500` Tailwind
+|   (#62748e). Selisihnya 3 poin per kanal RGB dan tidak kasat mata, tapi
+|   tombol abu adalah "bahasa" aplikasi astaloka -- ada test-nya
+|   (`frontend/test/tombolSimpan.test.js`) yang menjaganya. Menggantinya
+|   berarti membongkar aturan yang ada tujuannya.
+|
+|  tombol "Simpan Data Pemakaian" di `inputMeterModal.vue` termasuk
+|   kategori yang sama: ia tetap `variant="secondary"` (abu astaloka), bukan
+|   ikut jadi gradien. pamsides-v2 menulisnya sebagai `bg-slate-800!` --
+|   jadi warnanya memang beda. Ini BUKAN pengecualian ketiga pada test
+|   tombol simpan: daftar pengecualian di `frontend/test/tombolSimpan.test.js`
+|   tetap hanya berisi dua tombol gradien
+|   ("SIMPAN HASIL INSTALASI" dan "KIRIM HASIL SURVEY").
+|
+| - `bg-linear-brand!` di avatar pelanggan (`detailPemakaianAir.vue`) dan kotak
+|   404 (`NotFoundView.vue`: sebenarnya SEMUA role, jadi sebenarnya ini bukan
+|   pembedaan per-role): SUDAH diseimbangkan dengan pamsides-v2 lewat token
+|   `--brand-gradient` di Bagian 1 (cyan-500 -> blue-600). Dulu token itu
+|   bernilai gradasian astaloka sendiri, jadi avatar teknisi terlihat
+|   berbeda dari pamsides-v2 -- sekarang tidak.
+|
+| - `.content-card__body { min-height: 0 }`: perbaikan scroll astaloka. Dipakai
+|   supaya isi card yang panjang bisa digulir, bukan membuat card tumbuh.
+|
+| - `.sidebar-submenu-item:hover` tanpa `translateX(4px)`: perbaikan astaloka --
+|   submenu tidak bergeser saat hover.
+|
+| - `.sidebar-submenu-marker` (ganti `.sidebar-submenu-bullet`): perbaikan
+|   astaloka -- titik submenu tidak ikut bergeser bersama teksnya.
+|
+| - `.stat-card--instalasi` (#38bdf8 vs #23bbff): kartu statistik hanya
+|   dipakai dashboard admin, tidak pernah di halaman teknisi/surveyor.
+|
+| - `.package-modal*`, `.radio-card*`, `.pdm-loading*`, `.billing-dot*`,
+|   `.notification-dialog*`, `.btn-primary-modal`, `.modal-top-accent`,
+|   `.aquifer-card`: semuanya hanya dipakai halaman admin atau panel pusat.
+*/

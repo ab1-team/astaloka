@@ -425,6 +425,27 @@ utilities;
 
   padding: 1.5rem;
   padding-top: calc(var(--topnav-height) + 1.5rem);
+
+  /*
+   * WAJIB: `min-width: 0`.
+   *
+   * `.main-content` adalah flex item di `.dashboard-layout` (flex baris).
+   * Flex item punya `min-width: auto` secara default, artinya lebarnya TIDAK
+   * boleh menyusut lebih kecil dari lebar min-content isinya. Padahal isinya
+   * bisa tabel lebar -- dan tabel punya lebar min-content yang besar
+   * (setiap kolom minimal sebesar teksnya yang tidak bisa dipecah).
+   *
+   * Akibatnya: satu tabel lebar mendorong SELURUH halaman melebar melewati
+   * viewport. Yang rusak bukan tabelnya -- scroll horizontal tabel itu memang
+   * bekerja -- tapi halaman: kartu ringkasan terpotong di kanan, header
+   * terpotong, dan tidak ada scrollbar halaman yang bisa menyelamatkannya.
+   *
+   * `min-width: 0` melepas ikatan itu: `.main-content` boleh menyusut sesuai
+   * ruang yang tersisa, dan tabel yang terlalu lebar menggulir di dalam
+   * wadahnya sendiri (`overflow-x-auto` pada `DataTable`) -- persis yang
+   * seharusnya terjadi.
+   */
+  min-width: 0;
 }
 
 @media (max-width: 768px) {
@@ -2133,7 +2154,7 @@ utilities;
   /* Grid ringkasan pada popup "Generate Piutang Tunggakan". HTML-nya
      dikirim lewat opsi `html:` di dalam file JS, jadi kelas ini ditulis di
      CSS (bukan utilities Tailwind) supaya pasti ikut ter-generate.
-     Dulu `grid grid-cols-2!` â€” utility itu bisa hilang kalau pemindaian
+     Dulu `grid grid-cols-2!` — utility itu bisa hilang kalau pemindaian
      Tailwind tidak menemukan file sumbernya. */
   .swal2-popup .overdue-stat-grid {
     display: grid !important;
@@ -2253,7 +2274,7 @@ utilities;
      style `display: none` (lihat `toggle()` di sweetalert2). Kalau di sini
      ada `display: inline-flex !important`, aturan itu MENANG dan membuat
      tombol tetap terlihat walau `showConfirmButton: false`. Karena itu
-     `display` TIDAK ikut dipaksa â€” styling tetap sama saat tombol aktif. */
+     `display` TIDAK ikut dipaksa — styling tetap sama saat tombol aktif. */
   /* Merah di sini BUKAN kelalaian: tombol konfirmasi dialog selalu berarti
      "mempermanen mengubah sesuatu" (hapus, batalkan, tutup akun), jadi
      warnanya merah apa pun warna lokasi. Warna lokasi tidak boleh ikut
@@ -2304,7 +2325,7 @@ utilities;
   }
 
   /* Style tombol sudah diletakkan pada masing-masing tombol di atas
-     (`.swal2-confirm`, `.swal2-cancel`) â€” bukan pada wrapper-nya.
+     (`.swal2-confirm`, `.swal2-cancel`) — bukan pada wrapper-nya.
      `display` sengaja TIDAK dipaksa di sini: SweetAlert2 menyembunyikan
      wrapper lewat inline style `display: none` saat semua tombol
      dimatikan, dan aturan `display: ... !important` pada selector yang
@@ -2394,7 +2415,7 @@ utilities;
       grid-template-columns: 1fr !important;
     }
 
-    /* Baris "kode akun â†’ kode akun" punya label panjang; izinkan wrap
+    /* Baris "kode akun → kode akun" punya label panjang; izinkan wrap
        supaya tidak keluar dari popup. */
     .swal2-popup .overdue-legend-row {
       flex-wrap: wrap !important;

@@ -7,6 +7,7 @@ use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\SuspendTransactionsTrigger;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,52 @@ use Tests\TestCase;
 class GenerateOverduePerformanceTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * Kunci waktu ke tanggal yang PASTI di dalam rentang generate 1-28.
+     *
+     * Kenapa test di kelas ini perlu dikunci waktunya
+     * -----------------------------------------------
+     *
+     * Gate generate membandingkan "hari ini" dengan `toleransi_tunggakan`,
+     * dan `BillingTolerance::generateDay()` hanya menerima nilai 1-28.
+     * Nilai di luar rentang itu berarti "SOP belum diisi" -- dan generate
+     * tidak pernah jalan.
+     *
+     * Test yang memakai `toleransi_tunggakan => now()->format('d')` punya
+     * masalah yang sama persis. Di tanggal 29, 30, dan 31, angka itu di
+     * luar rentang, jadi `generateDay()` mengembalikan 0, dan command
+     * `billing:generate-overdue-transactions` tidak menghasilkan jurnal
+     * apa pun.
+     *
+     * Gejalanya muncul sebagai kegagalan yang sama sekali tidak
+     * menyinggung tanggal: `assertCount(2, $jurnals, 'Harus ada 2 jurnal
+     * (abodemen + denda).')` gagal dengan "actual size 0 matches expected
+     * size 2", dan tidak ada satupun pesan yang menyebut tanggal.
+     *
+     * Mengunci waktu ke tanggal yang sudah DI DALAM rentang 1-28 membuat
+     * hasilnya sama terlepas dari kapan pun test ini dijalankan.
+     */
+    private function freezeDate(): void
+    {
+        // 15 Oktober 2026 -- di tengah bulan, jadi tanggal ini ada di dalam
+        // rentang generate 1-28 dan tidak pernah melewati batas akhir bulan.
+        $this->travelTo(Carbon::parse('2026-10-15 10:00:00'));
+    }
+
+    /**
+     * Kunci waktu SEBELUM test jalan.
+     *
+     * Dipanggil di sini, bukan di dalam test satu per satu, karena hampir
+     * semua test di kelas ini memanggil `now()->format('d')` sebagai tanggal
+     * generate -- dan nilai itu harus dihitung setelah waktu dikunci.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->freezeDate();
+    }
 
     private function admin(): User
     {
@@ -98,6 +145,30 @@ class GenerateOverduePerformanceTest extends TestCase
         ]);
     }
 
+    /**
+     * Set tanggal generate, dan kunci waktu ke tanggal yang PASTI di dalam
+     * rentang generate 1-28.
+     *
+     * Kenapa penguncian waktu ada DI DALAM `setUp()`
+     * -------------------------------------------
+     *
+     * Test memanggilnya dengan `now()->format('d')` -- yaitu tanggal hari
+     * ini -- dan itu HARUS selalu berarti "tanggal generate = hari ini".
+     * Kalau tidak dikunci, nilainya ikut berubah tiap hari, dan di tanggal
+     * 29, 30, dan 31 nilainya keluar dari rentang 1-28 yang diterima
+     * `BillingTolerance::generateDay()`.
+     *
+     * Nilai di luar rentang itu dibaca sebagai "SOP belum diisi", jadi
+     * generate TIDAK pernah jalan -- dan test gagal dengan pesan yang tidak
+     * menyinggung tanggal sama sekali:
+     *
+     *     Failed asserting that actual size 0 matches expected size 2.
+     *
+     * Penguncian dilakukan di `setUp()`, BUKAN di dalam `setToleransi()`,
+     * karena argumen `now()->format('d')` dievaluasi SEBELUM method itu
+     * dipanggil. Kalau penguncian ditaruh di dalam helper, nilainya sudah
+     * terlanjur dihitung dengan waktu yang belum dikunci.
+     */
     private function setToleransi(int $value): void
     {
         // Upsert: `settings.key` punya unique index dan test boleh berjalan
@@ -105,7 +176,7 @@ class GenerateOverduePerformanceTest extends TestCase
         Setting::updateOrCreate(
             ['key' => 'sop'],
             [
-                'batas_tagihan' => 27,
+                'batas_tagihan' => $value,
                 'toleransi_tunggakan' => $value,
             ]
         );

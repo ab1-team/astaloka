@@ -33,14 +33,46 @@
             <table class="w-full border-collapse text-sm">
               <thead>
                 <tr class="bg-slate-800 text-white sticky top-0 z-10">
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-center w-12">No</th>
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 whitespace-nowrap">Tanggal</th>
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 whitespace-nowrap">Kode Akun</th>
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 min-w-[200px]">Keterangan</th>
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 whitespace-nowrap">ID Trx</th>
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-right">Debit</th>
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-right">Kredit</th>
-                  <th class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-center">Aksi</th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-center w-12"
+                  >
+                    No
+                  </th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 whitespace-nowrap"
+                  >
+                    Tanggal
+                  </th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 whitespace-nowrap"
+                  >
+                    Kode Akun
+                  </th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 min-w-[200px]"
+                  >
+                    Keterangan
+                  </th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 whitespace-nowrap"
+                  >
+                    ID Trx
+                  </th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-right"
+                  >
+                    Debit
+                  </th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-right"
+                  >
+                    Kredit
+                  </th>
+                  <th
+                    class="py-3! px-4! text-xs font-semibold uppercase tracking-wide border-b border-slate-700 text-center"
+                  >
+                    Aksi
+                  </th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-200">
@@ -56,7 +88,7 @@
                     </td>
                     <td class="py-4! px-4! font-mono text-xs text-slate-500">1101</td>
                     <td class="py-4! px-4! text-slate-700">
-                      Pembayaran Air Periode {{ bill.period }} ({{ bill.customerName }})
+                      Pembayaran Periode {{ bill.period }} ({{ bill.customerName }})
                     </td>
                     <td class="py-4! px-4! font-mono text-xs text-slate-500">
                       BP-{{ bill.payments?.[0]?.id || bill.id }}
@@ -111,74 +143,105 @@
     <!-- Kuitansi Print (hidden, only for printing) -->
     <div ref="printArea" class="hidden">
       <div id="print-content" v-if="printBill">
-        <div style="font-family: Arial, sans-serif; padding: 32px; max-width: 600px; margin: 0 auto;">
-          <div style="text-align: center; border-bottom: 3px double #333; padding-bottom: 16px; margin-bottom: 20px;">
-            <h2 style="margin: 0; font-size: 18px;">KUITANSI PEMBAYARAN</h2>
-            <p style="margin: 4px 0 0; font-size: 12px; color: #666;">ASTALOKA - Layanan Air Bersih</p>
+        <div
+          style="font-family: Arial, sans-serif; padding: 32px; max-width: 600px; margin: 0 auto"
+        >
+          <div
+            style="
+              text-align: center;
+              border-bottom: 3px double #333;
+              padding-bottom: 16px;
+              margin-bottom: 20px;
+            "
+          >
+            <h2 style="margin: 0; font-size: 18px">KUITANSI PEMBAYARAN</h2>
+            <p style="margin: 4px 0 0; font-size: 12px; color: #666">ASTALOKA - Layanan Publik</p>
           </div>
 
-          <table style="width: 100%; font-size: 13px; margin-bottom: 20px;">
+          <table style="width: 100%; font-size: 13px; margin-bottom: 20px">
             <tbody>
               <tr>
-                <td style="padding: 4px 0; width: 130px; color: #666;">No. Kuitansi</td>
-                <td style="padding: 4px 0;">: BP-{{ printBill.payments?.[0]?.id || printBill.id }}</td>
+                <td style="padding: 4px 0; width: 130px; color: #666">No. Kuitansi</td>
+                <td style="padding: 4px 0">
+                  : BP-{{ printBill.payments?.[0]?.id || printBill.id }}
+                </td>
               </tr>
               <tr>
-                <td style="padding: 4px 0; color: #666;">Tanggal</td>
-                <td style="padding: 4px 0;">: {{ printBill.payments?.[0]?.paidAt || printBill.statusDate || '-' }}</td>
+                <td style="padding: 4px 0; color: #666">Tanggal</td>
+                <td style="padding: 4px 0">
+                  : {{ printBill.payments?.[0]?.paidAt || printBill.statusDate || '-' }}
+                </td>
               </tr>
               <tr>
-                <td style="padding: 4px 0; color: #666;">Pelanggan</td>
-                <td style="padding: 4px 0;">: {{ printBill.customerName }}</td>
+                <td style="padding: 4px 0; color: #666">Pelanggan</td>
+                <td style="padding: 4px 0">: {{ printBill.customerName }}</td>
               </tr>
               <tr>
-                <td style="padding: 4px 0; color: #666;">ID Pelanggan</td>
-                <td style="padding: 4px 0;">: {{ printBill.customerId }}</td>
+                <td style="padding: 4px 0; color: #666">ID Pelanggan</td>
+                <td style="padding: 4px 0">: {{ printBill.customerId }}</td>
               </tr>
               <tr>
-                <td style="padding: 4px 0; color: #666;">Periode</td>
-                <td style="padding: 4px 0;">: {{ printBill.period }}</td>
+                <td style="padding: 4px 0; color: #666">Periode</td>
+                <td style="padding: 4px 0">: {{ printBill.period }}</td>
               </tr>
             </tbody>
           </table>
 
-          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
+          <table
+            style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px"
+          >
             <thead>
-              <tr style="background: #f1f5f9;">
-                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Keterangan</th>
-                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Jumlah</th>
+              <tr style="background: #f1f5f9">
+                <th style="padding: 8px; border: 1px solid #ddd; text-align: left">Keterangan</th>
+                <th style="padding: 8px; border: 1px solid #ddd; text-align: right">Jumlah</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;">Pemakaian Air ({{ printBill.pemakaian }} m³)</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ formatRupiah(printBill.usage_charge) }}</td>
+                <td style="padding: 8px; border: 1px solid #ddd">
+                  Pemakaian ({{ printBill.pemakaian }} m³)
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right">
+                  {{ formatRupiah(printBill.usage_charge) }}
+                </td>
               </tr>
               <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;">Abodemen</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ formatRupiah(printBill.abodemen) }}</td>
+                <td style="padding: 8px; border: 1px solid #ddd">Abodemen</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right">
+                  {{ formatRupiah(printBill.abodemen) }}
+                </td>
               </tr>
               <tr v-if="printBill.denda > 0">
-                <td style="padding: 8px; border: 1px solid #ddd;">Denda</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ formatRupiah(printBill.denda) }}</td>
+                <td style="padding: 8px; border: 1px solid #ddd">Denda</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right">
+                  {{ formatRupiah(printBill.denda) }}
+                </td>
               </tr>
-              <tr style="font-weight: bold; background: #f0fdf4;">
-                <td style="padding: 8px; border: 1px solid #ddd;">TOTAL PEMBAYARAN</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: #059669;">{{ formatRupiah(printBill.amount) }}</td>
+              <tr style="font-weight: bold; background: #f0fdf4">
+                <td style="padding: 8px; border: 1px solid #ddd">TOTAL PEMBAYARAN</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: #059669">
+                  {{ formatRupiah(printBill.amount) }}
+                </td>
               </tr>
             </tbody>
           </table>
 
-          <div style="display: flex; justify-content: space-between; margin-top: 40px; font-size: 12px;">
-            <div style="text-align: center; width: 45%;">
-              <p style="margin: 0; color: #666;">Pelanggan</p>
-              <br><br><br>
-              <p style="margin: 0; border-top: 1px solid #333; padding-top: 4px;">{{ printBill.customerName }}</p>
+          <div
+            style="display: flex; justify-content: space-between; margin-top: 40px; font-size: 12px"
+          >
+            <div style="text-align: center; width: 45%">
+              <p style="margin: 0; color: #666">Pelanggan</p>
+              <br /><br /><br />
+              <p style="margin: 0; border-top: 1px solid #333; padding-top: 4px">
+                {{ printBill.customerName }}
+              </p>
             </div>
-            <div style="text-align: center; width: 45%;">
-              <p style="margin: 0; color: #666;">Petugas</p>
-              <br><br><br>
-              <p style="margin: 0; border-top: 1px solid #333; padding-top: 4px;">_________________</p>
+            <div style="text-align: center; width: 45%">
+              <p style="margin: 0; color: #666">Petugas</p>
+              <br /><br /><br />
+              <p style="margin: 0; border-top: 1px solid #333; padding-top: 4px">
+                _________________
+              </p>
             </div>
           </div>
         </div>
@@ -317,14 +380,29 @@ onUnmounted(() => {
   opacity: 0;
 }
 @keyframes slide-up {
-  from { transform: translateY(30px) scale(0.98); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
+  from {
+    transform: translateY(30px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 .animate-slide-up {
   animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.scrollbar-custom::-webkit-scrollbar { width: 8px; height: 8px; }
-.scrollbar-custom::-webkit-scrollbar-track { background: #f8fafc; }
-.scrollbar-custom::-webkit-scrollbar-thumb { background: #e2e8f0; }
-.scrollbar-custom::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+.scrollbar-custom::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-custom::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+.scrollbar-custom::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+}
+.scrollbar-custom::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
 </style>

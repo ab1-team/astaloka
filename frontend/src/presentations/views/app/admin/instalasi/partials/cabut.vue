@@ -26,8 +26,8 @@
           <div>
             <p class="font-bold! text-red-800!">Instalasi Dicabut</p>
             <p>
-              Sambungan air telah dicabut permanen. Layanan tidak aktif dan tidak dapat digunakan.
-              Hubungi admin untuk pengajuan ulang.
+              Sambungan layanan telah dicabut permanen. Layanan tidak aktif dan tidak dapat
+              digunakan. Hubungi admin untuk pengajuan ulang.
             </p>
           </div>
         </div>
@@ -70,8 +70,8 @@
           <p>
             Pelanggan masih memiliki
             <strong>{{ customer.tunggakanList.length }} tunggakan</strong> senilai
-            <strong>Rp {{ formatRibuan(customer.totalTunggakan + customer.totalDenda) }}</strong>.
-            Lunasi semua tunggakan terlebih dahulu sebelum menghapus data.
+            <strong>Rp {{ formatRibuan(customer.totalTunggakan + customer.totalDenda) }}</strong
+            >. Lunasi semua tunggakan terlebih dahulu sebelum menghapus data.
           </p>
         </div>
       </div>
@@ -79,12 +79,13 @@
         v-else
         class="rounded-2xl! bg-emerald-50! border! border-emerald-200! p-4! text-[11px]! text-emerald-700! leading-relaxed! flex! items-start! gap-2.5!"
       >
-        <font-awesome-icon icon="check-circle" class="text-emerald-600! mt-0.5! shrink-0! text-sm!" />
+        <font-awesome-icon
+          icon="check-circle"
+          class="text-emerald-600! mt-0.5! shrink-0! text-sm!"
+        />
         <div>
           <p class="font-bold! text-emerald-800! text-xs! mb-0.5!">Semua Tunggakan Lunas</p>
-          <p>
-            Semua tagihan sudah clear. Data pelanggan dapat dihapus permanen dari sistem.
-          </p>
+          <p>Semua tagihan sudah clear. Data pelanggan dapat dihapus permanen dari sistem.</p>
         </div>
       </div>
 
@@ -196,8 +197,18 @@ const { deleteTicket, printDetail } = useInstalasiActions()
 const id = decodeURIComponent(route.params.id)
 
 const MONTHS_ID = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
 ]
 
 const formatRibuan = (val) => {
@@ -279,9 +290,7 @@ const customer = computed(() => {
     ? found.rawData.customer[0]
     : found.rawData?.customer
 
-  const billsRaw = Array.isArray(customerRecord?.monthly_bills)
-    ? customerRecord.monthly_bills
-    : []
+  const billsRaw = Array.isArray(customerRecord?.monthly_bills) ? customerRecord.monthly_bills : []
   const billsMap = new Map()
   for (const b of billsRaw) {
     const key = `${b.billing_period_year}-${b.billing_period_month}`

@@ -92,11 +92,7 @@
               :class="{ 'is-open': jabatanTerbuka(row, j) }"
             >
               <!-- Baris jabatan:level kedua accordion. -->
-              <button
-                type="button"
-                class="hak-akses-jabatan__head"
-                @click="toggleJabatan(row, j)"
-              >
+              <button type="button" class="hak-akses-jabatan__head" @click="toggleJabatan(row, j)">
                 <font-awesome-icon
                   icon="chevron-right"
                   class="hak-akses-jabatan__caret"
@@ -113,7 +109,9 @@
                   <span class="block! text-[13px]! font-black! text-slate-700! truncate!">
                     {{ j.nama }}
                   </span>
-                  <span class="block! text-[10px]! font-bold! uppercase! tracking-widest! text-slate-400!">
+                  <span
+                    class="block! text-[10px]! font-bold! uppercase! tracking-widest! text-slate-400!"
+                  >
                     {{ j.total_user }} pengguna
                   </span>
                 </span>
@@ -160,16 +158,14 @@
                   <font-awesome-icon :icon="ROLE_ICONS[j.role] || 'user-shield'" />
                   <p class="text-xs! text-blue-800! leading-relaxed!">
                     Jabatan <strong>{{ j.nama }}</strong> memakai daftar menu
-                    <strong>{{ ROLE_LABELS[j.role] || j.role }}</strong>. Yang di bawah hanya menu
-                    milik role itu -- menu admin, surveyor, atau role lain tidak muncul di sini
-                    karena memang tidak akan pernah bisa dibuka oleh pemegang jabatan ini.
+                    <strong>{{ ROLE_LABELS[j.role] || j.role }}</strong
+                    >. Yang di bawah hanya menu milik role itu -- menu admin, surveyor, atau role
+                    lain tidak muncul di sini karena memang tidak akan pernah bisa dibuka oleh
+                    pemegang jabatan ini.
                   </p>
                 </div>
 
-                <div
-                  v-else-if="!j.configured"
-                  class="hak-akses-catatan"
-                >
+                <div v-else-if="!j.configured" class="hak-akses-catatan">
                   <font-awesome-icon icon="circle-info" />
                   <p class="text-xs! text-blue-800! leading-relaxed!">
                     Jabatan ini <strong>belum pernah</strong> diatur, jadi semua menu masih terbuka
@@ -217,11 +213,7 @@
 
                 <!-- Group per menu, masing-masing jadi kartu sendiri. -->
                 <div class="hak-akses__grid">
-                  <section
-                    v-for="group in groupMenu(j)"
-                    :key="group.nama"
-                    class="hak-akses__group"
-                  >
+                  <section v-for="group in groupMenu(j)" :key="group.nama" class="hak-akses__group">
                     <label class="hak-akses__group-head">
                       <input
                         type="checkbox"
@@ -296,14 +288,17 @@
                   <span class="font-black! uppercase! tracking-widest! text-slate-300!"
                     >Keterangan</span
                   >
-                  <span><strong class="text-slate-500!">Wajib terbuka</strong> &mdash; tidak bisa dicabut</span>
                   <span
-                    ><strong class="text-slate-500!">Bukan untuk role ini</strong> &mdash; menu milik role
-                    lain</span
+                    ><strong class="text-slate-500!">Wajib terbuka</strong> &mdash; tidak bisa
+                    dicabut</span
                   >
                   <span
-                    ><strong class="text-slate-500!">Tanpa entri sidebar</strong> &mdash; dibuka lewat
-                    dashboard</span
+                    ><strong class="text-slate-500!">Bukan untuk role ini</strong> &mdash; menu
+                    milik role lain</span
+                  >
+                  <span
+                    ><strong class="text-slate-500!">Tanpa entri sidebar</strong> &mdash; dibuka
+                    lewat dashboard</span
                   >
                 </div>
 
@@ -375,9 +370,8 @@
               <strong class="text-slate-600!">Surveyor</strong> mendapat menu lapangan,
               <strong class="text-slate-600!">Teknisi</strong> atau
               <strong class="text-slate-600!">Cater</strong> mendapat menu teknisi yang sama,
-              <strong class="text-slate-600!">Pelanggan</strong> mendapat menu portalnya --
-              dan yang lain otomatis memakai menu
-              <strong class="text-slate-600!">admin</strong>.
+              <strong class="text-slate-600!">Pelanggan</strong> mendapat menu portalnya -- dan yang
+              lain otomatis memakai menu <strong class="text-slate-600!">admin</strong>.
             </p>
           </form>
         </div>
@@ -540,9 +534,16 @@ function setTerpilih(jabatan, set) {
  * `selected` server. Setelah ada yang dicentang, angka yang benar untuk
  * ditunjukkan ke superadmin adalah pilihannya yang sekarang, bukan keadaannya
  * sebelum halaman ini dibuka.
+ *
+ * Menu `hidden` tidak ikut dihitung. Ia memang TIDAK tampil sebagai
+ * checkbox (lihat `groupMenu()`), jadi memasukkannya membuat lencana
+ * menulis angka yang tidak bisa dicocokkan dengan apa pun di layar --
+ * mis. teknisi yang hanya punya dua entri terlihat "4 menu diizinkan".
  */
 function jumlahDiizinkan(jabatan) {
-  return terpilih(jabatan).size
+  const tampil = new Set((jabatan.menu ?? []).filter((m) => !m.hidden).map((m) => m.key))
+
+  return [...terpilih(jabatan)].filter((key) => tampil.has(key)).length
 }
 
 /**
@@ -584,7 +585,7 @@ const groupMenu = (jabatan) => {
    * `bentuk_respons_sama_dengan_aplikasi_lokasi` ikut bergantung pada itu.
    *
    * Menu ini tidak hilang dari katalog: `useOverdueGenNotification.js`
-   * membuka `/app/arsip/tunggakan` saat ada tunggakan, dan `EnforceMenuAccess`
+   * membuka `/app/arsip/piutang` saat ada tunggakan, dan `EnforceMenuAccess`
    * menolak endpointnya kalau jabatan tidak punya key-nya.
    */
   const tampil = jabatan.menu.filter((item) => !item.hidden)
@@ -602,13 +603,33 @@ const groupMenu = (jabatan) => {
     byGroup.get(nama).push({
       ...item,
       bisaDiubah,
+      /*
+       * Keterangan = kenapa checkbox ini yang berbentuk seperti ini.
+       *
+       * `tanpa_sidebar` dan `hidden` bedanya penting untuk yang membaca
+       * daftar ini:
+       *
+       *   - `hidden`          : tidak tampil di sidebar DAN TIDAK bisa
+       *                         dicentang di sini -- jadi tidak bisa
+       *                         dicabut dari panel pusat.
+       *   - `tanpa_sidebar`   : tidak tampil di sidebar, tapi TETAP bisa
+       *                         dicentang di sini. Jadi endpointnya masih
+       *                         bisa ditutup per jabatan.
+       *
+       * Menu role non-admin yang `tanpa_sidebar` (mis. "Daftar Survey"
+       * milik surveyor) tetap wajib tampil di daftar ini -- kalau
+       * disembunyikan, superadmin tidak akan pernah bisa mencabut hak
+       * aksesnya.
+       */
       keterangan: item.locked
         ? 'wajib terbuka'
         : item.role_mismatch
           ? `bukan untuk role ${(item.roles || []).join(', ')}`
-          : item.hidden
-            ? 'tanpa entri di sidebar'
-            : '',
+          : item.tanpa_sidebar
+            ? 'dibuka dari dashboard, bukan menu'
+            : item.hidden
+              ? 'tanpa entri di sidebar'
+              : '',
     })
   }
 
@@ -711,18 +732,13 @@ function toggleGroup(jabatan, group) {
 function pilihSemua(jabatan) {
   setTerpilih(
     jabatan,
-    new Set(
-      jabatan.menu.filter((m) => !m.locked && !m.role_mismatch).map((m) => m.key),
-    ),
+    new Set(jabatan.menu.filter((m) => !m.locked && !m.role_mismatch).map((m) => m.key)),
   )
 }
 
 function hapusSemua(jabatan) {
   // Hanya "semua" yang bisa dipilih; menu terkunci tetap tercentang.
-  setTerpilih(
-    jabatan,
-    new Set(jabatan.menu.filter((m) => m.locked).map((m) => m.key)),
-  )
+  setTerpilih(jabatan, new Set(jabatan.menu.filter((m) => m.locked).map((m) => m.key)))
 }
 
 /**
@@ -738,7 +754,7 @@ function hapusSemua(jabatan) {
  * lokasi dan setiap permintaan menyeberang ke database yang berbeda, jadi memuat
  * semuanya sekaligus ketika halaman dibuka berarti satu login panel pusat
  * memicu N koneksi database untuk daftar yang kebanyakan tidak pernah dibuka.
- */function toggleJabatan(row, jabatan) {
+ */ function toggleJabatan(row, jabatan) {
   const key = pasangan(row, jabatan)
   const next = new Set(terbuka.value)
 
@@ -836,10 +852,7 @@ async function simpan(row, jabatan) {
       jabatan.configured = res.data.data.configured
     }
 
-    setTerpilih(
-      jabatan,
-      new Set((jabatan.menu ?? []).filter((m) => m.selected).map((m) => m.key)),
-    )
+    setTerpilih(jabatan, new Set((jabatan.menu ?? []).filter((m) => m.selected).map((m) => m.key)))
 
     /*
      * Key yang ditolak dilaporkan backend lewat `diabaikan`. Kalau diabaikan
@@ -925,10 +938,7 @@ async function kembalikanDefault(row, jabatan) {
 
 /** Isi centangan dari data server, tanpa mengubah server. */
 function syncCentangan(jabatan) {
-  setTerpilih(
-    jabatan,
-    new Set((jabatan.menu ?? []).filter((m) => m.selected).map((m) => m.key)),
-  )
+  setTerpilih(jabatan, new Set((jabatan.menu ?? []).filter((m) => m.selected).map((m) => m.key)))
 }
 
 /**

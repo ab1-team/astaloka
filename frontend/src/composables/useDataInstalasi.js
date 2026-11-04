@@ -1,4 +1,4 @@
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import ticketService from '@/services/ticket.service'
 import ticketHistoryService from '@/services/ticketHistory.service'
 import packageService from '@/services/package.service'
@@ -18,14 +18,20 @@ const STATUS_LABELS = {
 }
 
 /**
- * Hanya 3 status instalasi yang berstatus "aktif" (sudah selesai dipasang).
- * - completed  → Aktif
- * - suspended  → Blokir
- * - terminated → Cabut
- * Ticket yang masih pending (draft, pending, surveyed, unpaid, processing)
- * tidak ditampilkan di halaman ini karena belum jadi pelanggan aktif.
+ * Status yang ditampilkan di halaman ini: HANYA `completed`.
+ *
+ * Halaman ini adalah daftar instalasi yang sudah SELESAIpasang -- jadi
+ * hanya tiket `completed` (label "Aktif") yang relevan. Tiket `suspended`
+ * (Blokir) dan `terminated` (Cabut) punya halaman masing-masing di
+ * `/app/instalasi/status`, dan tiket yang masih berjalan (draft, pending,
+ * surveyed, unpaid, processing) belum jadi pelanggan aktif.
+ *
+ * PENTING: daftar ini bukan filter yang membatasi JUMLAH baris. Filternya
+ * hanya memilih STATUS. Berapa pun banyak tiket `completed` yang ada, semuanya
+ * harus tampil -- dan itu dijamin oleh `all=1` (lihat fetchData di bawah),
+ * bukan oleh `per_page` yang dibatasi server di 200 baris.
  */
-const ACTIVE_CONNECTION_STATUSES = ['completed', 'suspended', 'terminated']
+const ACTIVE_CONNECTION_STATUSES = ['completed']
 
 const STATUS_COLORS = {
   draft: 'bg-slate-100 text-slate-700',
@@ -69,7 +75,7 @@ export function useDataInstalasi() {
   const isPackagesLoading = ref(false)
   const isDetailLoading = ref(false)
   const isUpdateSubmitting = ref(false)
-  const detailData = ref(null)         // hasil GET /history
+  const detailData = ref(null) // hasil GET /history
   const updateForm = ref({
     ticketId: null,
     currentPackageId: null,
@@ -81,17 +87,47 @@ export function useDataInstalasi() {
     try {
       isLoading.value = true
       const res = await ticketService.getTickets({
-        per_page: 200,
+        /*
+         * `all=1`, BUKAN `per_page: 200`.
+         *
+         * Jalur `per_page` dibatasi server: `min($perPage, 200)`. Jadi
+         * `per_page: 200` hanya mengambil 200 baris PERTAMA -- sisanya
+         * hilang tanpa jejak, dan `total` ikut terpotong sehingga tabel
+         * menampilkan "of 200 entries" padahal isinya lebih dari itu.
+         * Gejalanya persis yang dilaporkan: ada lebih dari 100 instalasi
+         * `completed` di database, tapi di layar tidak sampai semua.
+         *
+         * `all=1` tidak punya batas baris, jadi tidak ada yang bisa
+         * hilang. Server memakai relasi RINGAN untuk jalur ini -- tanpa
+         * tagihan bulanan, pembacaan meter, dan payments per baris --
+         * jadi ukurannya tetap masuk akal walau ratusan baris.
+         */
+        all: 1,
         // Filter di server (backend mendukung daftar status dipisah koma)
         status: ACTIVE_CONNECTION_STATUSES.join(','),
       })
-      if (res?.success && Array.isArray(res?.data?.data)) {
-        // Pengaman tambahan di sisi client: pastikan hanya 3 status aktif.
-        tableData.value = res.data.data
+      /*
+       * Bentuk balasan berbeda antara dua jalur:
+       *   - `?all=1`   -> `data` adalah array langsung
+       *   - `?page=..`  -> `data.data` adalah array, `data.total` jumlah
+       *
+       * Keduanya dibaca di sini supaya composable ini tidak bergantung
+       * pada bentuk balasan yang sedang dipakai.
+       */
+      const rows = Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res?.data?.data)
+          ? res.data.data
+          : null
+
+      if (res?.success && Array.isArray(rows)) {
+        // Pengaman tambahan di sisi client: pastikan hanya status yang diminta.
+        tableData.value = rows
           .filter((t) => ACTIVE_CONNECTION_STATUSES.includes(t.status))
           .map((t) => ({
             ticketId: t.id,
-            kodeInstalasi: t.customer?.[0]?.customer_code || `#INS-${String(t.id).padStart(4, '0')}`,
+            kodeInstalasi:
+              t.customer?.[0]?.customer_code || `#INS-${String(t.id).padStart(4, '0')}`,
             nama: t.applicant_name || '-',
             alamat: t.address || '-',
             paket: t.package?.name || t.package_name || '-',
@@ -124,6 +160,21 @@ export function useDataInstalasi() {
   const totalPages = computed(() =>
     Math.max(1, Math.ceil(filteredData.value.length / perPage.value)),
   )
+
+  /*
+   * Kembalikan ke halaman 1 kalau halaman sekarang jadi tidak valid.
+   *
+   * Paginasi di halaman ini dilakukan di BROWSER (seluruh data sudah
+   * diambil lewat `all=1`), jadi jumlah baris bisa berkurang kapan saja
+   * -- begitu user mengetik di kotak pencarian, atau memilih ukuran
+   * halaman yang lebih kecil. Tanpa ini, user bisa terjebak di halaman 5
+   * yang isinya sudah kosong, dan tabelnya tampak tidak sengaja rusak.
+   */
+  watch([filteredData, perPage], () => {
+    if (currentPage.value > totalPages.value) {
+      currentPage.value = totalPages.value
+    }
+  })
 
   const handleCetakDataInstalasi = () => {
     const printWindow = window.open('', '_blank', 'width=900,height=700')
@@ -234,7 +285,7 @@ export function useDataInstalasi() {
       isPackagesLoading.value = true
       const res = await packageService.getPackages()
       // packageService.getPackages() return { success, data: [...] }
-      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
       packages.value = list.map((p) => ({
         id: p.id,
         name: p.name,
@@ -341,10 +392,8 @@ export function useDataInstalasi() {
     }
 
     // Konfirmasi sebelum submit
-    const oldPkg =
-      packages.value.find((p) => p.id === form.currentPackageId) || null
-    const newPkg =
-      packages.value.find((p) => p.id === form.newPackageId) || null
+    const oldPkg = packages.value.find((p) => p.id === form.currentPackageId) || null
+    const newPkg = packages.value.find((p) => p.id === form.newPackageId) || null
     const oldPkgName = oldPkg?.name || '-'
     const newPkgName = newPkg?.name || '-'
     const oldAbodemen = oldPkg ? formatRupiah(oldPkg.monthly_abodemen) : '-'
@@ -472,9 +521,7 @@ export function useDataInstalasi() {
     } catch (err) {
       Swal.fire({
         title: 'Gagal!',
-        text:
-          err?.response?.data?.message ||
-          'Terjadi kesalahan saat memperbarui paket.',
+        text: err?.response?.data?.message || 'Terjadi kesalahan saat memperbarui paket.',
         icon: 'error',
       })
     } finally {

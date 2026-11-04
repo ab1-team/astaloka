@@ -106,14 +106,26 @@ import { usePdfPreview, THUMB_RENDER_BUFFER } from '@/composables/usePdfPreview'
 
 const route = useRoute()
 const uiStore = useUiStore()
-const { tableData, filter, refreshData, resolveTeknisiLabel } = usePemakaianAir()
+const { tableData, filter, refreshData, resolveTeknisiLabel, isTechnician, currentUserLabel } =
+  usePemakaianAir()
 
 const PAGE_CONFIG = { paper_size: 'A4', orientation: 'portrait' }
 
+/**
+ * Nama teknisi yang tampil di kop cetakan.
+ *
+ * - Admin   → teknisi yang dipilih di filter halaman (atau "Admin")
+ * - Teknisi → nama teknisi yang sedang login
+ */
 const caterName = computed(() => {
+  if (isTechnician.value) {
+    return currentUserLabel.value
+  }
   const raw = route.query.cater
-  if (!raw) return uiStore.userData?.nama || 'Admin'
-  if (String(uiStore.userData?.id) === String(raw)) return uiStore.userData?.nama || 'Admin'
+  if (!raw) return uiStore.userData?.name || uiStore.userData?.nama || 'Admin'
+  if (String(uiStore.userData?.id) === String(raw)) {
+    return uiStore.userData?.name || uiStore.userData?.nama || 'Admin'
+  }
   return resolveTeknisiLabel(raw) || 'Admin'
 })
 
@@ -266,6 +278,12 @@ onMounted(async () => {
     if (route.query.bulan) filter.value.bulan = route.query.bulan
     if (route.query.teknisi) filter.value.teknisi = route.query.teknisi
     if (route.query.cater) filter.value.cater = resolveTeknisiLabel(route.query.cater)
+
+    // Teknisi: kop & metadata harus mencantumkan namanya sendiri, bukan
+    // "Admin" (untuk admin, `filter.cater` berisi teknisi yang dipilihnya).
+    if (isTechnician.value) {
+      filter.value.cater = currentUserLabel.value
+    }
 
     document.title = `Cetak Struk`
 
@@ -629,16 +647,33 @@ onMounted(async () => {
   position: relative;
   flex-shrink: 0;
   margin-bottom: 24px;
+  /* Jangan `overflow: hidden` di layar: kalau isi 4 struk sedikit lebih
+     panjang dari A4, struk paling bawah akan terpotong tanpa tanda. */
+  overflow: visible;
+  page-break-after: always;
+  break-after: page;
 }
 
 .report-page-wrap:last-child {
   margin-bottom: 0;
+  page-break-after: auto;
+  break-after: auto;
 }
 
 .report-page-wrap :deep(.report-page) {
   margin: 0 auto !important;
   transform-origin: top center;
   transform: scale(var(--page-scale, 1));
+}
+
+/* Tinggi halaman = A4 (297mm), minimal.
+   `min-height` (bukan `height`) supaya kalau isi 4 struk sedikit lebih
+   panjang dari A4, struk paling bawah TIDAK terpotong diam-diam.
+   `overflow: visible` dipakai untuk hal yang sama. */
+.report-page-wrap :deep(.report-page.surat-page.size-a4.portrait) {
+  min-height: 297mm;
+  height: auto;
+  overflow: visible;
 }
 
 .alert-error {
@@ -654,17 +689,108 @@ onMounted(async () => {
   .no-print {
     display: none !important;
   }
+
+  /* PENTING: .preview-shell di layar web memakai `height: 100vh` +
+     `overflow: hidden`. Kalau itu ikut terbawa ke media print, Chrome
+     mem-view dokumen sebagai satu "layar" dan tidak mem-fragmentasi
+     isinya, sehingga semua halaman laporan keluar sebagai 1 halaman PDF
+     dan sisanya terpotong. */
   .preview-shell {
     background: #ffffff;
     padding: 0;
+    height: auto !important;
+    overflow: visible !important;
   }
   .workspace-container {
-    height: auto;
-    overflow: visible;
+    height: auto !important;
+    overflow: visible !important;
   }
   .preview-stage {
     padding: 0;
-    overflow: visible;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Flex container tidak bisa dipaginasi dengan rapi oleh Chrome saat
+     print, jadi diubah jadi block agar tiap .report-page-wrap menjadi
+     satu halaman PDF. */
+  .report-root {
+    display: block !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* .report-page-wrap memakai style inline width/height dalam PX hasil
+     zoom preview. Nilai itu harus ditimpa supaya ukuran cetaknya tepat
+     A4 (210mm x 297mm). */
+  .report-page-wrap {
+    width: 210mm !important;
+    height: auto !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    page-break-after: always;
+    break-after: page;
+  }
+  .report-page-wrap:last-child {
+    margin-bottom: 0;
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  /* Tinggi halaman TIDAK dikunci saat print, supaya isi tidak pernah
+     terpotong. Pemenggalan halaman tetap dijamin `break-after: page` +
+     `@page { size: A4 }`. */
+  .report-page-wrap :deep(.report-page.surat-page.size-a4.portrait) {
+    transform: none !important;
+    margin: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Padding khusus struk diatur di ReportCetakStruk.vue (class
+     .struk-page-root), jadi di sini tidak perlu diulang. */
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+}
+</style>
+
+<!--
+  Reset global khusus mode print.
+
+  Aturan global `html, body { height: 100%; overflow-x: hidden }` di App.vue
+  membuat <body> menjadi scroll-container. Akibatnya Chrome TIDAK
+  mem-fragmentasi isi saat dicetak: seluruh dokumen keluar sebagai 1 halaman
+  A4 dan halaman-halaman berikutnya terpotong (kata "1 page" di dialog print
+  padahal laporannya multi halaman).
+
+  Di bawah ini body/#app/#app-root dilepas dari tinggi tetap + overflow
+  hidden supaya `break-after: page` pada .report-page-wrap benar-benar
+  menghasilkan satu halaman PDF untuk setiap halaman laporan.
+
+  Blok ini HANYA aktif di media print, jadi tampilan di layar web tidak
+  berubah sama sekali.
+-->
+<style>
+@media print {
+  html,
+  body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  #app,
+  #app-root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 }
 </style>

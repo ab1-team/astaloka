@@ -171,7 +171,7 @@ export function useInstalasiActions() {
 <body>
   <div class="header">
     <h1>DETAIL ${statusLabel.toUpperCase()} INSTALASI</h1>
-    <p>ASTALOKA - Sistem Manajemen Air Bersih</p>
+    <p>ASTALOKA - Sistem Manajemen Layanan</p>
     <span class="badge">${statusLabel}</span>
   </div>
 

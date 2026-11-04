@@ -38,6 +38,30 @@
           <font-awesome-icon :icon="lokasi.is_active ? 'ban' : 'rotate-left'" />
           {{ lokasi.is_active ? 'Nonaktifkan' : 'Aktifkan' }}
         </button>
+
+        <!--
+          Hapus permanen.
+
+          Letakkan di baris kendali ini, bukan di dalam salah satu panel
+          di bawahnya: ini satu-satunya aksi di halaman ini yang menghapus
+          database beserta seluruh datanya, dan ia harus terlihat jelas di
+          tempat yang sama dengan aksi-aksi lain terhadap lokasi ini --
+          bukan tersembunyi di dalam panel tagihan atau di bawah lipatan.
+
+          Ikon `trash-can` (bukan `trash`) karena `trash` di panel ini sudah
+          berarti "hapus tagihan" dan "hapus domain". Orang yang sudah
+          terbiasa menekan `trash` harus melihat bentuk yang berbeda sebelum
+          menekan tombol yang menghapus semuanya.
+        -->
+        <button
+          type="button"
+          class="btn btn--danger"
+          :disabled="deleting"
+          @click="handleForceDelete"
+        >
+          <font-awesome-icon :icon="deleting ? 'spinner' : 'trash-can'" :spin="deleting" />
+          {{ deleting ? 'Menghapus...' : 'Hapus Permanen' }}
+        </button>
       </div>
     </header>
 
@@ -288,11 +312,7 @@
               Riwayat Tagihan
             </router-link>
 
-            <button
-              type="button"
-              class="btn btn--save btn--block"
-              @click="showInvoiceModal = true"
-            >
+            <button type="button" class="btn btn--save btn--block" @click="showInvoiceModal = true">
               <font-awesome-icon icon="plus" />
               Terbitkan Tagihan
             </button>
@@ -810,6 +830,17 @@ const invoiceLoading = ref(false)
 const lokasi = ref(null)
 
 /*
+ * Sedang menghapus lokasi secara permanen.
+ *
+ * Dipakai untuk men-disable tombol "Hapus Permanen" selama request
+ * berjalan, dan untuk menggantinya dengan spinner. Tanpa ini, menekan
+ * tombol dua kali akan mengirim dua request DELETE -- dan request kedua
+ * akan tiba setelah baris registry-nya sudah hilang, jadi ia akan
+ * gagal dengan 404 yang tidak menjelaskan apa pun.
+ */
+const deleting = ref(false)
+
+/*
  * Data tagihan milik kartu di kolom kiri.
  *
  * Empat ref terpisah, bukan satu objek, dan bukan satu array yang
@@ -1002,6 +1033,15 @@ const loadInvoices = async () => {
   }
 }
 
+/**
+ * Aktifkan / nonaktifkan lokasi.
+ *
+ * Dua arah, dua endpoint BERBEDA: `deactivate()` memakai DELETE (efeknya
+ * soft -- data dan database tidak dihapus), `activate()` memakai PATCH
+ * endpoint khusus. Keduanya sengaja tidak digabung: DELETE yang bisa
+ * mengembalikan lokasi akan membuat satu request berarti dua hal yang
+ * bertentangan.
+ */
 const handleToggleActive = async () => {
   if (lokasi.value.is_active) {
     const result = await MySwal.fire({
@@ -1020,11 +1060,90 @@ const handleToggleActive = async () => {
   }
 
   try {
-    const res = await locationService.deactivate(lokasi.value.id)
+    const res = lokasi.value.is_active
+      ? await locationService.deactivate(lokasi.value.id)
+      : await locationService.activate(lokasi.value.id)
+
     showSuccessToast(res.data?.message || 'Status tenant diperbarui.')
     await loadLocation()
   } catch (error) {
     showErrorToast(error)
+  }
+}
+
+/**
+ * Hapus tenant PERMANEN, beserta database dan seluruh datanya.
+ *
+ * Berbeda dari "Nonaktifkan" di sebelahnya, yang hanya mematikan tenant
+ * tanpa menyentuh database. Yang di sini benar-benar menghapus, dan tidak
+ * ada cara memulihkannya -- jadi konfirmasinya dua tahap, dan tahap kedua
+ * mewajibkan slug tenant diketik ulang.
+ *
+ * Setelah berhasil, halaman ini tidak bisa menampilkan apa pun lagi:
+ * tenant yang dihapus tidak ada lagi di server. Karena itu halaman
+ * langsung dikembalikan ke daftar, bukan sekadar dimuat ulang.
+ */
+const handleForceDelete = async () => {
+  const konfirmasi = await MySwal.fire({
+    title: 'Hapus Tenant Permanen?',
+    html: `Tenant <strong>${lokasi.value.label}</strong> akan dihapus <strong>permanen</strong>.<br><br>
+      Database <code>${lokasi.value.database}</code> beserta <strong>seluruh data di dalamnya</strong>
+      akan ikut dihapus, dan <strong>tidak ada cara memulihkannya</strong>.<br><br>
+      Kalau hanya ingin menonaktifkan sementara, gunakan tombol "Nonaktifkan" -- datanya tetap utuh.`,
+    icon: 'error',
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Lanjut',
+    cancelButtonText: 'Batal',
+  })
+
+  if (!konfirmasi.isConfirmed) return
+
+  const ketikSlug = await MySwal.fire({
+    title: 'Ketik slug untuk konfirmasi',
+    html: `Ketik <code>${lokasi.value.slug}</code> untuk menghapus tenant ini secara permanen.`,
+    icon: 'warning',
+    input: 'text',
+    inputAttributes: {
+      autocapitalize: 'none',
+      autocorrect: 'off',
+      spellcheck: 'false',
+    },
+    inputPlaceholder: lokasi.value.slug,
+    inputValidator: (value) => {
+      if (!value || value.trim() !== lokasi.value.slug) {
+        return `Slug harus persis sama: ${lokasi.value.slug}`
+      }
+
+      return null
+    },
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Hapus permanen',
+    cancelButtonText: 'Batal',
+  })
+
+  if (!ketikSlug.isConfirmed) return
+
+  deleting.value = true
+
+  try {
+    const res = await locationService.forceDelete(lokasi.value.id, lokasi.value.slug)
+
+    await MySwal.fire({
+      icon: 'success',
+      title: 'Tenant Dihapus Permanen',
+      html: res.data?.message || 'Tenant beserta database dan seluruh datanya sudah dihapus.',
+      confirmButtonColor: 'var(--color-primary, #3b82f6)',
+    })
+
+    router.push({ name: 'central-lokasi' })
+  } catch (error) {
+    showErrorToast(error)
+  } finally {
+    deleting.value = false
   }
 }
 

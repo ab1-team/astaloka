@@ -412,6 +412,43 @@ onMounted(() => {
   // ke setiap request berikutnya.
   clearCentralSession()
 
+  /*
+   * Kabar "logout berhasil" DI SINI, bukan di halaman yang memicunya.
+   *
+   * Alasannya: halaman yang memicunya (panel pusat) sudah dibongkar saat
+   * user dipindahkan ke sini. Toast yang dibuat di sana akan ikut hilang
+   * bersama komponennya, jadi tidak ada yang pernah sampai terlihat.
+   * Halaman login adalah tempat terakhir yang masih hidup, jadi di sinilah
+   * kabarnya disampaikan.
+   *
+   * Bentuknya mengikuti aplikasi lokasi (`views/auth/LoginView.vue`): ikon
+   * centang, judul, dan sapaan untuk namanya. Tanpa sapaan itu, orang yang
+   * logout lalu login lagi di komputer yang sama tidak punya cara memastikan
+   * bahwa sesi yang tersisa memang miliknya -- bukan orang sebelumnya.
+   */
+  if (params.get('logout')) {
+    const nama = params.get('name')
+
+    MySwal.fire({
+      ...toastBase,
+      icon: 'success',
+      title: 'Logout Berhasil',
+      text: nama ? `Terima kasih, ${nama}` : 'Terima kasih!',
+      timer: 3000,
+    })
+
+    /*
+     * Parameter `logout` dan `name` DIBUANG dari URL setelah toast muncul.
+     *
+     * Kalau dibiarkan, memuat ulang halaman (F5) akan memunculkan toast
+     * "Logout Berhasil" lagi -- padahal yang logout sudah lama selesai, dan
+     * sekarang orang itu mungkin sedang mencoba login. Pesan yang salah
+     * waktu lebih membingungkan daripada tidak ada pesan sama sekali.
+     */
+    window.history.replaceState({}, document.title, window.location.pathname)
+    return
+  }
+
   if (params.get('expired')) {
     MySwal.fire({
       ...toastBase,

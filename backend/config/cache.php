@@ -130,6 +130,57 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cache Store untuk Mutex Scheduler
+    |--------------------------------------------------------------------------
+    |
+    | Store yang dipakai Laravel untuk mengunci job scheduler -- mutex
+    | `withoutOverlapping()`, flag pause, dan flag interrupt.
+    |
+    | Kenapa TIDAK ikut `database` (default `CACHE_STORE`)
+    | ---------------------------------------------------
+    |
+    | `schedule:run` dipanggil setiap menit oleh Task Scheduler. Sebelum
+    | menjalankan apa pun, Laravel membaca flag pause dari cache:
+    |
+    |     $this->cache->get('illuminate:schedule:paused', false)
+    |
+    | Kalau cache itu di database, satu query ke database terjadi DI SETIAP
+    | menit -- dan kalau MySQL sedang mati atau belum selesai start, query
+    | itu melempar `SQLSTATE[HY000] [2002]`. Akibatnya:
+    |
+    |   - `schedule:run` CRASH sebelum job apa pun sempat dicek, jadi job
+    |     yang due TIDAK jalan -- termasuk generate piutang pada tanggalnya;
+    |   - satu baris ERROR ditulis ke `storage/logs/laravel.log` tiap menit,
+    |     jadi log cepat membanjir dan error yang SEBENARNYA jadi sulit
+    |     ditemukan di antara ribuan error koneksi.
+    |
+    | Mutex scheduler bukan data yang perlu bertahan lama atau perlu dibagi
+    | antar lokasi -- kuncinya cuma "apakah job ini sedang jalan". Dan
+    | "sedang jalan" justru hal yang paling perlu benar saat database TIDAK
+    | bisa dijangkau: kalau MySQL mati, yang kita mau adalah scheduler
+    | melewati job yang butuh database dengan tenang, bukan crash.
+    |
+    | Store `file` tidak butuh database sama sekali, jadi:
+    |
+    |   - scheduler tidak pernah crash karena MySQL mati;
+    |   - mutex `withoutOverlapping()` tetap bekerja -- justru lebih penting
+    |     di situation itu, supaya dua proses tidak menjalankan job yang
+    |     sama bersamaan;
+    |   - `schedule:pause` / `schedule:resume` tetap berfungsi, karena flag
+    |     pause juga dibaca dari store ini.
+    |
+    | File-nya ada di `storage/framework/cache/data`. Itu folder lokal
+    | server, jadi di multi-server mutex ini tidak berlaku lintas server --
+    | dan itu memang tidak relevan di sini: ASTALOKA dijalankan di satu
+    | server, dan `onOneServer()` tidak dipakai di sini.
+    |
+    | Nilai tetap bisa ditimpa lewat `SCHEDULE_CACHE_STORE` untuk kebutuhan
+    | khusus (mis. Redis di instalasi yang butuh mutex lintas server).
+    */
+    'schedule_store' => env('SCHEDULE_CACHE_STORE', 'file'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Cache Key Prefix
     |--------------------------------------------------------------------------
     |

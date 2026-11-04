@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\InstallationPackage;
 use App\Models\InstallationTicket;
 use App\Models\MeterReading;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -185,6 +186,66 @@ class RoleAuthorizationTest extends TestCase
         Sanctum::actingAs($this->user('teknisi'), ['*']);
 
         $this->getJson('/api/settings/sop')->assertStatus(403);
+    }
+
+    /**
+     * Kop surat/cetak butuh field identitas yang lebih lengkap dari sekadar
+     * `nama` + `logo` + `telepon`.
+     *
+     * Endpoint yang sama juga dipakai TEKNISI (halaman Cetak Form Input),
+     * sedangkan `GET /settings/sop` khusus admin dan 403 untuk teknisi.
+     * Karena itu field kop harus ikut di endpoint publik -- kalau tidak,
+     * kop untuk teknisi hanya menampilkan nama usaha hardcode.
+     */
+    #[Test]
+    public function identitas_lembaga_publik_memuat_field_kop(): void
+    {
+        Setting::create([
+            'key' => 'singleton',
+            'value' => null,
+            'nama' => 'PDAM Tirto Mulo',
+            'nama_lembaga' => '"TIRTO MULO" BUMDes Bangun Kencana',
+            'alamat' => 'Kalurahan Mulo Kapanewon Wonosari',
+            'email' => 'tirto@mulo.test',
+            'telepon' => '081234567890',
+            'sk_kemenkumham' => 'AHU-1234',
+            'logo' => 'logo-uji.jpg',
+        ]);
+
+        Sanctum::actingAs($this->user('teknisi'), ['*']);
+
+        $this->getJson('/api/settings/lembaga-identity')
+            ->assertStatus(200)
+            ->assertJsonPath('data.nama', 'PDAM Tirto Mulo')
+            ->assertJsonPath('data.nama_lembaga', '"TIRTO MULO" BUMDes Bangun Kencana')
+            ->assertJsonPath('data.alamat', 'Kalurahan Mulo Kapanewon Wonosari')
+            ->assertJsonPath('data.email', 'tirto@mulo.test')
+            ->assertJsonPath('data.telepon', '081234567890')
+            ->assertJsonPath('data.sk_kemenkumham', 'AHU-1234')
+            ->assertJsonPath('data.logo', 'logo-uji.jpg');
+    }
+
+    /**
+     * Field yang belum diisi admin harus tetap berupa string kosong, bukan
+     * `null` yang membuat template kop gagal render (atau tampil "null").
+     */
+    #[Test]
+    public function identitas_lembaga_publik_kosong_tetap_string_kosong(): void
+    {
+        Setting::create([
+            'key' => 'singleton',
+            'value' => null,
+            'nama' => 'PDAM Kosong',
+        ]);
+
+        Sanctum::actingAs($this->user('teknisi'), ['*']);
+
+        $this->getJson('/api/settings/lembaga-identity')
+            ->assertStatus(200)
+            ->assertJsonPath('data.nama_lembaga', '')
+            ->assertJsonPath('data.alamat', '')
+            ->assertJsonPath('data.email', '')
+            ->assertJsonPath('data.sk_kemenkumham', '');
     }
 
     #[Test]

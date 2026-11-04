@@ -9,7 +9,7 @@
           Form Laporan Gangguan
         </h1>
         <p class="text-slate-500! mt-1! font-medium!">
-          Laporkan kendala air Anda dengan detail untuk penanganan yang lebih cepat.
+          Laporkan kendala layanan Anda dengan detail untuk penanganan yang lebih cepat.
         </p>
       </div>
 
@@ -29,11 +29,11 @@
               class="w-full! h-12! px-4! bg-slate-50! border-2! border-slate-100! rounded-xl! text-sm! text-slate-700! focus:outline-none! focus:border-indigo-500! focus:bg-white! transition-all! font-bold!"
             >
               <option value="">-- Pilih Jenis Gangguan --</option>
-              <option value="air_mati">Air Mati Total</option>
-              <option value="debit_kecil">Debit Air Kecil</option>
-              <option value="pipa_bocor">Pipa Bocor</option>
+              <option value="layanan_mati_total">Layanan Mati Total</option>
+              <option value="debit_rendah">Volume Rendah / Debit Kurang</option>
+              <option value="kualitas_buruk">Kualitas Bermasalah (Keruh/Berbau)</option>
+              <option value="instalasi_bocor">Pipa / Instalasi Bocor</option>
               <option value="meter_rusak">Meteran Rusak</option>
-              <option value="air_keruh">Air Keruh/Berbau</option>
               <option value="lainnya">Lainnya</option>
             </select>
           </div>

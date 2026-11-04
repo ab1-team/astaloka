@@ -64,7 +64,7 @@ class Branding
      * cakupan yang benar. Lokasi yang punya kalimat sendiri mengisinya lewat
      * kolomnya, bukan dengan mengubah konstanta ini.
      */
-    public const DEFAULT_DESKRIPSI = 'Asta Layanan Operasional, Keuangan, dan Administrasi. Satu sistem untuk air minum, internet, pembayaran sampah, dan usaha lainnya.';
+    public const DEFAULT_DESKRIPSI = 'Asta Layanan Operasional, Keuangan, dan Administrasi. Satu sistem untuk berbagai jenis usaha: air minum, internet, pembayaran sampah, jasa, dan layanan lainnya.';
 
     /**
      * Warna bawaan.

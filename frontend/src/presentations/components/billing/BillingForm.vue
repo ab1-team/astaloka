@@ -130,7 +130,7 @@
         />
       </div>
       <div>
-        <label class="block! text-xs! font-bold! text-slate-500! mb-1.5!">Tagihan Air</label>
+        <label class="block! text-xs! font-bold! text-slate-500! mb-1.5!">Tagihan</label>
         <input
           type="text"
           :value="formatRupiah(formData.tagihan)"
@@ -570,10 +570,17 @@ const overdueDays = computed(() => {
 /**
  * TRUE kalau tanggal pembayaran LEBIH AWAL dari threshold.
  * Logika SAMA dengan backend `MonthlyBillController::pay`:
- *   - threshold = hari `toleransi_tunggakan` di BULAN PEMAKAIAN tagihan
+ *   - threshold = tanggal jatuh tempo tagihan, yaitu hari
+ *     `toleransi_tunggakan` di BULAN TAGIHAN (bulan pemakaian + 1)
  *   - bayar < threshold → ADVANCE (jurnal piutang, bila ada, akan DIREKLAS jadi
  *     kas masuk — bukan dihapus)
  *   - bayar >= threshold → NORMAL
+ *
+ * Perhatikan bulan tagihannya digeser satu bulan dari bulan pemakaian:
+ * tagihan pemakaian Juni dibayar pada bulan Juli, jadi ambangnya ada di
+ * bulan Juli. Backend memakai `BillingDueDate::inBillingMonth()` untuk hal
+ * yang sama -- kalau salah satu tidak digeser, pratinjau advance akan
+ * berbeda dengan hasil sebenarnya.
  */
 const paidBeforeDueDate = computed(() => {
   try {
@@ -587,12 +594,15 @@ const paidBeforeDueDate = computed(() => {
     let year, month
     if (formData.billingPeriodMonth && formData.billingPeriodYear) {
       year = Number(formData.billingPeriodYear)
-      month = Number(formData.billingPeriodMonth) - 1
+      // `month` di sini 0-based. Digeser satu bulan supaya ambangnya ada
+      // di bulan TAGIHAN, bukan di bulan pemakaian.
+      month = Number(formData.billingPeriodMonth) // 1-based -> index bulan berikutnya
     } else if (formData.dueDate) {
+      // Fallback untuk data tanpa periode tagihan: `due_date` sudah
+      // menunjuk ke bulan tagihan, jadi tidak digeser lagi.
       const due = parseLocalDate(formData.dueDate)
       if (!due) return false
-      year = due.getFullYear()
-      month = due.getMonth()
+      return paid.getTime() < due.getTime()
     } else {
       return false
     }

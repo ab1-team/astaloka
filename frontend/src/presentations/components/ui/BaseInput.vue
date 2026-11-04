@@ -21,6 +21,8 @@
         :readonly="readonly"
         :class="inputClasses"
         :maxlength="maxlength"
+        :min="min"
+        :max="max"
         @input="handleInput"
         @change="$emit('change', $event.target.value)"
         @focus="$emit('focus', $event)"
@@ -145,6 +147,14 @@ const props = defineProps({
     default: false,
   },
   maxlength: {
+    type: [String, Number],
+    default: null,
+  },
+  min: {
+    type: [String, Number],
+    default: null,
+  },
+  max: {
     type: [String, Number],
     default: null,
   },

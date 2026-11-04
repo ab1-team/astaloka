@@ -12,7 +12,7 @@
           Ubah Paket & Tarif
         </h1>
         <p class="text-xs! sm:text-sm! font-medium text-slate-500! leading-relaxed">
-          Sesuaikan detail biaya pasang dan skema blok tarif air.
+          Sesuaikan detail biaya pasang dan skema blok tarif.
         </p>
       </div>
     </div>
@@ -60,12 +60,7 @@
             hide-prefix
           />
           <MaksMoneyInput v-model="abodemen" label="Biaya Abodemen" placeholder="0" hide-prefix />
-          <MaksMoneyInput
-            v-model="denda"
-            label="Denda Keterlambatan"
-            placeholder="0"
-            hide-prefix
-          />
+          <MaksMoneyInput v-model="denda" label="Denda Keterlambatan" placeholder="0" hide-prefix />
         </div>
 
         <div
@@ -117,7 +112,9 @@
                 class="sm:hidden! text-[10px]! font-bold! text-slate-400! uppercase! tracking-wider!"
                 >Rentang Volume (m³)</span
               >
-              <div class="flex items-center gap-2! sm:gap-3! w-full sm:w-auto! sm:max-w-xs! mx-auto!">
+              <div
+                class="flex items-center gap-2! sm:gap-3! w-full sm:w-auto! sm:max-w-xs! mx-auto!"
+              >
                 <div class="relative! w-1/2! sm:w-auto! sm:flex-1!">
                   <input
                     type="number"

@@ -215,9 +215,32 @@ class SuperadminController extends Controller
             );
 
             $data['password'] = Hash::make($data['password']);
+        } else {
+            /*
+             * Password kosong (atau tidak dikirim sama sekali) berarti "jangan
+             * sentuh password" -- bukan "setel jadi string kosong".
+             *
+             * Nilainya harus dibuang dari payload, kalau tidak string kosong
+             * itu ikut tersimpan di database dan siapa pun bisa masuk dengan
+             * password kosong.
+             */
+            unset($data['password']);
         }
 
-        unset($data['password'], $data['password_confirmation']);
+        /*
+         * `password_confirmation` TIDAK pernah jadi kolom di database --
+         * fungsinya hanya mengonfirmasi bahwa admin mengetik password yang
+         * sama dua kali. Kalau ikut tersimpan, query UPDATE-nya gagal karena
+         * kolom itu tidak ada.
+         *
+         * Yang TIDAK boleh dibuang di sini adalah `password` yang sudah
+         * di-hash di atas. Membuangnya membuat penggantian password tidak
+         * terjadi sama sekali, padahal server membalas "berhasil", access
+         * log mencatat password sudah diganti, dan semua token dicabut --
+         * sementara password lama tetap bisa dipakai. Form yang-isinya
+         * "menang" atas keadaan sebenarnya.
+         */
+        unset($data['password_confirmation']);
 
         $menonaktifkan = array_key_exists('is_active', $data)
             && ! $data['is_active']

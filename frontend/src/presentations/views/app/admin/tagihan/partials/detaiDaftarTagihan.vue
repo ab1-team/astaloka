@@ -11,7 +11,7 @@
           @click.stop
         >
           <div
-            class="px-6! py-4! bg-linear-brand! text-white! flex! items-center! justify-between! shrink-0!"
+            class="px-6! py-4! bg-gradient-to-r! from-cyan-600! to-cyan-800! text-white! flex! items-center! justify-between! shrink-0!"
           >
             <div class="flex! items-center! gap-3!">
               <div
@@ -58,7 +58,7 @@
                   <div class="space-y-4!">
                     <div class="flex! items-center! gap-3.5! pb-4! border-b! border-slate-100!">
                       <div
-                        class="w-12! h-12! rounded-xl! bg-linear-brand! text-white! flex! items-center! justify-center! text-base! font-bold! shadow-sm!"
+                        class="w-12! h-12! rounded-xl! bg-gradient-to-br! from-cyan-500! to-blue-600! text-white! flex! items-center! justify-center! text-base! font-bold! shadow-sm!"
                       >
                         {{ getInitials }}
                       </div>
@@ -183,7 +183,7 @@
                         <div class="flex! items-center! justify-between! py-1!">
                           <span class="text-slate-500! font-semibold!">Stand Meter Bulan Ini</span>
                           <span class="font-bold! text-slate-800! text-right!">
-                            {{ bill?.meter_reading_start }} m³ â†’ {{ bill?.meter_reading_end }} m³
+                            {{ bill?.meter_reading_start }} m³ → {{ bill?.meter_reading_end }} m³
                           </span>
                         </div>
 
@@ -259,6 +259,52 @@
                 </div>
               </div>
             </div>
+
+            <!--
+              Pratinjau pesan WhatsApp.
+
+              Isi pesan disusun backend dari template yang diset admin di
+              SOP -> Whatsapp API. Pratinjau ini menunjukkan TEKS PERSIS
+              yang akan terkirim, jadi admin tidak perlu-tebak lagi
+              placeholder-nya sudah terisi atau belum.
+
+              Halaman ini HANYA menampilkan -- tidak ada tombol kirim
+              di sini, karena pengiriman lewat `wa.me` tetap butuh
+              menekan tombol di WhatsApp.
+            -->
+            <div
+              v-if="bill?.status !== 'paid'"
+              class="mt-6! bg-white! border! border-slate-100! rounded-2xl! p-5! shadow-sm!"
+            >
+              <div class="flex! items-center! justify-between! gap-3! mb-3! flex-wrap!">
+                <h4
+                  class="text-xs! font-black! text-slate-400! uppercase! tracking-widest! flex! items-center! gap-2! mb-0!"
+                >
+                  <font-awesome-icon :icon="['fab', 'whatsapp']" class="text-emerald-500!" />
+                  Pratinjau Pesan WhatsApp
+                </h4>
+                <span class="text-[10px]! font-bold! text-slate-400! uppercase! tracking-wide!">
+                  Template: SOP &rarr; Whatsapp API
+                </span>
+              </div>
+
+              <div
+                v-if="waPreview"
+                class="bg-slate-50! border! border-slate-100! rounded-xl! p-4! text-xs! text-slate-700! leading-relaxed! whitespace-pre-wrap!"
+              >
+                {{ waPreview }}
+              </div>
+              <div
+                v-else
+                class="bg-amber-50! border! border-amber-100! rounded-xl! p-4! text-xs! text-amber-800! flex! items-start! gap-2!"
+              >
+                <font-awesome-icon icon="triangle-exclamation" class="mt-0.5! shrink-0!" />
+                <span>
+                  Pesan belum bisa ditampilkan. Template-nya mungkin kosong, atau pelanggan ini
+                  belum punya nomor WhatsApp.
+                </span>
+              </div>
+            </div>
           </div>
 
           <div
@@ -288,6 +334,7 @@
                 v-if="bill?.status !== 'paid'"
                 variant="info-gradient"
                 @click="sendWhatsAppReminder"
+                :loading="isSending(bill?.id)"
                 class="flex-1! sm:flex-initial! justify-center! rounded-xl! shadow-md! h-10! text-xs md:text-sm font-bold! bg-gradient-to-r! from-green-500! to-green-600! hover:from-green-600! hover:to-green-700!"
                 icon="paper-plane"
               >
@@ -302,7 +349,9 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useWhatsappTagihan } from '@/composables/useWhatsappTagihan.js'
+import { whatsappService } from '@/services/whatsapp.service.js'
 import BaseButton from '@/presentations/components/ui/BaseButton.vue'
 
 const props = defineProps({
@@ -317,6 +366,33 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+
+const { isSending, sendOne } = useWhatsappTagihan()
+
+/**
+ * Teks pesan yang akan dikirim ke pelanggan ini.
+ *
+ * Diisi ulang setiap kali tagihan yang dibuka berubah -- backend yang
+ * menyusunnya, dari template yang diset admin di SOP -> Whatsapp API.
+ * Placeholder-nya sudah diganti data tagihan yang sebenarnya, jadi ini
+ * persis yang akan terkirim.
+ */
+const waPreview = ref('')
+
+const loadPreview = async () => {
+  waPreview.value = ''
+
+  if (!props.bill?.id) return
+
+  try {
+    const res = await whatsappService.getMessages([props.bill.id])
+    waPreview.value = res?.data?.messages?.[0]?.message || ''
+  } catch {
+    // Pratinjau gagal diambil. Tombol kirim tetap berfungsi -- backend
+    // menyusun ulang pesannya saat itu juga, jadi hasilnya tetap sama.
+    waPreview.value = ''
+  }
+}
 
 const closeModal = () => {
   emit('close')
@@ -392,19 +468,25 @@ const formatWhatsAppNumber = (phone) => {
   return cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone
 }
 
-const sendWhatsAppReminder = () => {
-  if (!props.bill) return
-  const customerName = getCustomerName.value
-  const phone = props.bill.customer?.ticket?.phone || ''
-  const total = new Intl.NumberFormat('id-ID').format(props.bill.total_amount)
-  const month = getMonthName(props.bill.billing_period_month)
-  const year = props.bill.billing_period_year
+/**
+ * Kirim pengingat WhatsApp untuk tagihan ini.
+ *
+ * TEKS PESANNYA BUKAN TULISAN DI SINI.
+ *
+ * Dulu pesan ini ditulis langsung di file ini, jadi template yang diset
+ * admin di SOP -> Whatsapp API sama sekali tidak dipakai. Sekarang
+ * backend menyusunnya dari `settings.pesan_tagihan`, dengan placeholder
+ * `{customer}`, `{desa}`, `{jumlah_tagihan}`, `{periode}`, `{jatuh_tempo}`
+ * diganti data tagihan yang sebenarnya.
+ *
+ * Satu-satunya yang masih dihitung di frontend adalah NOMOR tujuan --
+ * karena `wa.me` butuh nomor dalam format internasional, dan nomor itu
+ * sudah ada di data tagihan.
+ */
+const sendWhatsAppReminder = async () => {
+  if (!props.bill?.id) return
 
-  const text = `Halo Bapak/Ibu *${customerName}*,\n\nKami dari *ASTALOKA* ingin menginformasikan bahwa tagihan air Anda untuk periode *${month} ${year}* sebesar *Rp. ${total}* belum dilunasi.\n\nMohon untuk segera melakukan pembayaran demi kelancaran distribusi air bersih.\n\nTerima kasih.`
-
-  const formattedPhone = formatWhatsAppNumber(phone)
-  const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`
-  window.open(url, '_blank')
+  await sendOne(props.bill.id)
 }
 
 const handlePrint = () => {
@@ -444,7 +526,7 @@ const handlePrint = () => {
   <div class="row"><span class="label">Pelanggan</span><span>${customer}</span></div>
   <div class="row"><span class="label">Kode Pelanggan</span><span>${props.bill.customer?.customer_code || '-'}</span></div>
   <div class="row"><span class="label">Periode</span><span>${month} ${year}</span></div>
-  <div class="row"><span class="label">Stand Meter</span><span>${props.bill.meter_reading_start || 0} â†’ ${props.bill.meter_reading_end || 0} m³</span></div>
+  <div class="row"><span class="label">Stand Meter</span><span>${props.bill.meter_reading_start || 0} → ${props.bill.meter_reading_end || 0} m³</span></div>
   <div class="row"><span class="label">Volume Pemakaian</span><span>${usage} m³</span></div>
   <div class="row"><span class="label">Jatuh Tempo</span><span>${formatDate(props.bill.due_date)}</span></div>
   <div class="row total"><span>Total Tagihan</span><span>Rp. ${total}</span></div>
@@ -468,6 +550,14 @@ watch(
     if (newValue) {
       document.addEventListener('keydown', handleEscKey)
       document.body.style.overflow = 'hidden'
+
+      // Pratinjau diambil saat modal dibuka, bukan saat `bill` berubah.
+      //
+      // `bill` di halaman induk di-update DUA kali: pertama baris ringkas
+      // dari tabel, lalu detail lengkap dari `getBillDetail()`. Kalau
+      // pratinjau ikut bergantung pada `bill`, dia akan request dua kali
+      // untuk data yang sama.
+      loadPreview()
     } else {
       document.removeEventListener('keydown', handleEscKey)
       document.body.style.overflow = ''

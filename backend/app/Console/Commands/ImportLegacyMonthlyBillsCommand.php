@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\Customer;
 use App\Models\InstallationPackage;
+use App\Services\BillingDueDate;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -20,16 +22,19 @@ class ImportLegacyMonthlyBillsCommand extends Command
     public function handle(): int
     {
         $isDryRun = (bool) $this->option('dry-run');
-        $isForce  = (bool) $this->option('force');
+        $isForce = (bool) $this->option('force');
         $bizFilter = $this->option('business');
         $chunkSize = max(1, (int) $this->option('chunk'));
 
         if (! $isDryRun && ! $isForce) {
             $this->error('Wajib --dry-run atau --force');
+
             return self::FAILURE;
         }
         $this->warn($isDryRun ? 'DRY-RUN' : 'FORCE MODE');
-        if ($bizFilter) $this->info("Filter: hanya business_id={$bizFilter} di DB lama.");
+        if ($bizFilter) {
+            $this->info("Filter: hanya business_id={$bizFilter} di DB lama.");
+        }
 
         // 1. Build ticket/customer mapping (sama seperti meter_readings)
         $this->info('Building mappings...');
@@ -39,7 +44,7 @@ class ImportLegacyMonthlyBillsCommand extends Command
         $newPkgs = DB::table('installation_packages')->get();
         foreach ($legacyPkgs as $lp) {
             $wantSuffixed = "{$lp->kelas} (B{$lp->business_id})";
-            $wantPlain    = $lp->kelas;
+            $wantPlain = $lp->kelas;
             foreach ($newPkgs as $np) {
                 if (strcasecmp($np->name, $wantSuffixed) === 0 || strcasecmp($np->name, $wantPlain) === 0) {
                     $packageMap[(int) $lp->id] = (int) $np->id;
@@ -80,13 +85,21 @@ class ImportLegacyMonthlyBillsCommand extends Command
         $byTriple = [];
         foreach ($instRows as $li) {
             $cust = $customersById[(int) $li->customer_id] ?? null;
-            if (! $cust) continue;
+            if (! $cust) {
+                continue;
+            }
             $name = strtolower(trim((string) ($cust->nama ?? '')));
-            if ($name === '') continue;
+            if ($name === '') {
+                continue;
+            }
             $newVillage = $villageMap[(int) $li->desa] ?? null;
-            if ($newVillage === null) continue;
+            if ($newVillage === null) {
+                continue;
+            }
             $key = $name.'|'.$newVillage.'|'.((int) $li->package_id);
-            if (! isset($byTriple[$key])) $byTriple[$key] = [];
+            if (! isset($byTriple[$key])) {
+                $byTriple[$key] = [];
+            }
             $byTriple[$key][] = (int) $li->id;
         }
 
@@ -104,7 +117,9 @@ class ImportLegacyMonthlyBillsCommand extends Command
         foreach ($byTriple as $key => $instIds) {
             $parts = explode('|', $key);
             $newPkg = $packageMap[(int) $parts[2]] ?? null;
-            if ($newPkg === null) continue;
+            if ($newPkg === null) {
+                continue;
+            }
             $newKey = $parts[0].'|'.$parts[1].'|'.$newPkg;
             if (isset($newByTriple[$newKey])) {
                 foreach ($instIds as $iid) {
@@ -131,6 +146,11 @@ class ImportLegacyMonthlyBillsCommand extends Command
             $abodemenByPkg[(int) $p->id] = (float) $p->monthly_abodemen;
         }
         $this->info('Paket dgn abodemen: '.count($abodemenByPkg));
+
+        // Tanggal jatuh tempo dari SOP. Dipakai hanya sebagai fallback
+        // kalau legacy tidak punya `tgl_akhir`.
+        $batasTagihan = (int) (DB::table('settings')->value('batas_tagihan')
+            ?: BillingDueDate::DEFAULT_BATAS_TAGIHAN);
 
         // 3. Existing monthly_bills (customer_id|year|month → row)
         $existingMB = [];
@@ -166,7 +186,7 @@ class ImportLegacyMonthlyBillsCommand extends Command
             'failed' => 0,
         ];
         $skipped = [];
-        $failed  = [];
+        $failed = [];
 
         $batch = [];
         $batchSize = 500;
@@ -178,13 +198,19 @@ class ImportLegacyMonthlyBillsCommand extends Command
                 $ticketId = $instToTicket[$legacyInstId] ?? null;
                 if (! $ticketId) {
                     $stats['skipped']++;
-                    if (count($skipped) < 50) $skipped[] = ['usage_id' => $u->id, 'reason' => 'no inst→ticket'];
+                    if (count($skipped) < 50) {
+                        $skipped[] = ['usage_id' => $u->id, 'reason' => 'no inst→ticket'];
+                    }
+
                     continue;
                 }
                 $customerId = $ticketToCustomer[$ticketId] ?? null;
                 if (! $customerId) {
                     $stats['skipped']++;
-                    if (count($skipped) < 50) $skipped[] = ['usage_id' => $u->id, 'reason' => 'no customer'];
+                    if (count($skipped) < 50) {
+                        $skipped[] = ['usage_id' => $u->id, 'reason' => 'no customer'];
+                    }
+
                     continue;
                 }
                 $newPkgId = (int) ($ticketInfo[$ticketId]->package_id ?? 0);
@@ -193,43 +219,60 @@ class ImportLegacyMonthlyBillsCommand extends Command
                 $tgl = trim((string) ($u->tgl_pemakaian ?? ''));
                 if ($tgl === '' || strlen($tgl) < 8) {
                     $stats['skipped']++;
+
                     continue;
                 }
                 try {
-                    $date = \Carbon\Carbon::parse($tgl);
+                    $date = Carbon::parse($tgl);
                 } catch (\Throwable) {
                     $stats['skipped']++;
+
                     continue;
                 }
-                $year  = (int) $date->year;
+                $year = (int) $date->year;
                 $month = (int) $date->month;
 
                 // meter values
                 $start = (int) filter_var((string) ($u->awal ?? '0'), FILTER_SANITIZE_NUMBER_INT);
-                $end   = (int) filter_var((string) ($u->akhir ?? '0'), FILTER_SANITIZE_NUMBER_INT);
-                if ($start < 0) $start = 0;
-                if ($end < 0)   $end = 0;
+                $end = (int) filter_var((string) ($u->akhir ?? '0'), FILTER_SANITIZE_NUMBER_INT);
+                if ($start < 0) {
+                    $start = 0;
+                }
+                if ($end < 0) {
+                    $end = 0;
+                }
                 $usageM3 = max(0, $end - $start);
 
                 // usage_charge dari legacy `nominal` (varchar/numeric)
                 $nominal = (int) filter_var((string) ($u->nominal ?? '0'), FILTER_SANITIZE_NUMBER_INT);
-                if ($nominal < 0) $nominal = 0;
+                if ($nominal < 0) {
+                    $nominal = 0;
+                }
 
                 // status
                 $statusMap = ['PAID' => 'paid', 'UNPAID' => 'unpaid', 'NON' => 'unpaid'];
                 $status = $statusMap[strtoupper(trim((string) ($u->status ?? 'UNPAID')))] ?? 'unpaid';
 
                 // due_date dari tgl_akhir
+                //
+                // Legacy `tgl_akhir` = bulan pemakaian + 1, tanggal
+                // `tanggal_toleransi` -- jadi SUDAH mengikuti aturan
+                // "dibayar bulan berikutnya". Nilai itu dipakai apa adanya
+                // supaya import tidak menggeser tanggal yang sudah benar.
+                //
+                // Kalau `tgl_akhir` tidak ada/rusak, jatuh tempo dihitung
+                // dari aturan yang sama supaya hasilnya konsisten dengan
+                // tagihan yang dibuat alur normal.
                 $dueDate = null;
                 $tglAkhir = trim((string) ($u->tgl_akhir ?? ''));
                 if ($tglAkhir !== '' && strlen($tglAkhir) >= 8) {
                     try {
-                        $dueDate = \Carbon\Carbon::parse($tglAkhir)->toDateString();
+                        $dueDate = Carbon::parse($tglAkhir)->toDateString();
                     } catch (\Throwable) {
-                        $dueDate = $date->copy()->addMonth()->day(20)->toDateString();
+                        $dueDate = BillingDueDate::compute($year, $month, $batasTagihan);
                     }
                 } else {
-                    $dueDate = $date->copy()->addMonth()->day(20)->toDateString();
+                    $dueDate = BillingDueDate::compute($year, $month, $batasTagihan);
                 }
 
                 // Penalty: cek tagihan 1 bulan sebelum (Bulan N-1) → kalau unpaid, pakai late_penalty dari paket
@@ -256,19 +299,19 @@ class ImportLegacyMonthlyBillsCommand extends Command
                 $key = "{$customerId}|{$year}|{$month}";
                 $now = now();
                 $data = [
-                    'customer_id'           => (int) $customerId,
-                    'billing_period_year'   => $year,
-                    'billing_period_month'  => $month,
-                    'meter_reading_start'   => $start,
-                    'meter_reading_end'     => $end,
-                    'usage_m3'              => $usageM3,
-                    'usage_charge'          => $nominal,
-                    'abodemen'              => $abodemen,
-                    'penalty_amount'        => $penalty,
-                    'total_amount'          => $total,
-                    'status'                => $status,
-                    'due_date'              => $dueDate,
-                    'updated_at'            => $now,
+                    'customer_id' => (int) $customerId,
+                    'billing_period_year' => $year,
+                    'billing_period_month' => $month,
+                    'meter_reading_start' => $start,
+                    'meter_reading_end' => $end,
+                    'usage_m3' => $usageM3,
+                    'usage_charge' => $nominal,
+                    'abodemen' => $abodemen,
+                    'penalty_amount' => $penalty,
+                    'total_amount' => $total,
+                    'status' => $status,
+                    'due_date' => $dueDate,
+                    'updated_at' => $now,
                 ];
 
                 if (isset($existingMB[$key])) {
@@ -305,7 +348,9 @@ class ImportLegacyMonthlyBillsCommand extends Command
                 }
             } catch (\Throwable $e) {
                 $stats['failed']++;
-                if (count($failed) < 50) $failed[] = ['usage_id' => $u->id, 'error' => $e->getMessage()];
+                if (count($failed) < 50) {
+                    $failed[] = ['usage_id' => $u->id, 'error' => $e->getMessage()];
+                }
             }
         }
 
@@ -318,16 +363,22 @@ class ImportLegacyMonthlyBillsCommand extends Command
 
         $this->line('');
         $this->info('Ringkasan:');
-        foreach ($stats as $k => $v) $this->line("  $k : $v");
+        foreach ($stats as $k => $v) {
+            $this->line("  $k : $v");
+        }
         if (! empty($skipped)) {
             $this->line('');
             $this->warn('Skipped (10):');
-            foreach (array_slice($skipped, 0, 10) as $s) $this->line('  '.json_encode($s, JSON_UNESCAPED_UNICODE));
+            foreach (array_slice($skipped, 0, 10) as $s) {
+                $this->line('  '.json_encode($s, JSON_UNESCAPED_UNICODE));
+            }
         }
         if (! empty($failed)) {
             $this->line('');
             $this->error('Failed (10):');
-            foreach (array_slice($failed, 0, 10) as $f) $this->line('  '.json_encode($f, JSON_UNESCAPED_UNICODE));
+            foreach (array_slice($failed, 0, 10) as $f) {
+                $this->line('  '.json_encode($f, JSON_UNESCAPED_UNICODE));
+            }
         }
 
         return self::SUCCESS;

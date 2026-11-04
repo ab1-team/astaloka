@@ -253,10 +253,43 @@ export const locationService = {
   },
 
   /**
-   * Menonaktifkan lokasi (soft delete). Data di database lokasi TIDAK dihapus.
+   * Nonaktifkan lokasi (soft delete). Data di database lokasi TIDAK dihapus.
+   *
+   * Hanya bisa membuat lokasi NONAKTIF. Untuk mengaktifkan kembali ada
+   * `activate()` -- bukan endpoint yang sama, dan itu disengaja: DELETE
+   * yang bisa mengembalikan lokasi akan membuat satu request berarti dua
+   * hal yang bertentangan.
    */
   async deactivate(id) {
     return await api.delete(`/central/locations/${id}`)
+  },
+
+  /**
+   * Aktifkan kembali lokasi yang sudah dinonaktifkan.
+   *
+   * Backend menolak dengan 422 kalau database lokasinya hilang atau
+   * domainnya belum ada -- jadi "aktif" yang tidak bisa dilayani tidak
+   * akan pernah terjadi. Pesan errornya langsung ditampilkan.
+   */
+  async activate(id) {
+    return await api.patch(`/central/locations/${id}/activate`)
+  },
+
+  /**
+   * Hapus lokasi PERMANEN, beserta database dan seluruh datanya.
+   *
+   * Tidak bisa dibatalkan. Backend mewajibkan body berisi `slug` lokasi
+   * yang tepat sebagai konfirmasi -- jadi slug diketik ulang supaya salah
+   * klik tidak langsung menghapus semua data lokasi.
+   *
+   * `slug` yang dikirim hanya yang diketik user; `confirm` di pemanggil
+   * sudah memanggil dialog konfirmasi, jadi method ini tidak buka dialog
+   * apa pun.
+   */
+  async forceDelete(id, slug) {
+    return await api.delete(`/central/locations/${id}/force-delete`, {
+      data: { slug },
+    })
   },
 }
 
@@ -513,11 +546,11 @@ export const invoiceService = {
      */
     try {
       tab.document.write(
-        '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">'
-          + '<title>Menyiapkan invoice...</title></head>'
-          + '<body style="font-family:system-ui,sans-serif;color:#475569;'
-          + 'display:flex;align-items:center;justify-content:center;height:100vh;'
-          + 'margin:0">Menyiapkan invoice untuk dicetak...</body></html>',
+        '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">' +
+          '<title>Menyiapkan invoice...</title></head>' +
+          '<body style="font-family:system-ui,sans-serif;color:#475569;' +
+          'display:flex;align-items:center;justify-content:center;height:100vh;' +
+          'margin:0">Menyiapkan invoice untuk dicetak...</body></html>',
       )
     } catch {
       // Tab sudah ditutup user. Request tetap jalan; hasilnya dibuang.
@@ -717,7 +750,7 @@ export const centralMigrationService = {
     )
   },
 
-/**
+  /**
    * Langkah 3: tulis baris yang tadi lolos validasi.
    *
    * `timeout: 0` -- BATAS TIDAK ADA, dengan alasan yang perlu dibaca
@@ -809,7 +842,9 @@ export const centralMigrationService = {
     const bentukbaru = /filename\*=UTF-8''([^;]+)/i.exec(header)
     const bentuklama = /filename="?([^";]+)"?/i.exec(header)
 
-    return decodeURIComponent((bentukbaru && bentukbaru[1]) || (bentuklama && bentuklama[1]) || cadangan)
+    return decodeURIComponent(
+      (bentukbaru && bentukbaru[1]) || (bentuklama && bentuklama[1]) || cadangan,
+    )
   },
 
   /**

@@ -4,6 +4,12 @@ import './assets/css/stat-card.css'
 import './assets/css/ui-base.css'
 import './assets/css/ui-modals.css'
 import './assets/css/topnav-notifications.css'
+// Palet khusus role teknisi & surveyor, disamakan dengan pamsides-v2.
+// Diimpor SETELAH file-file di atas karena isinya menimpa token warna
+// yang mereka tetapkan, dan `applyTheme.js` menulis token yang sama
+// sebagai gaya inline -- jadi di file ini harus pakai `!important`.
+// Lihat catatan panjang di file itu.
+import './assets/css/role-palette.css'
 // Jarak tepi + lebar maksimum isi untuk seluruh halaman panel pusat.
 // Diimpor di sini, bukan dari komponen: `.central-page` harus menjangkau isi
 // <RouterView> yang dirender komponen lain, jadi tidak bisa dibatasi
@@ -281,6 +287,11 @@ import {
   // pengganti: bentuknya gedung, dan yang dimaksud di sini adalah kolom
   // gerbang bank tempat nomor rekening dibaca.
   faBuildingColumns,
+  // Halaman SOP > Pemakaian Air. Ikon "ketik manual" untuk pilihan kamera
+  // yang TIDAK dibuka otomatis. Ikon yang tidak terdaftar di `library` TIDAK
+  // gagal -- komponennya merender kosong, jadi kartu pilihan kehilangan
+  // ikonnya tanpa ada error di console.
+  faKeyboard,
 } from '@fortawesome/free-solid-svg-icons'
 
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons'
@@ -498,6 +509,7 @@ library.add(
   faCloudArrowUp,
   faCircleXmark,
   faTableList,
+  faKeyboard,
 )
 
 export { MySwal } from './utils/swal'

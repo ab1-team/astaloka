@@ -6,7 +6,7 @@
           Paket & Tarif Layanan
         </h1>
         <p class="text-sm! text-slate-500! leading-relaxed">
-          Kelola kategori paket instalasi dan tarif pemakaian air berdasarkan blok.
+          Kelola kategori paket instalasi dan tarif pemakaian berdasarkan blok.
         </p>
       </div>
 
@@ -49,9 +49,7 @@
             </div>
             <div>
               <div class="font-bold! text-slate-900!">{{ row.name }}</div>
-              <div
-                class="text-[10px]! font-medium! text-slate-400! uppercase! tracking-tight!"
-              >
+              <div class="text-[10px]! font-medium! text-slate-400! uppercase! tracking-tight!">
                 ID: #{{ row.id }}
               </div>
             </div>
@@ -119,8 +117,7 @@
                 </div>
 
                 <div class="flex items-center justify-between mb-3!">
-                  <span
-                    class="text-[10px]! font-black! text-slate-300! uppercase! tracking-widest!"
+                  <span class="text-[10px]! font-black! text-slate-300! uppercase! tracking-widest!"
                     >BLOCK {{ idx + 1 }}</span
                   >
                   <div

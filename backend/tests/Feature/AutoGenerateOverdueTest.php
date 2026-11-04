@@ -6,6 +6,7 @@ use App\Models\MonthlyBill;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use PHPUnit\Framework\Attributes\Test;
@@ -14,6 +15,39 @@ use Tests\TestCase;
 class AutoGenerateOverdueTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * Kunci waktu ke tanggal yang PASTI di dalam rentang generate 1-28.
+     *
+     * Kenapa test di kelas ini perlu dikunci waktunya
+     * -----------------------------------------------
+     *
+     * Gate generate membandingkan "hari ini" dengan `toleransi_tunggakan`.
+     * Kalau test memakai `now()` sungguhan, hasilnya berubah setiap hari,
+     * dan sebagian test HANYA benar di hari-hari tertentu.
+     *
+     * Contoh paling buruknya `auto_generate_overdue_tidak_jalan_jika_tanggal_tidak_cocok`:
+     * test itu memakai rumus `(now()->format('d') % 28) + 1` untuk memilih
+     * tanggal yang "tidak cocok" dengan hari ini. Rumus itu ditulis saat
+     * gate-nya masih `===` -- waktu "tidak cocok" berarti "beda dengan hari
+     * ini". Gate sekarang `>=`, jadi yang relevan adalah "tanggal generate
+     * BELUM tercapai": contoh hari 28, tanggal generate 29.
+     *
+     * Dengan rumus lama, di tanggal 28 hasilnya `28 % 28 + 1 = 1`, dan
+     * `28 >= 1` -- gate-nya LOLOS. Test mengharapkan `ran=false`, jadi
+     * test gagal. Tanggal 29, 30, 31 punya masalah yang sama.
+     *
+     * Menulis tanggal secara eksplisit membuat test ini hasilnya sama
+     * terlepas dari kapan pun ia dijalankan -- persis seperti yang sudah
+     * dilakukan di `LoginGeneratePiutangTest`.
+     */
+    private function freezeDate(): void
+    {
+        // 15 Oktober 2026 -- comfortably di tengah bulan, jadi tanggal ini
+        // ada di dalam rentang generate 1-28 dan tidak pernah melewati
+        // batas akhir bulan.
+        $this->travelTo(Carbon::parse('2026-10-15 10:00:00'));
+    }
 
     private function createUser(string $role = 'admin'): User
     {
@@ -57,9 +91,19 @@ class AutoGenerateOverdueTest extends TestCase
     #[Test]
     public function auto_generate_overdue_tidak_jalan_jika_toleransi_nol(): void
     {
+        /*
+         * Kedua kolom diset 0.
+         *
+         * Setelah penggabungan dua tanggal jadi satu, "tanggal 0" berarti
+         * "SOP belum diisi" untuk SEMUA aturan berbasis tanggal -- jadi
+         * `batas_tagihan` juga harus 0. Kalau hanya `toleransi_tunggakan`
+         * yang 0, `BillingTolerance::tanggal()` akan jatuh ke fallback
+         * kolom itu dan hasilnya tetap 0, tapi test ini jadi menguji
+         * fallback, bukan "SOP belum diisi".
+         */
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 0,
             'toleransi_tunggakan' => 0,
         ]);
 
@@ -78,11 +122,19 @@ class AutoGenerateOverdueTest extends TestCase
     #[Test]
     public function auto_generate_overdue_tidak_jalan_jika_tanggal_tidak_cocok(): void
     {
+        $this->freezeDate();
+
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
-            // Set ke hari yang PASTI tidak cocok dengan hari ini.
-            'toleransi_tunggakan' => ((int) now()->format('d') % 28) + 1,
+            // Tanggal generate = 20, sedangkan "hari ini" = 15.
+            //
+            // Gate-nya `===`: generate HANYA pada tanggal yang di-set.
+            // Angka 20 dipilih eksplisit supaya test ini hasilnya sama
+            // terlepas dari kapan pun ia dijalankan.
+            //
+            // Kedua kolom diset 20 karena keduanya sekarang satu angka.
+            'batas_tagihan' => 20,
+            'toleransi_tunggakan' => 20,
         ]);
 
         $user = $this->createUser('admin');
@@ -98,42 +150,99 @@ class AutoGenerateOverdueTest extends TestCase
             ->assertJsonStructure(['reason']);
     }
 
+    /**
+     * Generate boleh dijalankan BERULANG.
+     *
+     * Dulu ada flag `auto_gen_overdue_{bulan}_{user}` (TTL 35 hari) yang
+     * membuat panggilan kedua pada bulan yang sama dilewati. Flag itu
+     * dihapus karena menghambat kasus nyata: ada pelanggan yang lupa
+     * somehow, ada tagihan yang baru masuk belakangan, atau ada tagihan
+     * yang tadinya salah lalu diperbaiki admin. Semuanya butuh generate
+     * ULANG.
+     *
+     * Yang mencegah jurnal dobel bukan flag itu, melainkan command yang
+     * sudah idempotent (pasangan `reverence_id|account_kredit`).
+     */
     #[Test]
-    public function auto_generate_overdue_idempotent_per_user_di_bulan_yang_sama(): void
+    public function auto_generate_overdue_boleh_dijalankan_berulang_dan_tidak_membuat_jurnal_ganda(): void
     {
+        $this->freezeDate();
+
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
-            // Paksa cocok dengan hari ini agar command benar-benar jalan
+            // Satu angka untuk dua kolom: tanggal generate = hari ini (15),
+            // jadi command benar-benar jalan.
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
         $user = $this->createUser('admin');
+        $headers = $this->authHeaders($user);
 
         // Panggilan ke-1 harus eksekusi (ran=true).
-        $first = $this->withHeaders($this->authHeaders($user))
+        $first = $this->withHeaders($headers)
             ->postJson('/api/dashboard/auto-generate-overdue');
-        $first->assertOk();
+        $first->assertOk()
+            ->assertJsonPath('ran', true);
 
-        // Panggilan ke-2 harus skip (ran=false) karena cache per (bulan,user).
-        $second = $this->withHeaders($this->authHeaders($user))
+        $jurnalSetelahPertama = Transaction::where('reverence_type', 'overdue_bill')->count();
+
+        // Panggilan ke-2 juga harus EKSEKUSI (ran=true) — inilah yang
+        // diminta: generate boleh diulang, termasuk di hari yang sama.
+        $second = $this->withHeaders($headers)
             ->postJson('/api/dashboard/auto-generate-overdue');
         $second->assertOk()
-            ->assertJson([
-                'success' => true,
-                'ran' => false,
-            ])
-            ->assertJsonStructure(['reason']);
+            ->assertJsonPath('ran', true);
+
+        // Tapi TIDAK boleh menambah jurnal: command-nya idempotent.
+        $this->assertSame(
+            $jurnalSetelahPertama,
+            Transaction::where('reverence_type', 'overdue_bill')->count(),
+            'Generate ulang tidak boleh membuat jurnal piutang ganda.'
+        );
+    }
+
+    /**
+     * Generate TIDAK jalan setelah tanggal generate terlewat.
+     *
+     * Gate `===`: `toleransi_tunggakan` = 15 berarti generate HANYA pada
+     * tanggal 15. "Hari ini" = 20, jadi generate tidak boleh jalan.
+     *
+     * Ini yang diminta: "generate hanya 1 hari di tgl yang di-set, bukan
+     * hari ini -- tgl itu, tapi hanya tgl itu".
+     */
+    #[Test]
+    public function auto_generate_overdue_tidak_jalan_setelah_tanggal_generate_terlewat(): void
+    {
+        // Tanggal generate = 15, sedangkan "hari ini" = 20 -- tanggal sudah
+        // lewat. Gate `===` menahannya.
+        $this->travelTo(Carbon::parse('2026-10-20 10:00:00'));
+
+        Setting::create([
+            'key' => 'sop',
+            'batas_tagihan' => 15,
+            'toleransi_tunggakan' => 15,
+        ]);
+
+        $user = $this->createUser('admin');
+
+        $response = $this->withHeaders($this->authHeaders($user))
+            ->postJson('/api/dashboard/auto-generate-overdue');
+
+        $response->assertOk()
+            ->assertJsonPath('ran', false);
     }
 
     #[Test]
     public function check_endpoint_melaporkan_will_run_tanpa_tergantung_sudah_jalan(): void
     {
+        $this->freezeDate();
+
         // `will_run` tidak boleh bergantung pada cache "sudah pernah jalan",
         // karena frontend memakainya untuk membuka popup di setiap login.
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -155,11 +264,13 @@ class AutoGenerateOverdueTest extends TestCase
     #[Test]
     public function auto_generate_overdue_tanpa_tagihan_overdue_masih_ran_true_namun_summary_nol(): void
     {
+        $this->freezeDate();
+
         // Set toleransi = hari ini, TAPI tidak ada tagihan overdue.
         // Endpoint harus tetap return success dengan summary=0.
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -199,7 +310,7 @@ class AutoGenerateOverdueTest extends TestCase
         // wajib agar frontend bisa menampilkan pop up dengan benar.
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => 0,
             'toleransi_tunggakan' => 0, // non-trigger
         ]);
 
@@ -221,9 +332,11 @@ class AutoGenerateOverdueTest extends TestCase
     #[Test]
     public function command_menghasilkan_format_keterangan_piutang_abodemen_dan_denda(): void
     {
+        $this->freezeDate();
+
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 
@@ -351,11 +464,13 @@ class AutoGenerateOverdueTest extends TestCase
     #[Test]
     public function command_menggunakan_nama_dari_customer_user_jika_tersedia(): void
     {
+        $this->freezeDate();
+
         // Bila customer->user->name ada, gunakan itu.
         // (lihat Customer->user relasi).
         Setting::create([
             'key' => 'sop',
-            'batas_tagihan' => 27,
+            'batas_tagihan' => (int) now()->format('d'),
             'toleransi_tunggakan' => (int) now()->format('d'),
         ]);
 

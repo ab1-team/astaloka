@@ -6,6 +6,7 @@ use App\Models\Central\Tenant;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InvoiceGate;
+use App\Services\ReceivableGenerator;
 use App\Services\TenantManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -76,6 +77,7 @@ class ShortcutLoginController extends Controller
         private TenantManager $manager,
         private InvoiceGate $gate,
         private AuditLogger $audit,
+        private ReceivableGenerator $piutang,
     ) {}
 
     /**
@@ -264,6 +266,48 @@ class ShortcutLoginController extends Controller
             actor: $user,
         );
 
+        /*
+         * Generate jurnal piutang tunggakan, sama seperti di `POST /api/login`.
+         *
+         * Kenapa pintasan juga harus memanggilnya
+         * ---------------------------------------
+         *
+         * Halaman `/login/user` adalah JALUR LOGIN yang sah -- bukan hanya
+         * alat bantu development. Gejalanya kalau generate hanya ada di
+         * `AuthController`: orang yang masuk lewat pintasan tidak pernah
+         * menjalankan generate piutang, jadi:
+         *
+         *   - Tagihan menunggak tidak pernah dijurnalkan untuk lokasi itu.
+         *   - `monthly_bills` tetap `unpaid`, tapi akun Piutang Usaha
+         *     `1.1.03.01` tidak pernah bertambah -- Neraca dan daftar tagihan
+         *     jadi dua sumber kebenaran yang berbeda.
+         *   - Tidak ada error, tidak ada log, tidak ada tanda di mana pun.
+         *
+         * Dan gejalanya dari sisi user justru membingungkan: "toleransi
+         * sudah diset 28, tapi kok tidak ada popup generate piutangnya?" --
+         * padahal popunya memang tidak pernah muncul untuk login pintasan.
+         *
+         * Aturan yang dipakai di sini sama persis dengan login biasa:
+         * generate jalan di SETIAP login PADA tanggal generate itu saja,
+         * dan idempoten (tagihan yang sudah punya jurnal dilewati). Jadi
+         * pintasan tidak membuat generate dobel -- ia cuma memastikan pintasan
+         * tidak menjadi jalan yang MENGHILANGKAN generate.
+         *
+         * Kegagalan generate TIDAK membatalkan login: password sudah benar,
+         * akun sudah aktif, dan tagihan langganan sudah lunas. Sisa pekerjaan
+         * akuntansi internal tidak boleh menjadi alasan orang tidak bisa masuk.
+         */
+        $piutang = null;
+
+        try {
+            $piutang = $this->piutang->runIfDue();
+        } catch (Throwable $e) {
+            // Sabuk pengaman: `runIfDue()` sudah menangkap Throwable miliknya
+            // sendiri. Ini hanya untuk jaga-jaga bila ada kegagalan di luar
+            // sana (mis. koneksi cache mati) -- login tetap harus berhasil.
+            report($e);
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -294,6 +338,19 @@ class ShortcutLoginController extends Controller
                  * string kosong dan tidak mengirim header apa pun.
                  */
                 'tenant_slug' => $tenant->slug,
+
+                /*
+                 * Ringkasan generate piutang tunggakan yang barusan jalan.
+                 *
+                 * Bentuknya PERSIS sama dengan yang dikirim `POST /api/login`,
+                 * supaya frontend bisa menampilkan popup yang sama di kedua
+                 * jalur login tanpa cabang khusus.
+                 *
+                 * `null` kalau generate tidak dijalankan: belum tanggal
+                 * generate, atau prosesnya gagal. Keduanya kondisi normal
+                 * yang tidak perlu popup apa pun.
+                 */
+                'piutang_tunggakan' => $piutang,
             ],
         ]);
     }

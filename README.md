@@ -4,8 +4,10 @@ Selamat datang di repositori **ASTALOKA**. Ikuti langkah-langkah di bawah ini un
 
 ## 📖 Dokumentasi Proyek
 
-- [🚀 Roadmap Proyek](docs/roadmap.md)
+- [🗺️ Peta Proyek Lengkap](docs/roadmap.md) — status tiap modul, arsitektur multi-tenant, dan **spesifikasi perhitungan** (tarif progresif, pengakuan piutang, jurnal pembayaran, tutup buku) sampai ke level rumus
 - [🗄️ Struktur Database](docs/database.md)
+- [🔌 Referensi API Backend](docs/api_backend.md)
+- [🔀 Perbandingan dengan Aplikasi Lama](docs/perbedaan-apk-lama-baru.md)
 
 ## 🛠 Prasyarat (Prerequisites)
 
@@ -97,6 +99,21 @@ folder default Migrator `database/migrations/` sengaja dibiarkan kosong --
 `php artisan migrate` tanpa `--path` tidak lagi menjalankan apa pun, bukan
 lupa. Jalur foldernya dibaca dari `migrations_path` dan
 `central_migrations_path` di `backend/config/tenancy.php`.
+
+> [!WARNING]
+> **`DB_DATABASE` harus menunjuk ke database LOKASI, bukan ke database pusat.**
+> `DB_DATABASE` dibaca juga oleh koneksi `mysql` — koneksi default yang dipakai
+> seluruh query aplikasi, dan yang dituju perintah `migrate --path=...` di
+> atas. Kalau `DB_DATABASE` menunjuk ke `astaloka` (nama polos = database
+> pusat), seluruh query aplikasi dan seluruh skema lokasi ikut mendarat di
+> database pusat: tabel `cache`/`sessions` pusat berisi data operasional
+> lokasi, dan `migrations` pusat mencatat file skema lokasi sebagai milik
+> pusat — provisioning lokasi berikutnya lalu melompatinya.
+>
+> Pola nama database lokasi selalu `astaloka_<nama-lokasi>`
+> (`TENANCY_DATABASE_PREFIX` di `backend/config/tenancy.php`), sedangkan
+> database pusat selalu `astaloka` — nama polos, tanpa underscore di
+> belakang, supaya tidak pernah tertukar.
 
 ### 4. Setup Frontend (Vue.js)
 
@@ -214,6 +231,74 @@ php artisan test
 > Nama database wajib mengandung `testing` -- pengaman di
 > `tests/TestCase.php` menolak test yang menunjuk database operasional.
 
+> [!NOTE]
+> **Database uji boleh dihapus bebas, dan dibuat ulang sendiri.** Jadi
+> `astaloka_testing` (lokasi) dan `astaloka_testing_central` (pusat) tidak
+> perlu dibuat manual -- `php artisan test` akan membuatnya kalau belum ada,
+> lengkap dengan skemanya. Aman dihapus di tengah-tengah pun: suite berikutnya
+> membangunnya ulang dari nol.
+>
+> Yang **tidak** otomatis bersih adalah database yang dibuat test yang
+> mem-provisioning lokasi. Nama-nama itu memakai salah satu prefix di bawah:
+>
+> | Prefix database | Test pembuatnya |
+> |---|---|
+> | `astaloka_provtest_` | `CentralTenantProvisionTest` |
+> | `astaloka_statustest_` | `CentralLocationStatusTest` |
+> | `astaloka_domtest_` | `CentralDomainTest` |
+> | `astaloka_brandtest_` | `BrandingTest` |
+> | `astaloka_usatest_` | `CentralSuperadminTest` |
+> | `astaloka_ringkasan_` | `CentralInvoiceRingkasanTest` |
+> | `astaloka_invlock_` | `InvoiceLockTest` |
+> | `astaloka_landingtest_` | `LandingPenggunaTest` |
+> | `hakakses_` | `CentralMenuAccessTest` |
+> | `shortcut_` | `ShortcutLoginTest` |
+> | `migtest_` | `MigrateTenantsTest` |
+>
+> Tiga baris terakhir **tidak** memakai awalan `astaloka_` -- test-nya membuat
+> database lokasi palsu dengan nama polos. Pola `LIKE 'astaloka\_%'` sama
+> sekali tidak akan menyentuhnya, padahal tiga prefix itu justru yang paling
+> sering tertinggal.
+>
+> Test itu membersihkannya di `tearDown()` -- tapi kalau proses test-nya mati
+> di tengah jalan (Ctrl+C, timeout, kill), `tearDown()` tidak pernah jalan dan
+> database-nya tertinggal selamanya. Kalau `SHOW DATABASES` mulai penuh nama
+> aneh yang tidak pernah dijelaskan, itu sisa-sisa itu.
+>
+> Cara aman membersihkannya: **sebutkan prefix-nya satu per satu**. Pola
+> `LIKE 'astaloka\_%'` terlalu luas -- database LOKASI yang asli juga berawalan
+> `astaloka_`, dan ikut terhapus berarti data operasional hilang.
+>
+> Sudah ada skripnya di repo. **Jalankan `--dry-run` dulu** -- perintah ini
+> menghapus SELURUH isi database yang cocok, dan isinya tidak ada salinannya
+> di tempat lain:
+>
+> ```bash
+> php tools/bersihkan-db-uji.php --dry-run   # tampilkan saja, tidak menghapus
+> php tools/bersihkan-db-uji.php             # baru benar-benar menghapus
+> ```
+>
+> Skrip itu membaca daftar database LOKASI dari registry pusat (tabel
+> `tenants`) dan `backend/config/database.php`, dan **tidak akan** menyentuh
+> salah satunya -- jadi aman dijalankan selagi database uji sedang dipakai
+> suite yang lain. Yang dihapus hanya yang cocok dengan pola di atas.
+
+> [!WARNING]
+> **Hanya SATU `php artisan test` boleh jalan pada satu mesin.** Semua test
+> berbagi database `astaloka_testing`, dan `RefreshDatabase` menjalankan
+> `migrate:fresh` -> `db:wipe` -> `dropAllTables()` di awal suite. Dua proses
+> yang jalan bersamaan akan saling menghapus tabel, dan gejalanya berupa
+> puluhan kegagalan yang **bukan** bug:
+>
+> ```
+> SQLSTATE[42S01]: Base table or view already exists: 1050
+> Table 'installation_tickets' already exists
+> ```
+>
+> Gejalanya selalu "table already exists" atau "table doesn't exist" -- dua
+>-dua dari database yang sama, dan keduanya bukan bug kode. Kalau itu muncul,
+> periksa dulu berapa proses test yang sedang jalan sebelum menelusuri kode.
+
 ### 🔐 Akun Default (Hasil Seeder)
 
 | Role      | Email                       | Password |
@@ -224,6 +309,27 @@ php artisan test
 | Pelanggan | pelanggan@ASTALOKA.test     | password |
 
 > Password default bisa berbeda — cek `database/seeders/UserSeeder.php` untuk memastikan.
+
+### 🏛️ Akun Panel Pusat (Superadmin)
+
+Akun ini hidup di **database pusat** (`astaloka`), bukan di database lokasi, dan
+dipakai untuk masuk di domain pusat (`http://astaloka.test` — bukan
+subdomain lokasi):
+
+| Role      | Email                 | Password |
+|-----------|-----------------------|----------|
+| Superadmin | pusat@astabrata.co.id | password |
+
+Dibuat lewat:
+
+```bash
+php artisan tenancy:make-superadmin --name="Admin Pusat" \
+    --email=pusat@astabrata.co.id --password=password
+```
+
+> Password `password` di atas hanya untuk development lokal. Ganti sebelum
+> dipakai di mana pun yang bisa dijangkau orang lain — panel pusat mengatur
+> tagihan langganan seluruh lokasi.
 
 ### 🏢 Akun Demo per Lokasi Tenant
 

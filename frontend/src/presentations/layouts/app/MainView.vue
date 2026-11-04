@@ -46,6 +46,10 @@ import { useRouter, useRoute } from 'vue-router'
 import { MySwal } from '@/utils/swal'
 import axios from '@/utils/axios.js'
 import { hapusTenantSlug } from '@/utils/tenantSlug'
+import {
+  ambilRingkasanPiutang,
+  useOverdueGenNotification,
+} from '@/composables/useOverdueGenNotification'
 import SidebarView from './SidebarView.vue'
 import TopNavigationView from './TopNavigationView.vue'
 import FooterView from './FooterView.vue'
@@ -54,6 +58,7 @@ import { useInstalasiStore } from '@/stores/instalasiStore'
 
 const uiStore = useUiStore()
 const instalasiStore = useInstalasiStore()
+const { showOverdueGenResult } = useOverdueGenNotification()
 
 const router = useRouter()
 const route = useRoute()
@@ -99,9 +104,7 @@ const handleSelectSearchResult = ({ routeName, id, category }) => {
   // Reset halaman
   instalasiStore.currentPage = 1
   // Navigasi ke halaman detail
-  router
-    .push({ name: routeName, params: { id: encodeURIComponent(id) } })
-    .catch(() => {})
+  router.push({ name: routeName, params: { id: encodeURIComponent(id) } }).catch(() => {})
 }
 
 const handleLogout = async () => {
@@ -210,6 +213,36 @@ onMounted(() => {
         container: 'swal-toast-container',
       },
     })
+  }
+
+  /*
+   * Popup generate piutang untuk login PINTASAN.
+   *
+   * `ShortcutLoginView.vue` memuat ulang SELURUH aplikasi lewat
+   * `window.location.href`, jadi ringkasan generate yang sudah dihitung
+   * backend tidak bisa langsung ditampilkan di halaman itu -- semuanya
+   * lenyap bersama dokumen lama.
+   *
+   * Ringkasannya diserahkan lewat `sessionStorage` (lihat
+   * `simpanRingkasanPiutang()`), dan di sini diambil lagi setelah reload.
+   *
+   * Diposisikan DI `MainView` -- bukan di dashboard per-role -- supaya popup
+   * tidak hilang kalau dashboard admin gagal dimuat, dan supaya hanya satu
+   * tempat yang harus dijaga.
+   *
+   * Role admin saja, sama seperti login biasa (`LoginView.vue` memanggil
+   * `checkOverdueGenOnMount`, yang berhenti sendiri untuk non-admin).
+   * Backend memang menjalankan generate untuk role apa pun yang login --
+   * itu urusan akuntansi internal lokasi -- tapi popupnya hanya untuk
+   * admin, karena teknisi dan pelanggan tidak punya halaman arsip
+   * tunggakan untuk dibuka dari sana.
+   */
+  if (uiStore.userRole === 'admin') {
+    const ringkasanPiutang = ambilRingkasanPiutang()
+
+    if (ringkasanPiutang?.ran === true) {
+      showOverdueGenResult(ringkasanPiutang)
+    }
   }
 })
 

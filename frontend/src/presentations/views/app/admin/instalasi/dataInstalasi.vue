@@ -30,6 +30,8 @@
       v-model:current-page="currentPage"
       v-model:per-page="perPage"
       :total-entries="filteredData.length"
+      :total-pages="totalPages"
+      :loading="isLoading"
       v-model="searchQuery"
       class="mt-6!"
       search-placeholder="Cari pelanggan..."
@@ -151,6 +153,7 @@ const {
   currentPage,
   perPage,
   filteredData,
+  totalPages,
   isLoading,
   STATUS_COLORS,
   fetchData,

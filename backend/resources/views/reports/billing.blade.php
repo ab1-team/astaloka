@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-    <h2>Laporan Tagihan Air</h2>
+    <h2>Laporan Tagihan</h2>
     <p class="info">Dicetak pada: {{ now()->format('d-m-Y H:i') }}</p>
     <table>
         <thead>

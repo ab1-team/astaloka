@@ -651,7 +651,19 @@ class LocationController extends Controller
      *
      * Menghapus `is_active` membuat lokasi berhenti di-resolve, tapi database
      * dan datanya tetap utuh -- saklar yang bisa dinyalakan lagi. Penghapusan
-     * fisik harus lewat proses terpisah yang eksplisit.
+     * fisik harus lewat proses terpisah yang eksplisit, yaitu
+     * {@see forceDestroy()}.
+     *
+     * INI BUKAN ENDPOINT YANG BISA MENGAKTIFKAN KEMBALI.
+     *
+     * `DELETE` secara semantik berarti "hapus", dan endpoint ini sudah
+     * dilunakkan menjadi "matikan". Mengaktifkannya kembali lewat
+     * endpoint yang sama akan berarti DELETE bisa mengembalikan lokasi --
+     * bertentangan dengan apa yang dimaksudkan DELETE, dan berbahaya: satu
+     * skrip yang salah bisa membangunkan lokasi yang sengaja dimatikan.
+     *
+     * Aktivasi karena itu punya endpoint-nya sendiri: `PATCH
+     * /central/locations/{location}/activate`.
      */
     public function destroy(Tenant $location): JsonResponse
     {
@@ -681,6 +693,220 @@ class LocationController extends Controller
             'success' => true,
             'message' => "Lokasi `{$location->slug}` dinonaktifkan. Datanya tidak dihapus.",
         ]);
+    }
+
+    /**
+     * Aktifkan kembali lokasi yang sebelumnya dinonaktifkan.
+     *
+     * Endpoint terpisah dari `destroy()` (lihat catatan di sana): DELETE
+     * berarti "matikan", dan menghidupkan kembali lokasi lewat DELETE yang
+     * sama akan membuat satu request bisa berarti dua hal yang bertentangan.
+     *
+     * Yang diperiksa di sini bukan hanya kolom `is_active`, tapi KONDISI
+     * sebenarnya dari lokasi -- karena "aktif" yang tidak bisa dilayani
+     * lebih buruk dari "tidak aktif" yang jujur:
+     *
+     *   1. Database-nya harus ada. Lokasi tanpa database tidak bisa dilayani
+     *      oleh `TenantManager`, dan mengaktifkannya hanya memindahkan
+     *      kegagalan dari "tidak aktif" ke "aktif tapi error 500".
+     *   2. Domainnya harus ada. Tanpa domain, tidak ada satu pun request
+     *      yang bisa sampai ke lokasi ini -- jadi status "aktif" hanya akan
+     *      tampil di panel tanpa efek apa pun di aplikasi.
+     *
+     * Keduanya ditolak dengan 422 dan pesan yang menyebut apa yang kurang,
+     * supaya admin bisa memperbaikinya tanpa perlu menebak.
+     */
+    public function activate(Tenant $location): JsonResponse
+    {
+        // Idempoten: mengaktifkan lokasi yang sudah aktif bukan kejadian,
+        // jadi tidak menghasilkan log baru -- sama seperti `destroy()`.
+        if ($location->is_active) {
+            return response()->json([
+                'success' => true,
+                'message' => "Lokasi `{$location->slug}` sudah aktif.",
+                'data' => $this->present($location->fresh()),
+            ]);
+        }
+
+        if (! $location->databaseExists()) {
+            return response()->json([
+                'success' => false,
+                'message' => "Database `{$location->database}` untuk lokasi `{$location->slug}` tidak ditemukan, jadi lokasi tidak bisa diaktifkan. "
+                    .'Buat ulang database-nya lewat `php artisan tenancy:make '.$location->slug.' --force`, lalu aktifkan lagi.',
+            ], 422);
+        }
+
+        if (! $this->punyaDomain($location)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Lokasi `{$location->slug}` belum punya domain, jadi tidak ada yang bisa mengaksesnya. "
+                    .'Isi domainnya dulu di halaman Ubah Tenant, lalu aktifkan lagi.',
+            ], 422);
+        }
+
+        $location->update(['is_active' => true]);
+
+        $this->audit->record(
+            'tenant.activate',
+            tenant: $location,
+            subjectType: Tenant::class,
+            subjectId: $location->id,
+            description: "Lokasi `{$location->slug}` diaktifkan kembali.",
+            properties: [
+                'slug' => $location->slug,
+                'nama' => $location->nama,
+                'database' => $location->database,
+            ],
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => "Lokasi `{$location->slug}` diaktifkan kembali.",
+            'data' => $this->present($location->fresh()),
+        ]);
+    }
+
+    /**
+     * Hapus lokasi PERMANEN, beserta database dan seluruh datanya.
+     *
+     * Bedanya dengan `destroy()`: `destroy()` mematikan lokasi tanpa
+     * menyentuh database -- saklar yang bisa dinyalakan lagi. Yang di sini
+     * menghapus semuanya, dan TIDAK bisa dibatalkan.
+     *
+     * Karena itu ada dua lapis pengaman, keduanya wajib:
+     *
+     *   1. Wajib menyebut slug lokasi pada body request. Tiap admin punya
+     *      session sendiri, jadi tidak ada "aksen tidak sengaja" -- yang
+     *      dilindungi di sini adalah salah klik, dan mengetik slug membuat
+     *      salah klik harus terasa dua kali.
+     *   2. Endpoint ini membatalkan semuanya kalau nama databasenya tidak
+     *      valid atau menunjuk database pusat. `dropDatabase()` melempar
+     *      exception untuk kedua hal itu, jadi tidak ada jalan untuk
+     *      menghapus database yang salah dari sini.
+     *
+     * Kalau database lokasinya memang sudah tidak ada (terhapus manual,
+     * atau provisioning yang gagal di tengah), `dropDatabase()` mengembalikan
+     * false dan baris registry-nya TETAP dihapus. Itu yang diinginkan:
+     * baris yang menunjuk database yang sudah tidak ada adalah sampah, dan
+     * membiarkannya hanya menambah lokasi mati yang tampil di panel.
+     *
+     * Urutan operasinya penting: database lokasi dihapus DULU, baru baris
+     * registry-nya. Kalau urutannya dibalik dan prosesnya mati di tengah,
+     * yang tertinggal adalah tenant tanpa database -- keadaan yang paling
+     * sulit didiagnosis, karena barisnya masih ada di panel tapi tidak ada
+     * satu pun request yang bisa dilayaninya.
+     *
+     * Foreign key di database pusat (`tenant_domains`, `tenant_invoices`)
+     * memakai `ON DELETE CASCADE`, jadi baris-baris ikutannya ikut terhapus
+     * tanpa perlu dihapus manual satu per satu.
+     */
+    public function forceDestroy(Request $request, Tenant $location): JsonResponse
+    {
+        $data = $request->validate([
+            'slug' => ['required', 'string'],
+        ]);
+
+        /*
+         * Konfirmasi eksplisit: slug yang diketik harus sama persis dengan
+         * slug lokasi.
+         *
+         * `hash_equals` dipakai, bukan `===`, supaya waktu yang dibutuhkan
+         * perbandingan tidak bergantung pada posisi karakter yang cocok.
+         * Untuk slug yang bukan rahasia, bedanya praktis tidak terasa --
+         * tapi konsistensinya dengan pola "bandingkan input user dengan nilai
+         * tersimpan" di tempat lain lebih mudah diingat.
+         */
+        if (! hash_equals($location->slug, $data['slug'])) {
+            return response()->json([
+                'success' => false,
+                'message' => "Slug yang diketik tidak cocok dengan lokasi ini. Lokasi ini ber-slug `{$location->slug}`.",
+            ], 422);
+        }
+
+        $namaDb = $location->database;
+        $slug = $location->slug;
+
+        // Rekam dulu, baru hapus. `audit_logs` tidak punya foreign key ke
+        // `tenants`, jadi barisnya tetap ada walau tenant-nya hilang -- dan
+        // itulah gunanya: jejak penghapusan harus bertahan setelah objeknya
+        // tidak ada lagi.
+        $this->audit->record(
+            'tenant.force_delete',
+            tenant: $location,
+            subjectType: Tenant::class,
+            subjectId: $location->id,
+            description: "Lokasi `{$slug}` dihapus permanen beserta database `{$namaDb}` dan seluruh datanya.",
+            properties: [
+                'slug' => $slug,
+                'nama' => $location->nama,
+                'database' => $namaDb,
+                'domain' => $location->domain,
+            ],
+        );
+
+        /*
+         * Database lokasi dihapus lebih dulu.
+         *
+         * Sebaliknya dari yang biasa dilakukan pada DELETE biasa, dan itu
+         * disengaja: kalau baris registry lebih dulu, lalu prosesnya mati
+         * sebelum `DROP DATABASE` selesai, yang tertinggal adalah tenant
+         * tanpa database -- barisnya masih tampil di panel pusat, tapi tidak
+         * ada satu pun request yang bisa dilayaninya, dan tidak ada tombol
+         * yang bisa membersihkannya karena registry-nya sudah hilang.
+         *
+         * `dropDatabase()` melempar exception kalau nama tidak valid atau
+         * menunjuk database pusat, jadi tidak ada jalan untuk menghapus
+         * database yang salah dari sini.
+         */
+        $databaseDibuang = false;
+
+        try {
+            $databaseDibuang = $this->manager->dropDatabase($namaDb);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => "Database `{$namaDb}` gagal dihapus: ".$e->getMessage()
+                    .' Lokasi tidak dihapus dari daftar -- perbaiki dulu masalahnya, lalu coba lagi.',
+            ], 500);
+        }
+
+        $location->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Lokasi `{$slug}` dihapus permanen"
+                .($databaseDibuang ? ' beserta database dan seluruh datanya.' : '.'),
+            'data' => [
+                'slug' => $slug,
+                'database' => $namaDb,
+                'database_dibuang' => $databaseDibuang,
+            ],
+        ]);
+    }
+
+    /**
+     * Apakah lokasi ini punya domain yang bisa dilayani.
+     *
+     * Dua sumber, dan keduanya dibaca: baris di `tenant_domains` (daftar
+     * domain custom) dan kolom legacy `tenants.domain` /
+     * `tenants.domain_alternatif`.
+     *
+     * Yang penting: yang dihitung hanya domain yang AKTIF. Domain yang
+     * sengaja dimatikan di halaman Domain tidak dihitung sebagai punya
+     * domain -- kalau dihitung, lokasi bisa diaktifkan padahal tidak ada
+     * satu pun host yang menunjuk ke situ.
+     */
+    private function punyaDomain(Tenant $location): bool
+    {
+        $adaDiDaftar = $location->domains()->where('is_active', true)->exists();
+
+        if ($adaDiDaftar) {
+            return true;
+        }
+
+        return (bool) ($location->domain ?: $location->domain_alternatif);
     }
 
     /**

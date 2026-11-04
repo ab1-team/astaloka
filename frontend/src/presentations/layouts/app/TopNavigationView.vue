@@ -148,10 +148,52 @@
               </div>
             </div>
             <div class="avatar-dropdown-divider"></div>
-            <a href="/profil" class="avatar-dropdown-item" block>
+            <!--
+              Profil.
+
+              Sebelumnya `<a href="/profil">` -- itu MEMUAT ULANG SELURUH
+              APLIKASI dari server, bukan navigasi SPA. Route `/profil`
+              memang ada (redirect ke `/app/profil`), tapi lewat `<a>` biasa
+              seluruh state aplikasi hilang: sesi di memory, katalog menu,
+              filter halaman. Sekarang dipakai `router-link`, yang kalau
+              hanya routenya yang berubah TIDAK memicu reload.
+            -->
+            <router-link to="/app/profil" class="avatar-dropdown-item">
               <font-awesome-icon icon="user" class="mr-3" />
               Profil
-            </a>
+            </router-link>
+            <!--
+              Arsip Piutang.
+
+              Satu-satunya jalan masuk ke halaman Arsip Piutang dari
+              navbar -- halaman itu `hidden` di katalog menu, jadi tidak
+              pernah muncul di sidebar.
+
+              Dua syarat, dan keduanya wajib:
+                - role admin: halamannya admin-only (lihat ROLE_GUARDS di
+                  router), dan `arsip.piutang` di katalog hanya boleh
+                  dimiliki role admin.
+                - jabatan punya menu `arsip.piutang`: kalau tidak, backend
+                  membalas 403 untuk `GET /piutang/arsip`, jadi menautkan
+                  ke sana hanya menghasilkan halaman kosong.
+
+              Periode default-nya bulan & tahun BERJALAN -- bukan periode
+              tagihan, tapi bulan pencatatan piutang (tanggal generate).
+              Itu periode yang baru saja jadi piutang, jadi paling mungkin
+              yang dicari.
+            -->
+            <router-link
+              v-if="canOpenArsipPiutang"
+              :to="{
+                path: '/app/arsip/piutang',
+                query: { bulan: periodeSekarang.bulan, tahun: periodeSekarang.tahun },
+              }"
+              class="avatar-dropdown-item"
+              @click="avatarDropdownOpen = false"
+            >
+              <font-awesome-icon icon="hourglass-half" class="mr-3" />
+              Arsip Piutang
+            </router-link>
             <BaseButton
               variant="ghost"
               class="avatar-dropdown-item logout"
@@ -228,6 +270,7 @@ import SupportContactPanel from '@/presentations/components/topnav/SupportContac
 import { useUiStore } from '@/stores/uiStore'
 import { useInstalasiStore } from '@/stores/instalasiStore'
 import { useNotificationStore } from '@/stores/notificationStore'
+import { useMenuAccessStore } from '@/stores/menuAccessStore'
 
 const props = defineProps({
   sidebarOpen: {
@@ -255,7 +298,47 @@ const emit = defineEmits([
 
 const uiStore = useUiStore()
 const notificationStore = useNotificationStore()
+const menuAccessStore = useMenuAccessStore()
 const router = useRouter()
+
+/*
+ * Periode default halaman Arsip Piutang: bulan & tahun BERJALAN.
+ *
+ * Yang dimaksud "bulan" di sini adalah bulan PENCATATAN piutang (tanggal
+ * generate), bukan bulan periode tagihan -- lihat `ArsipPiutangService`.
+ *
+ * Dipakai di tautan dropdown avatar supaya halaman langsung terbuka pada
+ * periode yang paling mungkin dicari: piutang yang baru saja dibukukan.
+ */
+const periodeSekarang = computed(() => {
+  const now = new Date()
+
+  return {
+    bulan: now.getMonth() + 1,
+    tahun: now.getFullYear(),
+  }
+})
+
+/*
+ * Boleh membuka Arsip Piutang?
+ *
+ * Dua syarat, keduanya wajib:
+ *
+ *  1. Role admin. Halamannya admin-only (ROLE_GUARDS di router), dan
+ *     `arsip.piutang` di katalog hanya boleh dimiliki role admin.
+ *
+ *  2. Jabatan punya menu `arsip.piutang`. Kalau tidak, backend membalas
+ *     403 untuk `GET /piutang/arsip`, jadi tautan di sini hanya
+ *     menghasilkan halaman kosong -- lebih baik tidak ditampilkan.
+ *
+ * `allowsKey()` bersifat fail-open: katalog yang belum sempat termuat
+ * dianggap "boleh", dan halaman yang gagal dimuat akan menampilkan
+ * pesannya sendiri. Itu lebih baik daripada menyembunyikan entri untuk
+ * orang yang sebenarnya berhak.
+ */
+const canOpenArsipPiutang = computed(
+  () => uiStore.userRole === 'admin' && menuAccessStore.allowsKey('arsip.piutang'),
+)
 
 // Pencarian pelanggan bersumber dari data /installation-tickets yang hanya
 // boleh diakses admin & surveyor. Untuk role lain kotak ini diberi disabled,

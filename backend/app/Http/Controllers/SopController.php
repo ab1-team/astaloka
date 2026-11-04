@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Calk;
 use App\Models\Setting;
+use App\Services\BillingTolerance;
 use App\Services\HtmlSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +15,16 @@ class SopController extends Controller
     public function index()
     {
         $s = Setting::first();
+
+        /*
+         * Angka TANGGAL yang dipakai semua aturan berbasis tanggal.
+         *
+         * Sumbernya `BillingTolerance::tanggal()` (kolom `batas_tagihan`),
+         * jadi angka yang tampil di halaman SOP persis sama dengan yang
+         * dipakai backend untuk jatuh tempo, generate piutang, ambang
+         * piutang, dan deteksi advance payment.
+         */
+        $tanggal = app(BillingTolerance::class)->tanggal();
 
         $data = [
             'lembaga' => [
@@ -26,23 +37,56 @@ class SopController extends Controller
                 'sk_kemenkumham' => $s?->sk_kemenkumham ?? '',
             ],
             'sistemTagihan' => [
-                'batasTagihan' => $s?->batas_tagihan ?? 27,
-                'toleransiTunggakan' => $s?->toleransi_tunggakan ?? 0,
-
                 /*
-                 * Batas tagihan menunggak sebelum sambungan diputus.
+                 * SATU ANGGAL untuk semua aturan berbasis tanggal.
                  *
-                 * Dikirim sebagai `null`, bukan angka fallback, supaya
-                 * frontend bisa membedakan "belum diisi" dari "sengaja diisi
-                 * dengan angka yang sama seperti toleransi". Tanpa itu,
-                 * mengisi form dengan angka yang sama tidak bisa dibedakan
-                 * dari membiarkannya kosong -- dan tidak ada jalan untuk
-                 * kembali ke perilaku lama.
+                 * `batasTagihan` (jatuh tempo) dan `toleransiTunggakan`
+                 * (generate piutang) dulu dua input terpisah, padahal
+                 * satuan dan maknanya sama: "hari ke berapa dalam bulan".
+                 * Sekarang keduanya digabung jadi satu angka yang
+                 * disimpan di `settings.batas_tagihan`, dan
+                 * `settings.toleransi_tunggakan` hanya salinannya.
+                 *
+                 * Field `batasTagihan` sengaja DIKIRIM dengan nilai yang
+                 * sama: ada dua konsumen frontend yang membacanya
+                 * (`ReportCetakDaftarTagihan.vue` untuk "Tgl Akhir
+                 * Pembayaran" dan `BillingForm.vue` untuk pratinjau
+                 * advance payment), dan keduanya harus melihat angka yang
+                 * sama dengan yang dipakai backend.
                  */
-                'batasTagihanTunggak' => $s?->billing_unpaid_limit,
+                'batasTagihan' => $tanggal,
+                'toleransiTunggakan' => $tanggal,
+                /*
+                 * Batas tunggakan dalam BULAN sebelum sambungan diputus.
+                 *
+                 * Satuannya berbeda dari angka di atas: yang ini JUMLAH
+                 * BULAN, sementara `batasTagihan`/`toleransiTunggakan`
+                 * adalah TANGGAL dalam bulan.
+                 *
+                 * `null` di database dibaca sebagai 3 (bawaan), supaya form
+                 * tidak pernah menampilkan kolom kosong -- lihat
+                 * `BillingTolerance::unpaidBillLimit()`.
+                 */
+                'batasBulanTunggakan' => app(BillingTolerance::class)->unpaidBillLimit(),
             ],
             'pasangBaru' => [
                 'statusPembayaran' => (bool) ($s?->status_pembayaran ?? false),
+            ],
+            'pemakaianAir' => [
+                /*
+                 * Kamera meteran dibuka otomatis saat popup input pemakaian?
+                 *
+                 * `null` = belum pernah diatur -> pakai perilaku bawaan,
+                 * yaitu kamera TIDAK dibuka otomatis. Yang wajib diisi cuma
+                 * angka meter akhir; foto dan scan OCR sama-sama opsional,
+                 * jadi memaksa teknisi menunggu kamera terbuka setiap kali
+                 * popup muncul hanya menambah waktu, bukan data.
+                 *
+                 * `null` sengaja tidak dipaksa jadi `false` di sini: "belum
+                 * diisi" dan "sengaja dimatikan" itu dua hal berbeda, dan
+                 * hanya admin yang boleh membedakan lewat halaman SOP.
+                 */
+                'autoOpenMeterCamera' => $s?->auto_open_meter_camera,
             ],
             'logo' => [
                 'logo' => $s?->logo ?? null,
@@ -72,8 +116,15 @@ class SopController extends Controller
      * Halaman pelanggan (mis. Lapor Gangguan) sebelumnya menampilkan nomor
      * hardcode `0812-3456-7890` yang tidak pernah sama dengan yang diisi
      * admin — jadi pelanggan menghubungi nomor yang bukan sebenarnya.
-     * Field yang sensitif lain (email, alamat, SK) tetap khusus admin lewat
-     * `index()` di atas.
+     *
+     * Field kop (nama_lembaga, alamat, email, sk_kemenkumham, logo) juga
+     * ikut dikembalikan. Semuanya berisi data publik institution yang
+     * memang dicetak di kop surat resmi — tidak ada data pelanggan atau
+     * rahasia di dalamnya. Ini penting karena kop surat dirender untuk
+     * teknisi/surveyor juga, sementara `GET /settings/sop` (`index()` di
+     * atas) khusus admin dan akan 403 untuk role lain. Tanpa field ini,
+     * halaman cetak form input yang dipakai teknisi hanya bisa menampilkan
+     * nama usaha hardcode yang bisa kedaluwarsa.
      */
     public function publicIdentity()
     {
@@ -83,8 +134,12 @@ class SopController extends Controller
             'success' => true,
             'data' => [
                 'nama' => $s?->nama ?? '',
-                'logo' => $s?->logo ?? null,
+                'nama_lembaga' => $s?->nama_lembaga ?? '',
+                'alamat' => $s?->alamat ?? '',
+                'email' => $s?->email ?? '',
                 'telepon' => $s?->telepon ?? '',
+                'sk_kemenkumham' => $s?->sk_kemenkumham ?? '',
+                'logo' => $s?->logo ?? null,
             ],
         ]);
     }
@@ -135,46 +190,161 @@ class SopController extends Controller
     {
         try {
             $data = $request->validate([
-                'batasTagihan' => 'required|integer|min:1|max:28',
+                /*
+                 * SATU TANGGAL untuk semua aturan berbasis tanggal.
+                 *
+                 * Ini menggantikan dua input terpisah yang tadinya ada:
+                 * "Tanggal Jatuh Tempo" (`batasTagihan`) dan "Toleransi
+                 * Menunggak" (`toleransiTunggakan`). Keduanya TANGGAL dalam
+                 * bulan dengan satuan yang sama, jadi BEDA hanya nama
+                 * -- dan dua input untuk satu angka membuat admin mengira
+                 * ada dua aturan yang harus diselaraskan sendiri.
+                 *
+                 * Rentang 1-31, sama seperti `BillingTolerance::generateDay()`.
+                 *
+                 * Kenapa harus dibatasi di sini
+                 * --------------------------------
+                 *
+                 * Tanpa batas ini, admin bisa menyimpan angka seperti 40
+                 * atau 99: form menerima, toast bilang "berhasil
+                 * disimpan", tapi `BillingTolerance::generateDay()`
+                 * mengembalikan 0 untuk angka di luar 1-31 -- yang dibaca
+                 * sebagai "SOP belum diisi". Akibatnya generate TIDAK PERNAH
+                 * jalan, tanpa error, tanpa log. Gejalanya persis seperti
+                 * yang sudah pernah dilaporkan: "sudah saya set tanggalnya
+                 * tapi kok generate tidak jalan?".
+                 *
+                 * Jadi penolakan di sini bukan tambahan strict, tapi
+                 * memindahkan pesan error dari "tidak jelas" ke "tepat di
+                 * tempatnya".
+                 *
+                 * `batasTagihan` tetap DITERIMA sebagai alias lama, tapi
+                 * nilainya wajib sama dengan `toleransiTunggakan` kalau
+                 * ikut dikirim. Kalau berbeda, permintaan ditolak -- bukan
+                 * diam-diam salah satu menimpa yang lain, karena itu
+                 * kembali ke persis masalah yang diselesaikan di sini: satu
+                 * settings dengan dua tanggal yang saling bertentangan.
+                 */
+                'toleransiTunggakan' => ['required', 'integer', 'min:1', 'max:31'],
 
                 /*
-                 * Rentang `0..120` TETAP sama seperti pamsides-v2.
+                 * Alias lama dari `toleransiTunggakan`.
                  *
-                 * Nilai ini punya beberapa makna sekaligus (tanggal
-                 * generate, jumlah hari maf toleransi, ambang advance
-                 * payment, batas tagihan menunggak), dan tiap konsumen
-                 * yang membutuhkannya sudah memeriksa rantainya sendiri
-                 * lewat `BillingTolerance`. Mengubah rentang validasi di
-                 * sini akan menolak SOP lama yang sah -- termasuk nilai 0
-                 * yang berarti "tanpa maf toleransi".
+                 * Opsional. Kalau dikirim, WAJIB sama dengan
+                 * `toleransiTunggakan` -- kalau tidak, ditolak dengan 422.
                  */
-                'toleransiTunggakan' => 'required|integer|min:0|max:120',
+                'batasTagihan' => ['nullable', 'integer', 'min:1', 'max:31'],
 
                 /*
-                 * Batas tagihan menunggak sebelum sambungan diputus.
+                 * Batas tunggakan dalam BULAN sebelum sambungan diputus.
                  *
-                 * `nullable` karena kosong berarti "pakai nilai
-                 * `toleransi_tunggakan` seperti sebelumnya". Frontend
-                 * mengirim `null` selama admin tidak menyentuh field ini,
-                 * sehingga semua lokasi yang sudah ada perilakunya tidak
-                 * berubah sampai mereka mengisinya secara sadar.
+                 * Satuannya JUMLAH BULAN, jadi rangenya jauh lebih kecil
+                 * dari angka tanggal di atas. Batas atas 24 bulan (2 tahun)
+                 * dipilih karena angka yang lebih besar tidak masuk akal
+                 * sebagai toleransi penagihan -- dan supaya nilainya muat
+                 * di kolom `billing_unpaid_limit` (smallint).
                  *
-                 * Rentang 0-120: 0 berarti "tidak pernah diputus otomatis",
-                 * yang utile untuk lokasi yang memeriksa tunggakan manual.
+                 * NILAI 0 DITERIMA: artinya "tidak pernah memutus sambungan
+                 * otomatis". Ini pilihan yang sah, jadi tidak ditolak.
                  */
-                'batasTagihanTunggak' => 'nullable|integer|min:0|max:120',
+                'batasBulanTunggakan' => ['required', 'integer', 'min:0', 'max:24'],
+            ], [
+                'toleransiTunggakan.max' => 'Tanggal toleransi menunggak harus antara 1 dan 31.',
+                'toleransiTunggakan.min' => 'Tanggal toleransi menunggak harus antara 1 dan 31.',
+                'batasTagihan.max' => 'Tanggal jatuh tempo harus antara 1 dan 31.',
+                'batasTagihan.min' => 'Tanggal jatuh tempo harus antara 1 dan 31.',
+                'batasBulanTunggakan.max' => 'Batas tunggakan maksimal 24 bulan.',
+                'batasBulanTunggakan.min' => 'Batas tunggakan tidak boleh negatif.',
+            ]);
+
+            $tanggal = (int) $data['toleransiTunggakan'];
+
+            /*
+             * Alias lama harus sama persis.
+             *
+             * Kalau klien lama masih mengirim `batasTagihan` dengan angka
+             * yang berbeda dari `toleransiTunggakan`, kedua-duanya tidak
+             * bisa berlaku -- dan memilih salah satu diam-diam akan
+             * menghasilkan settings yang tidak konsisten tanpa pesan.
+             * Jadi ditolak eksplisit, dengan pesan yang menyebut kedua
+             * field.
+             */
+            if (array_key_exists('batasTagihan', $data)
+                && $data['batasTagihan'] !== null
+                && (int) $data['batasTagihan'] !== $tanggal) {
+                throw ValidationException::withMessages([
+                    'batasTagihan' => [
+                        'Tanggal jatuh tempo dan tanggal toleransi menunggak harus sama, karena keduanya sekarang memakai satu angka.',
+                    ],
+                ]);
+            }
+
+            $s = Setting::firstOrNew([]);
+            $s->key = $s->key ?: 'sop';
+            // Satu angka, dua kolom: `batas_tagihan` adalah sumbernya
+            // (dipakai seluruh pembaca langsung), `toleransi_tunggakan`
+            // salinannya (dipakai `BillingTolerance` dan pelacak lama).
+            $s->batas_tagihan = $tanggal;
+            $s->toleransi_tunggakan = $tanggal;
+            $s->billing_unpaid_limit = (int) $data['batasBulanTunggakan'];
+            $s->save();
+
+            return $this->success('Sistem tagihan berhasil disimpan');
+        } catch (\Throwable $e) {
+            return $this->error($e);
+        }
+    }
+
+    /**
+     * GET /settings/pemakaian-air
+     * Ambil pengaturan pencatatan meteran.
+     *
+     * Berbeda dari `index()` yang `role:admin`, endpoint ini terbuka untuk
+     * semua role yang sudah login -- karena yang membacanya bukan cuma admin
+     * yang menyetelnya, tapi juga TEKNISI yang memakai popup input meter.
+     *
+     * `GET /settings/sop` tidak bisa dipakai untuk itu: route-nya `role:admin`,
+     * jadi teknisi selalu kena 403. Akibatnya kalau flag ini hanya ada di
+     * sana, frontend popup meter tidak pernah tahu harusnya kamera dibuka
+     * atau tidak -- dan gejalanya bukan "403", melainkan kamera yang diam-diam
+     * tidak pernah terbuka.
+     */
+    public function getPemakaianAir()
+    {
+        $s = Setting::first();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'autoOpenMeterCamera' => (bool) ($s?->auto_open_meter_camera ?? false),
+            ],
+        ]);
+    }
+
+    /**
+     * POST /settings/sop/pemakaian-air
+     * Simpan pengaturan pencatatan meteran.
+     *
+     * Payload: { autoOpenMeterCamera: boolean }
+     *
+     * `autoOpenMeterCamera` menentukan apakah kamera scan langsung terbuka
+     * begitu popup "Input Pemakaian" muncul. Yang wajib diisi tetap hanya
+     * angka meter akhir -- foto dan scan OCR tetap opsional, dan tombol scan
+     * tetap bisa dipakai kapan saja.
+     */
+    public function updatePemakaianAir(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'autoOpenMeterCamera' => 'required|boolean',
             ]);
 
             $s = Setting::firstOrNew([]);
             $s->key = $s->key ?: 'sop';
-            $s->batas_tagihan = (int) $data['batasTagihan'];
-            $s->toleransi_tunggakan = (int) $data['toleransiTunggakan'];
-            $s->billing_unpaid_limit = $data['batasTagihanTunggak'] !== null
-                ? (int) $data['batasTagihanTunggak']
-                : null;
+            $s->auto_open_meter_camera = (bool) $data['autoOpenMeterCamera'];
             $s->save();
 
-            return $this->success('Sistem tagihan berhasil disimpan');
+            return $this->success('Pengaturan pemakaian berhasil disimpan');
         } catch (\Throwable $e) {
             return $this->error($e);
         }

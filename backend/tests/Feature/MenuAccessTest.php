@@ -50,12 +50,12 @@ class MenuAccessTest extends TestCase
     private function admin(?Jabatan $jabatan = null, string $role = 'admin'): User
     {
         return User::create([
-            'name'       => 'Admin Uji',
+            'name' => 'Admin Uji',
             // Unik: tanpa `RefreshDatabase` yang benar-benar me-reset,
             // email yang sama akan bentrok di baris kedua.
-            'email'      => 'menu-'.uniqid().'@test.local',
-            'password'   => Hash::make('password'),
-            'role'       => $role,
+            'email' => 'menu-'.uniqid().'@test.local',
+            'password' => Hash::make('password'),
+            'role' => $role,
             'jabatan_id' => $jabatan?->id,
         ]);
     }
@@ -222,8 +222,8 @@ class MenuAccessTest extends TestCase
     public static function roleLainProvider(): array
     {
         return [
-            'teknisi'   => ['teknisi'],
-            'surveyor'  => ['surveyor'],
+            'teknisi' => ['teknisi'],
+            'surveyor' => ['surveyor'],
             'pelanggan' => ['pelanggan'],
         ];
     }
@@ -611,15 +611,15 @@ class MenuAccessTest extends TestCase
     public static function jabatanRoleProvider(): array
     {
         return [
-            'admin'     => ['admin', 'admin'],
-            'direktur'  => ['Direktur', 'admin'],
+            'admin' => ['admin', 'admin'],
+            'direktur' => ['Direktur', 'admin'],
             'bendahara' => ['Bendahara', 'admin'],
             'sekretaris' => ['Sekretaris', 'admin'],
             'jabatan lain' => ['Petugas Kebersihan', 'admin'],
-            'surveyor'  => ['Surveyor', 'surveyor'],
+            'surveyor' => ['Surveyor', 'surveyor'],
             'pelanggan' => ['Pelanggan', 'pelanggan'],
-            'teknisi'   => ['Teknisi', 'teknisi'],
-            'cater'     => ['Cater', 'teknisi'],
+            'teknisi' => ['Teknisi', 'teknisi'],
+            'cater' => ['Cater', 'teknisi'],
             'cater jamak' => ['Caters', 'teknisi'],
         ];
     }
@@ -1056,9 +1056,9 @@ class MenuAccessTest extends TestCase
         Sanctum::actingAs($this->admin($jabatan, 'pelanggan'));
 
         $this->postJson('/api/pelanggan/trouble-report', [
-            'trouble_type'    => 'Pipa pecah',
-            'description'     => 'Air flowing di jalan',
-            'contact_phone'   => '081200000000',
+            'trouble_type' => 'Pipa pecah',
+            'description' => 'Air flowing di jalan',
+            'contact_phone' => '081200000000',
         ])->assertStatus(403)
             ->assertJsonPath('code', 'MENU_ACCESS_DENIED');
     }
@@ -1078,8 +1078,8 @@ class MenuAccessTest extends TestCase
         Sanctum::actingAs($this->admin($jabatan, 'pelanggan'));
 
         $res = $this->postJson('/api/pelanggan/trouble-report', [
-            'trouble_type'  => 'Pipa pecah',
-            'description'   => 'Air flowing di jalan',
+            'trouble_type' => 'Pipa pecah',
+            'description' => 'Air flowing di jalan',
             'contact_phone' => '081200000000',
         ]);
 
@@ -1110,6 +1110,37 @@ class MenuAccessTest extends TestCase
             $this->getJson('/api/monthly-bills')->status(),
             'Daftar tagihan 403 untuk teknisi: halamannya tampil tapi isinya '
             .'tidak pernah datang.',
+        );
+    }
+
+    /**
+     * "Daftar Tagihan" tetap terbuka walau jabatannya tidak memuat key-nya.
+     *
+     * Menu itu `hidden` + `terkunci`: tidak ada checkbox-nya di panel pusat,
+     * jadi tidak mungkin superadmin mencentangnya. Kalau `terkunci` tidak
+     * ikut, jabatan yang sudah dikonfigurasi tanpa key ini akan mendapat
+     * 403 di halaman yang justru dibuka dari kartu dashboard -- dan tidak
+     * ada cara memperbaikinya dari UI.
+     *
+     * Ini juga yang membedakan `terkunci` dari `hidden` biasa: `hidden`
+     * hanya menyembunyikan checkbox, sementara aksesnya tetap bergantung
+     * pada daftar tersimpan.
+     */
+    #[Test]
+    public function daftar_tagihan_teknisi_terbuka_walau_tidak_dicentang(): void
+    {
+        $jabatan = $this->jabatan('Teknisi');
+
+        // Daftar yang sengaja TIDAK memuat `teknisi.daftar-tagihan`.
+        $this->setMenu($jabatan, ['instalasi.pemakaian']);
+
+        Sanctum::actingAs($this->admin($jabatan, 'teknisi'));
+
+        $this->assertNotSame(
+            403,
+            $this->getJson('/api/monthly-bills')->status(),
+            '`teknisi.daftar-tagihan` tidak `terkunci`: halaman Daftar Tagihan '
+            .'dari dashboard jadi 403 dan tidak ada checkbox untuk membukanya.',
         );
     }
 
@@ -1171,6 +1202,311 @@ class MenuAccessTest extends TestCase
     }
 
     // ---- Katalog ---------------------------------------------------------
+
+    /**
+     * Flag `tanpa_sidebar` harus ada di respons katalog.
+     *
+     * Menu `tanpa_sidebar` adalah halaman yang dibuka dari DASHBOARD role-nya,
+     * bukan dari sidebar -- tapi tetap boleh dicentang di panel pusat Hak
+     * Akses, jadi superadmin masih bisa mencabut haknya.
+     *
+     * Bedanya dari `hidden` itu penting, dan tidak bisa dibiarkan jadi
+     * kebetulan: `hidden` ALSO disembunyikan dari daftar centang di panel
+     * pusat (`CentralHakAksesIndex.vue` menyaring `hidden`), sehingga menu
+     * `hidden` tidak bisa dicabut sama sekali.
+     *
+     * Kalau flag ini hilang dari respons, frontend tidak tahu mana yang
+     * boleh disembunyikan -- dan semua menunya muncul lagi.
+     */
+    #[Test]
+    public function katalog_mengirim_flag_tanpa_sidebar(): void
+    {
+        Sanctum::actingAs($this->admin(null));
+
+        $res = $this->getJson('/api/menu-access/catalog')->assertOk();
+
+        $items = collect($res->json('data.items'))->keyBy('key');
+
+        // Menu yang memang `tanpa_sidebar` di katalog.
+        foreach (['survey.daftar', 'teknisi.dashboard'] as $key) {
+            $this->assertTrue(
+                $items[$key]['tanpa_sidebar'] ?? false,
+                "`{$key}` harus ditandai `tanpa_sidebar`.",
+            );
+        }
+
+        // Menu yang TIDAK: flagnya harus `false`, bukan sekadar tidak ada.
+        // Tidak adanya key akan membuat frontend membacanya `undefined`,
+        // yang secara praktis sama dengan `false` -- tapi hanya selama
+        // tidak ada kode yang memeriksa `=== true`.
+        $this->assertFalse(
+            $items['survey.create']['tanpa_sidebar'] ?? true,
+            '`survey.create` tidak boleh `tanpa_sidebar`.',
+        );
+
+        /*
+         * "Daftar Tagihan" teknisi sudah TIDAK `tanpa_sidebar` lagi: ia
+         * `hidden`, yang juga berarti tidak muncul di sidebar. Membiarkan
+         * `tanpa_sidebar` di sini akan menandainya "bisa dicentang di panel
+         * pusat" -- padahal justru itu yang dihapus.
+         */
+        $this->assertFalse(
+            $items['teknisi.daftar-tagihan']['tanpa_sidebar'] ?? true,
+            '`teknisi.daftar-tagihan` tidak boleh `tanpa_sidebar` -- ia `hidden`, '
+            .'jadi tidak boleh tampil di daftar centang panel pusat.',
+        );
+    }
+
+    /**
+     * "Hasil Instalasi" TIDAK boleh muncul di daftar centang Hak Akses.
+     *
+     * Ada dua menu untuk teknisi: Dashboard dan Input Pemakaian Air.
+     * "Hasil Instalasi" bukan salah satunya -- halaman itu bagian dari
+     * pekerjaan Dashboard (tombol tugas di kartu), bukan pekerjaan terpisah.
+     *
+     * Flag `hidden` yang dipakai, bukan `tanpa_sidebar`: `hidden` juga
+     * menyembunyikannya dari daftar centang panel pusat, jadi superadmin
+     * tidak akan melihat checkbox yang tidak ada artinya. Endpoint-nya
+     * sendiri tetap milik menu ini, jadi halamannya tetap hidup -- yang
+     * hilang cuma tempatnya untuk dicentang.
+     */
+    #[Test]
+    public function hasil_instalasi_tidak_muncul_di_daftar_centang_teknisi(): void
+    {
+        Sanctum::actingAs($this->admin(null));
+
+        $res = $this->getJson('/api/menu-access/catalog')->assertOk();
+
+        $items = collect($res->json('data.items'))->keyBy('key');
+
+        $this->assertTrue(
+            $items['teknisi.hasil-instalasi']['hidden'] ?? false,
+            '`teknisi.hasil-instalasi` harus `hidden` -- desain per-role teknisi '
+            .'hanya punya dua menu: Dashboard dan Input Pemakaian Air.',
+        );
+
+        $this->assertFalse(
+            $items['teknisi.hasil-instalasi']['tanpa_sidebar'] ?? true,
+            '`teknisi.hasil-instalasi` tidak boleh `tanpa_sidebar` -- kalau begitu '
+            .'ia tetap muncul di daftar centang Hak Akses.',
+        );
+    }
+
+    /**
+     * Flag `top_level` harus ada di respons katalog.
+     *
+     * Menu `top_level` berdiri sendiri di sidebar, di luar group-nya.
+     * "Buat Survey Baru" milik surveyor begitu: di desain per-role ia link
+     * tingkat atas, bukan anak group "Survey".
+     */
+    #[Test]
+    public function katalog_mengirim_flag_top_level(): void
+    {
+        Sanctum::actingAs($this->admin(null));
+
+        $res = $this->getJson('/api/menu-access/catalog')->assertOk();
+
+        $items = collect($res->json('data.items'))->keyBy('key');
+
+        $this->assertTrue(
+            $items['survey.create']['top_level'] ?? false,
+            '`survey.create` harus ditandai `top_level`.',
+        );
+
+        $this->assertFalse(
+            $items['instalasi.pemakaian']['top_level'] ?? true,
+            '`instalasi.pemakaian` tidak boleh `top_level` -- ia anak group "Master Instalasi".',
+        );
+    }
+
+    /**
+     * Flag `group_tetap` harus ada di respons katalog.
+     *
+     * Sidebar mem-flatten group yang cuma punya satu anak menjadi link
+     * langsung. `group_tetap` membatalkan itu, karena susunan menu itu
+     * bagian dari desain per-role: teknisi membuka group "Master
+     * Instalasi", bukan langsung "Input Pemakaian Air".
+     */
+    #[Test]
+    public function katalog_mengirim_flag_group_tetap(): void
+    {
+        Sanctum::actingAs($this->admin(null));
+
+        $res = $this->getJson('/api/menu-access/catalog')->assertOk();
+
+        $items = collect($res->json('data.items'))->keyBy('key');
+
+        $this->assertTrue(
+            $items['instalasi.pemakaian']['group_tetap'] ?? false,
+            '`instalasi.pemakaian` harus ditandai `group_tetap`.',
+        );
+
+        $this->assertFalse(
+            $items['survey.create']['group_tetap'] ?? true,
+            '`survey.create` tidak boleh `group_tetap` -- ia `top_level`.',
+        );
+    }
+
+    /**
+     * Menu `tanpa_sidebar` tetap bisa dicabut di panel pusat Hak Akses.
+     *
+     * Ini yang membedakan `tanpa_sidebar` dari `hidden`. Kalau menu ini
+     * ikut hilang dari daftar centang, superadmin tidak akan pernah bisa
+     * mencabut hak aksesnya -- dan satu-satunya cara menutup endpoint-nya
+     * adalah mencabut menu lain yang kebetulan memakai endpoint yang sama.
+     */
+    #[Test]
+    public function menu_tanpa_sidebar_tetap_bisa_dicabut_di_panel_pusat(): void
+    {
+        $jabatan = $this->jabatan('Surveyor');
+
+        // Simpan daftar yang TIDAK memuat `survey.daftar`.
+        $this->setMenu($jabatan, ['survey.create']);
+
+        Sanctum::actingAs($this->admin(null));
+
+        $menu = collect($this->getJson('/api/menu-access')
+            ->assertOk()
+            ->json('data')['0']['menu']);
+
+        $daftar = $menu->keyBy('key');
+
+        $this->assertFalse(
+            $daftar['survey.daftar']['selected'] ?? true,
+            '`survey.daftar` harus tidak tercentang setelah dicabut.',
+        );
+
+        // Dan `hidden` TIDAK boleh ikut hilang dari daftar -- kalau iya,
+        // ia tidak akan pernah bisa dicabut.
+        $this->assertFalse(
+            $daftar['survey.daftar']['hidden'] ?? true,
+            '`survey.daftar` tidak boleh `hidden` -- `hidden` tidak bisa dicabut dari panel pusat.',
+        );
+
+        $this->assertTrue(
+            $daftar['survey.daftar']['tanpa_sidebar'] ?? false,
+            '`survey.daftar` harus `tanpa_sidebar`.',
+        );
+    }
+
+    /**
+     * Susunan sidebar per role harus sama dengan desain pamsides-v2.
+     *
+     * Yang diperiksa di sini adalah KATALOG -- sumber kebenarannya --
+     * bukan hasil render frontend (itu diuji di
+     * `frontend/test/sidebarSusunanPerRole.test.js`).
+     *
+     * Yang dijaga: menu yang TIDAK ADA di desain pamsides-v2 tidak boleh
+     * muncul di sidebar role itu, dan menu yang ADA harus punya nama yang
+     * sama persis.
+     */
+    #[Test]
+    public function menu_per_role_sesuai_desain_pamsides(): void
+    {
+        $katalog = $this->katalog();
+
+        /*
+         * Sidebar teknisi di pamsides-v2: satu group "Master Instalasi"
+         * dengan satu anak, "Input Pemakaian Air".
+         *
+         * Nama group, nama anak, dan `group_tetap`-nya diperiksa karena
+         * ketiganya menentukan bentuk sidebar -- lihat test frontend.
+         */
+        $pemakaian = $katalog['instalasi.pemakaian'];
+
+        $this->assertSame('Input Pemakaian Air', $pemakaian['label']);
+        $this->assertSame('Master Instalasi', $pemakaian['group']);
+        $this->assertTrue($pemakaian['group_tetap'] ?? false);
+        $this->assertSame(['teknisi'], $pemakaian['roles']);
+
+        /*
+         * Sidebar surveyor: satu menu tingkat atas, "Buat Survey Baru".
+         */
+        $buatSurvey = $katalog['survey.create'];
+
+        $this->assertSame('Buat Survey Baru', $buatSurvey['label']);
+        $this->assertSame('plus-circle', $buatSurvey['icon']);
+        $this->assertTrue($buatSurvey['top_level'] ?? false);
+        $this->assertSame(['surveyor'], $buatSurvey['roles']);
+
+        /*
+         * Menu yang HANYA ada di astaloka tidak boleh jadi entri sidebar
+         * role itu. Halamannya tetap boleh dibuka (dan tetap bisa
+         * dicabut), tapi tidak boleh muncul sebagai menu.
+         */
+        foreach (['survey.daftar'] as $key) {
+            $this->assertTrue(
+                $katalog[$key]['tanpa_sidebar'] ?? false,
+                "`{$key}` harus `tanpa_sidebar` -- desain per-role tidak memuatnya di sidebar.",
+            );
+        }
+
+        /*
+         * "Daftar Tagihan" teknisi dibuka dari KARTU di dashboard, bukan
+         * dari menu sidebar -- jadi ia juga tidak boleh muncul di daftar
+         * centang panel pusat.
+         *
+         * `terkunci` wajib menyertainya: endpoint `monthly-bills*` hanya
+         * dimiliki menu ini untuk role teknisi. Kalau bisa dicabut (atau
+         * tidak selalu diizinkan), halaman yang dibuka dari dashboard itu
+         * akan 403 tanpa ada checkbox untuk memperbaikinya.
+         */
+        $daftarTagihan = $katalog['teknisi.daftar-tagihan'];
+
+        $this->assertTrue(
+            $daftarTagihan['hidden'] ?? false,
+            '`teknisi.daftar-tagihan` harus `hidden` -- halamannya dibuka dari '
+            .'dashboard, bukan dari entri sidebar, jadi tidak ada menu untuk dicentang.',
+        );
+
+        $this->assertTrue(
+            $daftarTagihan['terkunci'] ?? false,
+            '`teknisi.daftar-tagihan` harus `terkunci` -- endpoint `monthly-bills*` '
+            .'hanya dimilikinya untuk role teknisi, dan checkbox-nya sudah tidak ada.',
+        );
+
+        /*
+         * "Hasil Instalasi" tidak boleh jadi entri sidebar, DAN tidak boleh
+         * muncul di daftar centang Hak Akses.
+         *
+         * Dua menu untuk teknisi: Dashboard dan Input Pemakaian Air.
+         * "Hasil Instalasi" bukan salah satunya, jadi centangnya tidak
+         * boleh menawarkan sesuatu yang tidak ada artinya.
+         */
+        $this->assertTrue(
+            $katalog['teknisi.hasil-instalasi']['hidden'] ?? false,
+            '`teknisi.hasil-instalasi` harus `hidden` -- daftar teknisi di panel '
+            .'pusat hanya boleh berisi dua menu: Dashboard dan Input Pemakaian Air.',
+        );
+
+        /*
+         * "Dashboard" teknisi -- entri KETIGA yang diminta.
+         *
+         * `terkunci` karena ini halaman tujuan setelah login: kalau boleh
+         * dicabut, `allowsPath('/app/teknisi')` akan menolak dan router guard
+         * akan mengarahkan teknisi ke `/app/teknisi` juga -- redirect ke
+         * dirinya sendiri.
+         */
+        $dashboardTeknisi = $katalog['teknisi.dashboard'];
+
+        $this->assertSame('Dashboard', $dashboardTeknisi['label']);
+        $this->assertSame('Utama', $dashboardTeknisi['group']);
+        $this->assertSame(['teknisi'], $dashboardTeknisi['roles']);
+        $this->assertTrue(
+            $dashboardTeknisi['terkunci'] ?? false,
+            '`teknisi.dashboard` harus `terkunci` -- halaman tujuan setelah login '
+            .'tidak boleh bisa dicabut dari panel pusat.',
+        );
+
+        /*
+         * "Input Tagihan" milik admin saja.
+         *
+         * Sebelumnya `roles` juga memuat `teknisi`, dan itu membuat
+         * sidebar teknisi punya DUA menu input meter. Desain per-role
+         * teknisi hanya punya "Input Pemakaian Air".
+         */
+        $this->assertSame(['admin'], $katalog['tagihan.input']['roles']);
+    }
 
     #[Test]
     public function setiap_menu_punya_path_yang_ada_di_router(): void

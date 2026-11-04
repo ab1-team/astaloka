@@ -415,7 +415,11 @@
             width: 17px; height: 17px;
             display: block;
             fill: none; stroke: currentColor;
-            stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+            /* 2.4, bukan 1.8: pada 17px, 1.8 hanya menghasilkan ~1.28px
+               goresan efektif -- di bawah batas Anti-Aliasing, jadi
+               ikon berubah jadi kabut abu. Lihat catatan panjang di
+               `.mock__ico svg`. */
+            stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
         }
 
         /* Ikon ikut state link-nya, bukan punya warna sendiri.
@@ -1134,11 +1138,55 @@
         }
         .art-card strong { display: block; font-size: 17px; letter-spacing: -.02em; margin-bottom: 6px; }
         .art-card span { font-size: 13px; color: var(--sky-200); line-height: 1.55; display: block; }
-        .art-card::before {
-            content: ""; display: block;
+
+        /* Kotak ikon di atas judul.
+
+           SEBELUMNYA slot ini pakai `::before` yang HANYA consisted
+           dari kotak semi transparan tanpa isi apa pun -- tidak ada
+           `<svg>` di dalamnya. Di layar hasilnya kotak kosong: bentuk
+           kotak ikon terbaca, tapi isinya tidak ada, jadi yang terlihat
+           cuma kotak abu yang misterius di atas "Laporan siap".
+
+           Sekarang isinya SVG sungguhan, diambil dari sprite yang sama
+           dengan ikon lain di halaman. Aturan mainnya: satu sprite,
+           satu gaya garis.
+
+           `::before` DIBUANG, bukan diisi. Alasannya `::before` tidak
+           bisa memegang `<svg>` -- konten yang dihasilkannya adalah
+           teks, dan teks tidak bisa berisi elemen SVG. Kalau tetap
+           dipakainya, ikon harus digambar pakai `background-image`
+           yang berarti SVG-nya jadi file terpisah -- dan gayanya jadi
+           dua tempat: sprite di satu file, ikon kartu ini di file
+           lain.
+
+           Kotak yang sekarang adalah elemen HTML biasa
+           (`.art-card__ico`), jadi isinya `<svg>` yang menunjuk
+           simbol di sprite. */
+        .art-card__ico {
             width: 38px; height: 38px; border-radius: 12px;
             background: rgb(255 255 255 / .16);
+            display: grid; place-items: center;
             margin-bottom: 14px;
+            color: #fff;
+        }
+
+        /* Ikon di dalam kotak.
+
+           19px, bukan 17px seperti di tombol. Kotaknya 38px, jadi
+           ikon mengisi setengahnya -- ukuran yang sama dengan `.card .ico`
+           (23px di kotak 46px). `stroke-width: 2.4` menghasilkan
+           ~1.9px goresan efektif, jauh di atas batas Anti-Aliasing
+           (lihat catatan panjang di `.mock__ico svg`).
+
+           `display: block` menutup celah baseline: `<svg>` inline
+           duduk di baseline dan whitespace di markup menambah tinggi
+           kotak -- di 19px cukup untuk membuat ikon terlihat tidak
+           center di dalam kotaknya. */
+        .art-card__ico svg {
+            display: block;
+            width: 19px; height: 19px;
+            fill: none; stroke: currentColor;
+            stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
         }
 
         /* ---------- perangkat HP ----------
@@ -3025,7 +3073,11 @@
         }
         .foot-note svg {
             width: 16px; height: 16px; flex: none; margin-top: 1px;
-            fill: none; stroke: var(--emerald-400); stroke-width: 2;
+            fill: none; stroke: var(--emerald-400);
+            /* 2.4, bukan 2: pada 16px, 2 hanya menghasilkan ~1.33px
+               goresan efektif -- di bawah batas Anti-Aliasing. Lihat
+               catatan panjang di `.mock__ico svg`. */
+            stroke-width: 2.4;
             stroke-linecap: round; stroke-linejoin: round;
         }
 
@@ -3061,7 +3113,10 @@
         .foot-col a svg {
             width: 15px; height: 15px; flex: none;
             fill: none; stroke: currentColor;
-            stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+            /* 2.6, bukan 1.9: pada 15px, 1.9 hanya menghasilkan ~1.19px
+               goresan efektif -- di bawah batas Anti-Aliasing. Lihat
+               catatan panjang di `.mock__ico svg`. */
+            stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round;
             opacity: .72;
             transition: opacity .2s var(--ease);
         }
@@ -3132,7 +3187,9 @@
         .foot-login svg {
             width: 15px; height: 15px; flex: none;
             fill: none; stroke: currentColor;
-            stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+            /* 2.6, bukan 1.9: ~1.63px goresan efektif, bukan ~1.19px
+               yang tinggal jadi kabut abu. Lihat `.mock__ico svg`. */
+            stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round;
         }
         .foot-login span { white-space: nowrap; }
 
@@ -3719,18 +3776,37 @@
             {{-- Kontak: WhatsApp, telepon, email.
 
                  Ketiganya digambar dengan mode garis, sama seperti symbol
-                 lain. WhatsApp tetap punya dua lapis path: siluet yang
-                 penuh (path pertama) dan handset di dalamnya (path kedua).
+                 lain.
 
-                 Path siluet tidak diberi `fill` sendiri karena aturan
-                 fill ada di pemakaiannya (`.i-solid`), bukan di sini:
-                 sebagai `<use>` di tombol bewarna solid, WhatsApp harus
-                 ikut warna teks tombol. Bentuk penuh dengan garis saja
-                 akan terbaca sebagai gelembung kosong, bukan sebagai
-                 logo -- itu sebabnya ada kelas `.i-solid`. --}}
+                 WhatsApp bedanya: lambang-brand, bukan ikon garis.
+
+                 SEBELUMNYA lambang ini punya DUA `<path>` terpisah: siluet
+                 gelembung dan handset di dalamnya. Di mode garis
+                 (`fill: none`) hasilnya benar -- gelembung digores, dan
+                 handset jadi lubang di dalamnya karena siluetnya sendiri
+                 yang digores.
+
+                 Tapi di mode SOLID (`.i-solid`, dipakai di tombol
+                 "Minta Demo Gratis") keduanya dapat `fill: currentColor`
+                 yang SAMA. Handset tidak lagi jadi lubang: ia terisi
+                 warna yang sama dengan gelembung, jadi keduanya menyatu
+                 jadi satu gumpalan bulat. Tombolnya tampil dengan ikon
+                 yang terbaca sebagai Titik Hitam, bukan logo WhatsApp.
+
+                 Perbaikannya: gabung jadi SATU `<path>` dengan
+                 `fill-rule="evenodd"`. Dalam satu path, area yang
+                 digambar dua kali tetap kosong -- jadi handset jadi
+                 lubang otomatis, tanpa perlu warna kedua.
+
+                 Efeknya satu jalur berlaku untuk dua mode:
+                   - mode garis  -> gelembung digores, handset jadi lubang
+                   - mode solid  -> gelembung penuh, handset jadi lubang
+
+                 Dan `.i-solid` tetap dibutuhkan: tanpa `fill`, mode
+                 solid hanya akan menghasilkan garis, bukan bentuk
+                 penuh. --}}
             <symbol id="i-wa" viewBox="0 0 24 24">
-                <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2z"/>
-                <path d="M17.2 14.2c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.22 3.08c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35z"/>
+                <path fill-rule="evenodd" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
             </symbol>
 
             <symbol id="i-telepon" viewBox="0 0 24 24">
@@ -4132,6 +4208,22 @@
                              dekoratif dan sudah dijelaskan di teks hero. --}}
                         <div class="hero-art reveal" aria-hidden="true">
                             <div class="art-card">
+                                {{-- Ikon dokumen: kartu ini bicara soal
+                                     laporan keuangan yang bisa dicetak.
+                                     Simbol `i-report` yang dipakai, bukan
+                                     `i-docs` (dokumen bertumpuk) -- satu
+                                     dokumen lebih cocok untuk satu laporan
+                                     yang "siap".
+
+                                     `div`, bukan `span`: aturan
+                                     `.art-card span` di bawah menata
+                                     deskripsi teks, dan `span` ikon akan
+                                     ikut kena aturan itu -- `display: block`
+                                     menggantikan `grid` dan warnanya jadi
+                                     biru langit, bukan putih. --}}
+                                <div class="art-card__ico">
+                                    <svg><use href="#i-report"/></svg>
+                                </div>
                                 <strong>Laporan siap</strong>
                                 <span>Neraca, laba rugi, buku besar, dan arus kas bisa dicetak kapan saja.</span>
                             </div>

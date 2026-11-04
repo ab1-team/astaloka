@@ -35,8 +35,7 @@
         <font-awesome-icon icon="triangle-exclamation" class="sc-warning__icon" />
         <span>
           <strong>Tanpa autentikasi.</strong> Siapa pun yang tahu alamat halaman ini bisa masuk
-          sebagai user mana pun di lokasi
-          <strong>{{ lokasiAktif || 'ini' }}</strong
+          sebagai user mana pun di lokasi <strong>{{ lokasiAktif || 'ini' }}</strong
           >. Jangan publikasikan aplikasinya selama halaman ini hidup.
         </span>
       </p>
@@ -108,7 +107,9 @@
             memang tidak memakai password.
           -->
           <code v-if="row.password" class="sc-pass">{{ row.password }}</code>
-          <code v-else class="sc-pass sc-pass--masked">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</code>
+          <code v-else class="sc-pass sc-pass--masked"
+            >&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</code
+          >
         </template>
 
         <template #column-aksi="{ row }">
@@ -137,6 +138,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { showInvoiceLockModal } from '@/composables/useInvoiceLock'
 import { getDashboardRoute } from '@/router/dashboardRoutes'
 import { simpanTenantSlug } from '@/utils/tenantSlug'
+import { simpanRingkasanPiutang } from '@/composables/useOverdueGenNotification'
 import DataTable from '@/presentations/components/ui/DataTable.vue'
 import BaseButton from '@/presentations/components/ui/BaseButton.vue'
 
@@ -389,6 +391,21 @@ const masuk = async (row) => {
 
     uiStore.setUserData(data.user)
     uiStore.setUserRole(data.user.role)
+
+    /*
+     * Ringkasan generate piutang diserahterimakan ke halaman berikutnya.
+     *
+     * Backend sudah menjalankan generate piutang di jalur login ini (sama
+     * seperti `POST /api/login`), jadi tagihan menunggak sudah terjurnal.
+     * Tapi halaman ini memuat ulang SELURUH aplikasi lewat
+     * `window.location.href`, sehingga ringkasan yang ada di memori JS
+     * lenyap sebelum popup sempat tampil.
+     *
+     * Tanpa serah-terima ini, generate tetap jalan tapi user tidak pernah
+     * melihat popup-nya -- gejalanya persis seperti "generate tidak jalan",
+     * padahal jurnalnya sudah terbentuk.
+     */
+    simpanRingkasanPiutang(data.piutang_tunggakan)
 
     // Tidak pakai `router.push` + await: halaman ini berada di luar layout
     // aplikasi, jadi memuat komponen dashboard dari sini bisa menahan

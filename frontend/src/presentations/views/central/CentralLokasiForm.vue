@@ -179,7 +179,7 @@
             <BaseInput
               v-model="form.bidang_usaha"
               label="Bidang Usaha"
-              placeholder="Contoh: Perusahaan Air Minum Tirto Mulo"
+              placeholder="Contoh: PDAM Tirto Mulo"
               prefix-icon="building"
               :error="errors.bidang_usaha"
               no-margin
@@ -190,7 +190,7 @@
               label="Deskripsi Usaha"
               type="textarea"
               :rows="2"
-              placeholder="Contoh: mendistribusikan air minum ke 12 kecamatan."
+              placeholder="Contoh: melayani 12 kecamatan dengan tarif berjenjang."
               :error="errors.deskripsi_usaha"
               class="form-field--full"
               no-margin

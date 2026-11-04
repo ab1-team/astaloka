@@ -13,10 +13,10 @@
 
           <td class="text-cell">
             <div class="kop-nama-usaha">
-              {{ lembaga?.nama || 'UNIT USAHA ALIRAN AIR MASA DEPAN' }}
+              {{ lembaga?.nama || 'NAMA USAHA LAYANAN PUBLIK' }}
             </div>
             <div class="kop-nama-kec">
-              <b>{{ lembaga?.alamat_kab || 'MULO WONOSARI' }}</b>
+              <b>{{ lembaga?.alamat_kab || 'ALAMAT LEMBAGA' }}</b>
             </div>
 
             <div class="kop-info-sub">
@@ -102,7 +102,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { storageUrl } from '@/utils/storage'
+import { storageLogoUrl } from '@/utils/storage'
 
 const props = defineProps({
   row: {
@@ -203,28 +203,16 @@ const initials = computed(() => {
     .toUpperCase()
 })
 
-const logoUrl = computed(() => {
-  const logo = props.lembaga?.logo
-  if (!logo) return ''
-
-  // Jika logo sudah berupa URL lengkap (http:// atau https://) atau base64
-  if (logo.startsWith('http://') || logo.startsWith('https://') || logo.startsWith('data:image')) {
-    return logo
-  }
-
-  // Jika path logo sudah mencakup direktori storage/ publik
-  if (logo.startsWith('/storage/') || logo.startsWith('storage/')) {
-    const cleanPath = logo.startsWith('/') ? logo : '/' + logo
-    return storageUrl(cleanPath)
-  }
-
-  // Penanganan path standar dari backend storage API
-  const formattedLogo = logo.startsWith('/') ? logo : `/${logo}`
-  if (formattedLogo.includes('/sop/logo/')) {
-    return storageUrl(formattedLogo)
-  }
-  return storageUrl(`/sop/logo${formattedLogo}`)
-})
+/**
+ * URL logo.
+ *
+ * Logika ini sebelumnya ditulis ulang di file ini (mendeteksi sendiri
+ * apakah `logo` berupa URL lengkap, path `storage/`, atau nama file),
+ * padahal bentuk yang sama sudah ditangani `storageLogoUrl()` di
+ * `utils/storage.js`. Sekarang semuanya pakai helper itu supaya path
+ * logo hanya ada di satu titik.
+ */
+const logoUrl = computed(() => storageLogoUrl(props.lembaga?.logo))
 </script>
 
 <style scoped>

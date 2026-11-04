@@ -115,7 +115,11 @@
             </div>
             <div
               class="px-2.5! py-1! rounded-full! text-[10px]! font-black! uppercase! tracking-widest!"
-              :class="unpaidBillsCount > 0 ? 'bg-rose-100! text-rose-600!' : 'bg-emerald-100! text-emerald-600!'"
+              :class="
+                unpaidBillsCount > 0
+                  ? 'bg-rose-100! text-rose-600!'
+                  : 'bg-emerald-100! text-emerald-600!'
+              "
             >
               {{ unpaidBillsCount > 0 ? `${unpaidBillsCount} Tunggakan` : 'Lunas' }}
             </div>
@@ -257,12 +261,15 @@
           <div class="pt-2!">
             <div class="flex! items-center! justify-between! mb-3!">
               <h3 class="text-sm! font-black! text-slate-700! flex! items-center! gap-2!">
-                <font-awesome-icon icon="ban" class="text-rose-500! text-xs!" /> Pelanggan
-                Suspended
+                <font-awesome-icon icon="ban" class="text-rose-500! text-xs!" /> Pelanggan Suspended
               </h3>
               <span
                 class="px-2.5! py-1! rounded-full! text-[9px]! font-black! uppercase! tracking-widest!"
-                :class="suspendedList.length > 0 ? 'bg-rose-100! text-rose-700!' : 'bg-emerald-100! text-emerald-700!'"
+                :class="
+                  suspendedList.length > 0
+                    ? 'bg-rose-100! text-rose-700!'
+                    : 'bg-emerald-100! text-emerald-700!'
+                "
               >
                 {{ suspendedList.length }} Aktif
               </span>
@@ -313,12 +320,8 @@
                       >{{ cust.customer_code }}</span
                     >
                   </div>
-                  <div
-                    class="flex! items-center! gap-2! mt-1! text-[10px]! font-bold! flex-wrap!"
-                  >
-                    <span class="text-rose-600!">
-                      {{ cust.unpaid_count }} tagihan
-                    </span>
+                  <div class="flex! items-center! gap-2! mt-1! text-[10px]! font-bold! flex-wrap!">
+                    <span class="text-rose-600!"> {{ cust.unpaid_count }} tagihan </span>
                     <span class="text-slate-300!">•</span>
                     <span class="text-slate-700! font-mono!">
                       Rp.
@@ -533,8 +536,14 @@ const fetchDashboardData = async () => {
 
     dashboardData.value.total_customers = totalActive
     pendingReadingsCount.value = belumDicatat
-    unpaidBillsCount.value =
-      unpaidRes?.data?.total ?? unpaidRes?.data?.bills?.length ?? unpaidRes?.total ?? 0
+    // Jumlah total tagihan menunggak diambil dari `meta.total` — backend
+    // menaruh data halaman di `data.bills` dan jumlah keseluruhan di
+    // `meta.total` (lihat MonthlyBillController::index).
+    //
+    // Sebelumnya kode ini membaca `data.total` (selalu undefined) lalu
+    // jatuh ke `data.bills.length`. Karena request memakai `per_page: 1`,
+    // hasilnya selalu "1 Tunggakan" berapa pun jumlah sebenarnya.
+    unpaidBillsCount.value = Number(unpaidRes?.meta?.total ?? 0)
 
     await fetchSuspended()
   } catch (error) {
