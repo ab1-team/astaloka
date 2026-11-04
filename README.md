@@ -8,6 +8,7 @@ Selamat datang di repositori **ASTALOKA**. Ikuti langkah-langkah di bawah ini un
 - [🗄️ Struktur Database](docs/database.md)
 - [🔌 Referensi API Backend](docs/api_backend.md)
 - [🔀 Perbandingan dengan Aplikasi Lama](docs/perbedaan-apk-lama-baru.md)
+- [🚀 Panduan Deploy ke Produksi](docs/deploy.md) — GitHub Actions secrets yang wajib diisi, gejala kegagalan, dan cara memperbaikinya
 
 ## 🛠 Prasyarat (Prerequisites)
 
