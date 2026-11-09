@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Customer;
 use App\Models\InstallationPackage;
-use App\Services\BillingDueDate;
+use App\Services\BillingCycleSettings;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -147,10 +147,9 @@ class ImportLegacyMonthlyBillsCommand extends Command
         }
         $this->info('Paket dgn abodemen: '.count($abodemenByPkg));
 
-        // Tanggal jatuh tempo dari SOP. Dipakai hanya sebagai fallback
-        // kalau legacy tidak punya `tgl_akhir`.
-        $batasTagihan = (int) (DB::table('settings')->value('batas_tagihan')
-            ?: BillingDueDate::DEFAULT_BATAS_TAGIHAN);
+        // Legacy `tgl_akhir` dipertahankan apa adanya. Kalau tidak ada,
+        // jatuh tempo dihitung dari tanggal pencatatan dengan SOP.
+        $dueDay = BillingCycleSettings::dueDay();
 
         // 3. Existing monthly_bills (customer_id|year|month → row)
         $existingMB = [];
@@ -269,10 +268,12 @@ class ImportLegacyMonthlyBillsCommand extends Command
                     try {
                         $dueDate = Carbon::parse($tglAkhir)->toDateString();
                     } catch (\Throwable) {
-                        $dueDate = BillingDueDate::compute($year, $month, $batasTagihan);
+                        $dueDate = BillingCycleSettings::dueDate($date) ?? $date->toDateString();
                     }
                 } else {
-                    $dueDate = BillingDueDate::compute($year, $month, $batasTagihan);
+                    $dueDate = $dueDay >= 1
+                        ? BillingCycleSettings::dueDateFor($date, $dueDay)
+                        : $date->toDateString();
                 }
 
                 // Penalty: cek tagihan 1 bulan sebelum (Bulan N-1) → kalau unpaid, pakai late_penalty dari paket

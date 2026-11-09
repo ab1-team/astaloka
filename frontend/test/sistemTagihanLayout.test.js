@@ -68,7 +68,7 @@ after(async () => {
 function mountSistemTagihan(form = {}) {
   return mount(SistemTagihan, {
     props: {
-      modelValue: { toleransiTunggakan: 27, batasBulanTunggakan: 3, ...form },
+      modelValue: { toleransiTunggakan: 27, batasTagihan: 3, ...form },
       onSave: () => {},
     },
     global: {
@@ -112,10 +112,10 @@ describe('kartu Sistem Tagihan di halaman SOP', () => {
     const teks = grid.text()
 
     const posisiTanggal = teks.indexOf('Toleransi Menunggak')
-    const posisiBulan = teks.indexOf('Batas Tagihan Bulanan')
+    const posisiBulan = teks.indexOf('Batas Tagihan')
 
     assert.ok(posisiTanggal >= 0, 'kartu harus memuat "Toleransi Menunggak"')
-    assert.ok(posisiBulan >= 0, 'kartu harus memuat "Batas Tagihan Bulanan"')
+    assert.ok(posisiBulan >= 0, 'kartu harus memuat "Batas Tagihan"')
 
     assert.ok(
       posisiTanggal < posisiBulan,
@@ -137,7 +137,7 @@ describe('kartu Sistem Tagihan di halaman SOP', () => {
   })
 
   it('menampilkan nilai form yang tersimpan', () => {
-    const wrapper = mountSistemTagihan({ toleransiTunggakan: 21, batasBulanTunggakan: 6 })
+    const wrapper = mountSistemTagihan({ toleransiTunggakan: 21, batasTagihan: 6 })
 
     const angka = wrapper.findAll('input[type="number"]')
 
@@ -153,10 +153,7 @@ describe('kartu Sistem Tagihan di halaman SOP', () => {
     const teks = wrapper.text()
 
     // Dua aturan harus sama-sama dijelaskan, bukan hanya satu.
-    assert.ok(
-      teks.includes('generate jurnal piutang'),
-      'penjelasan harus menyebut generate jurnal piutang',
-    )
+    assert.ok(teks.includes('Jurnal piutang'), 'penjelasan harus menyebut jurnal piutang')
     assert.ok(
       teks.includes('SUSPENDED'),
       'penjelasan harus menyebut status SUSPENDED untuk pemutusan sambung',

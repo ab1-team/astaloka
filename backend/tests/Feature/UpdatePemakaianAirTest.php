@@ -66,6 +66,12 @@ class UpdatePemakaianAirTest extends TestCase
         ]);
 
         $this->billing = new BillingService;
+
+        Setting::create([
+            'key' => 'sop',
+            'toleransi_tunggakan' => 26,
+            'batas_tagihan' => 3,
+        ]);
     }
 
     /**
@@ -625,16 +631,13 @@ class UpdatePemakaianAirTest extends TestCase
     }
 
     /**
-     * `recorded_at` saat mencatat meter baru = AKHIR PERIODE PEMAKAIAN,
-     * bukan tanggal hari ini.
+     * `recorded_at` saat mencatat meter = waktu input yang sebenarnya.
      *
-     * Periode sengaja dipilih beberapa bulan lalu: kalau `recorded_at`
-     * memakai `now()` -- seperti yang dulu terjadi di jalur edit -- tanggalnya
-     * akan berada di bulan ini, sehingga test gagal tanpa perlu mengubah jam
-     * sistem.
+     * Ini yang menjadi patokan jatuh tempo: tanggal toleransi di bulan
+     * pencatatan, atau bulan berikutnya kalau pencatatan lewat tanggal itu.
      */
     #[Test]
-    public function store_menyimpan_tanggal_akhir_di_bulan_pemakaian(): void
+    public function store_menyimpan_waktu_pencatatan_sebenarnya(): void
     {
         Sanctum::actingAs($this->admin, ['*'], 'sanctum');
 
@@ -657,52 +660,44 @@ class UpdatePemakaianAirTest extends TestCase
             ->where('reading_month', $bulan)
             ->firstOrFail();
 
-        // Tanpa baris Setting, `batas_tagihan` jatuh ke bawaan 27.
-        $akhirPeriode = Carbon::create($tahun, $bulan, 1);
-        $akhirPeriode->setDay(min(27, $akhirPeriode->daysInMonth));
-
         $this->assertSame(
-            $akhirPeriode->toDateString(),
+            now()->toDateString(),
             Carbon::parse($reading->recorded_at)->toDateString(),
-            'recorded_at harus hari batas_tagihan di bulan pemakaian.'
+            'recorded_at harus waktu input, bukan tanggal akhir periode lama.'
         );
-
-        // Jatuh tempo adalah tanggal yang sama di bulan BERIKUTNYA.
-        $jatuhTempo = Carbon::create($tahun, $bulan, 1)->addMonthNoOverflow();
-        $jatuhTempo->setDay(min(27, $jatuhTempo->daysInMonth));
 
         $bill = MonthlyBill::where('customer_id', $customer->id)
             ->where('billing_period_year', $tahun)
             ->where('billing_period_month', $bulan)
             ->firstOrFail();
 
+        $expectedDue = now()->day > 26
+            ? now()->startOfMonth()->addMonthNoOverflow()->setDay(26)
+            : now()->startOfMonth()->setDay(26);
+
         $this->assertSame(
-            $jatuhTempo->toDateString(),
+            $expectedDue->toDateString(),
             $bill->due_date->toDateString(),
-            'due_date tetap di bulan tagihan (satu bulan setelah pemakaian).'
+            'due_date mengikuti bulan pencatatan, bukan periode pemakaian.'
         );
     }
 
     /**
-     * Tanggal akhir mengikuti angka TANGGAL di SOP -- bukan tanggal hari ini
-     * dan bukan tanggal saat input.
+     * Jatuh tempo mengikuti tanggal pencatatan, bukan periode pemakaian.
      *
-     * Contoh yang diminta: SOP diset 26, pemakaian Juni 2026 ->
-     * TANGGAL AKHIR 26 Juni 2026, jatuh tempo 26 Juli 2026.
-     *
-     * `batas_tagihan` dan `toleransi_tunggakan` sengaja diisi angka yang sama
-     * karena `SopController` memang menulis keduanya dari satu input.
+     * Contoh: SOP 26, meter periode Juni 2026 dicatat hari ini ->
+     * `recorded_at` hari ini dan `due_date` tanggal 26 bulan ini (atau
+     * bulan depan kalau hari ini sudah lewat tanggal 26).
      */
     #[Test]
-    public function tanggal_akhir_mengikuti_angka_tanggal_di_sop(): void
+    public function jatuh_tempo_mengikuti_tanggal_pencatatan(): void
     {
         Sanctum::actingAs($this->admin, ['*'], 'sanctum');
 
-        Setting::create([
-            'key' => 'sop',
-            'batas_tagihan' => 26,
-            'toleransi_tunggakan' => 26,
-        ]);
+        Setting::updateOrCreate(
+            ['key' => 'sop'],
+            ['toleransi_tunggakan' => 26, 'batas_tagihan' => 3]
+        );
 
         $package = $this->makePaket();
         $customer = $this->makeCustomer($package);
@@ -720,9 +715,9 @@ class UpdatePemakaianAirTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame(
-            '2026-06-26',
+            now()->toDateString(),
             Carbon::parse($reading->recorded_at)->toDateString(),
-            'TANGGAL AKHIR = angka SOP (26) di bulan pemakaian (Juni).'
+            'TANGGAL AKHIR = waktu pencatatan sebenarnya.'
         );
 
         $bill = MonthlyBill::where('customer_id', $customer->id)
@@ -730,23 +725,23 @@ class UpdatePemakaianAirTest extends TestCase
             ->where('billing_period_month', 6)
             ->firstOrFail();
 
+        $expectedDue = now()->day > 26
+            ? now()->startOfMonth()->addMonthNoOverflow()->setDay(26)
+            : now()->startOfMonth()->setDay(26);
+
         $this->assertSame(
-            '2026-07-26',
+            $expectedDue->toDateString(),
             $bill->due_date->toDateString(),
-            'Jatuh tempo = angka SOP yang sama di bulan tagihan (Juli).'
+            'Jatuh tempo = tanggal toleransi di bulan pencatatan.'
         );
     }
 
     /**
      * Jalur EDIT yang harus membuat `MeterReading` baru (tagihan sudah ada,
-     * meternya belum) juga memakai akhir periode pemakaian -- bukan `now()`.
-     *
-     * Inilah inkonsistensi yang diperbaiki: periode yang sama bisa punya
-     * "TANGGAL AKHIR" berbeda tergantung dicatat lewat halaman input atau
-     * lewat halaman edit.
+     * meternya belum) juga memakai waktu pencatatan yang sebenarnya.
      */
     #[Test]
-    public function edit_yang_membuat_reading_baru_memakai_tanggal_akhir_periode(): void
+    public function edit_yang_membuat_reading_baru_memakai_waktu_pencatatan(): void
     {
         Sanctum::actingAs($this->admin, ['*'], 'sanctum');
 
@@ -759,8 +754,8 @@ class UpdatePemakaianAirTest extends TestCase
 
         // Simulasikan tagihan yang sudah digenerate duluan, sementara
         // pencatatan meternya belum ada.
-        $jatuhTempo = Carbon::create($tahun, $bulan, 1)->addMonthNoOverflow();
-        $jatuhTempo->setDay(min(27, $jatuhTempo->daysInMonth));
+        $jatuhTempo = Carbon::create($tahun, $bulan, 1);
+        $jatuhTempo->setDay(min(26, $jatuhTempo->daysInMonth));
 
         MonthlyBill::create([
             'customer_id' => $customer->id,
@@ -795,13 +790,10 @@ class UpdatePemakaianAirTest extends TestCase
             ->where('reading_month', $bulan)
             ->firstOrFail();
 
-        $akhirPeriode = Carbon::create($tahun, $bulan, 1);
-        $akhirPeriode->setDay(min(27, $akhirPeriode->daysInMonth));
-
         $this->assertSame(
-            $akhirPeriode->toDateString(),
+            now()->toDateString(),
             Carbon::parse($reading->recorded_at)->toDateString(),
-            'Edit pemakaian tidak boleh menyimpan recorded_at hari ini.'
+            'Edit pemakaian menyimpan waktu pencatatan, bukan tanggal periode lama.'
         );
     }
 }

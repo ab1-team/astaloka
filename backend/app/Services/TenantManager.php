@@ -629,13 +629,15 @@ class TenantManager
      * `settings` belum ada sama sekali. Kalau barisnya sudah ada, nilai
      * `toleransi_tunggakan` yang ada di sana dibiarkan apa adanya.
      *
-     * CATATAN SOAL PENGGABUNGAN DUA TANGGAL
-     * -------------------------------------
+     * CATATAN SOAL DUA KOLOM SOP
+     * --------------------------
      *
-     * `batas_tagihan` dan `toleransi_tunggakan` sekarang jadi SATU angka
-     * tanggal (lihat `BillingTolerance::tanggal()`). Jadi waktu baris
-     * `settings` baru dibuat di sini, keduanya diisi dengan angka yang
-     * sama -- 10, sama dengan `SettingsSeeder`.
+     * `toleransi_tunggakan` = TANGGAL jatuh tempo (1-31).
+     * `batas_tagihan`       = JUMLAH BULAN tunggakan sebelum suspend.
+     *
+     * Keduanya punya satuan berbeda, jadi nilai bawaannya juga berbeda:
+     * 10 untuk tanggal dan 3 untuk jumlah bulan -- sama dengan
+     * `SettingsSeeder`.
      */
     public function applyTenantIdentity(Tenant $tenant): void
     {
@@ -654,7 +656,10 @@ class TenantManager
                 'telepon' => $tenant->telepon,
                 'domain' => $tenant->domain,
                 'status_pembayaran' => true,
-                'batas_tagihan' => 10,
+                // TANGGAL jatuh tempo.
+                'toleransi_tunggakan' => 10,
+                // JUMLAH BULAN tunggakan sebelum suspend.
+                'batas_tagihan' => 3,
                 'logo' => null,
                 'pesan_tagihan' => 'Yth. {customer}, tagihan Anda bulan ini sebesar {jumlah_tagihan}. Mohon segera melakukan pembayaran sebelum jatuh tempo. Terima kasih.',
                 'pesan_pembayaran' => 'Yth. {customer}, pembayaran tagihan sebesar {tagihan} telah kami terima. Terima kasih.',
@@ -664,9 +669,9 @@ class TenantManager
 
             /*
              * Baris `settings` yang sudah ada: HANYA kolom identitas lokasi
-             * yang ditulis ulang. `batas_tagihan`,
-             * `toleransi_tunggakan`, dan `billing_unpaid_limit` -- tiga hal
-             * yang diatur admin lewat halaman SOP -- TIDAK ikut sentuh.
+             * yang ditulis ulang. `toleransi_tunggakan` dan `batas_tagihan`
+             * -- dua hal yang diatur admin lewat halaman SOP -- TIDAK ikut
+             * sentuh.
              */
             if ($sudahAda) {
                 $tabel->where('id', 1)->update([
@@ -684,24 +689,14 @@ class TenantManager
 
             /*
              * Baris `settings` belum ada sama sekali: baris baru dibuat
-             * lengkap, dengan nilai bawaan yang SAH untuk tanggal generate
-             * (10 -- angka yang sama dengan `SettingsSeeder`).
+             * lengkap dengan titik awal yang sama dengan `SettingsSeeder`.
              *
-             * `batas_tagihan` dan `toleransi_tunggakan` diisi DENGAN ANGKA
-             * YANG SAMA, karena keduanya sudah digabung jadi satu angka
-             * tanggal di halaman SOP. Kalau keduanya diisi berbeda, lokasi
-             * baru akan langsung punya dua tanggal yang saling
-             * bertentangan -- persis masalah yang penggabungan ini
-             * diselesaikan.
+             * `toleransi_tunggakan` = TANGGAL jatuh tempo.
+             * `batas_tagihan` = JUMLAH BULAN sebelum suspend.
              *
-             * `billing_unpaid_limit` (batas tunggakan dalam BULAN) juga
-             * diisi 3, supaya lokasi baru punya titik awal yang sama dengan
-             * lokasi yang installation-nya sudah jalan.
+             * Keduanya hanya nilai awal; admin bisa mengubahnya lewat SOP.
              */
-            $tabel->insert($data + [
-                'toleransi_tunggakan' => 10,
-                'billing_unpaid_limit' => 3,
-            ]);
+            $tabel->insert($data);
         });
     }
 }

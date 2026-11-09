@@ -429,20 +429,20 @@ const tableColumns = [
 /**
  * Format "TGL AKHIR BAYAR".
  *
- * `monthly_bills.due_date` = tanggal GENERATE PIUTANG (hari
- * `toleransi_tunggakan`, mis. 27). Batas akhir bayar justru SEBELUM
- * tanggal itu -- jadi ditampilkan dikurangi 1 hari (26 Nov).
+ * `monthly_bills.due_date` SUDAH merupakan tanggal jatuh tempo itu sendiri
+ * (hari `batas_tagihan`/`toleransi_tunggakan`, mis. 27), dan backend memakai
+ * tanggal yang sama untuk menandai tagihan menunggak (`due_date < hari ini`).
+ * Jadi tanggalnya ditampilkan APA ADANYA -- tidak dikurangi satu hari.
  *
  * `due_date` dikirim sebagai UTC midnight ("2026-11-27T00:00:00.000000Z").
  * `new Date(...)` mengartikannya sebagai instant UTC, sehingga di zona waktu
- * negatif `getDate()` bisa jadi 26 -- lalu dikurangi 1 hari lagi jadi 25.
- * Parse eksplisit sebagai LOCAL supaya tanggalnya pasti utuh.
+ * negatif `getDate()` bisa jadi 26. Parse eksplisit sebagai LOCAL supaya
+ * tanggalnya pasti utuh.
  */
 const formatDate = (val) => {
   if (!val) return '-'
   const d = parseLocalDate(val)
   if (!d) return val
-  d.setDate(d.getDate() - 1)
   return d.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: '2-digit',

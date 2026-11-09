@@ -6,7 +6,6 @@ use App\Models\Customer;
 use App\Models\InstallationPackage;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
-use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -17,9 +16,6 @@ class MonthlyBillService
         $now = now();
         $bulan = $now->month;
         $tahun = $now->year;
-
-        $settings = Setting::first();
-        $batasTagihan = $settings?->batas_tagihan ?? 27;
 
         // CEGAH GENERATE DOBEL
         $exists = MonthlyBill::where('billing_period_month', $bulan)
@@ -124,6 +120,12 @@ class MonthlyBillService
 
             $status = $isNihilLegitimate ? 'paid' : 'unpaid';
 
+            $dueDate = BillingCycleSettings::dueDate($reading->recorded_at);
+
+            if ($dueDate === null) {
+                throw new \RuntimeException('Tanggal Toleransi Menunggak belum diisi di SOP.');
+            }
+
             MonthlyBill::create([
                 'customer_id' => $reading->customer_id,
                 'billing_period_month' => $bulan,
@@ -136,7 +138,7 @@ class MonthlyBillService
                 'penalty_amount' => $penalty,
                 'total_amount' => $total,
                 'status' => $status,
-                'due_date' => $this->computeDueDate($tahun, $bulan, $batasTagihan),
+                'due_date' => $dueDate,
             ]);
 
             $count++;
@@ -190,13 +192,13 @@ class MonthlyBillService
     }
 
     /**
-     * Tanggal jatuh tempo tagihan untuk satu periode pemakaian.
+     * Tanggal jatuh tempo untuk satu waktu pencatatan meter.
      *
-     * Menuju ke `BillingDueDate` supaya rumusnya cuma ada di satu tempat.
-     * Lihat service itu untuk penjelasan aturan "dibayar bulan berikutnya".
+     * Menuju ke `BillingCycleSettings` supaya rumusnya cuma ada di satu
+     * tempat.
      */
-    public function computeDueDate(int $year, int $month, int $day = 27): string
+    public function computeDueDate($recordedAt, ?int $dueDay = null): ?string
     {
-        return BillingDueDate::compute($year, $month, $day);
+        return BillingCycleSettings::dueDate($recordedAt, $dueDay);
     }
 }

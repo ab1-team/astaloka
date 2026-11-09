@@ -18,8 +18,8 @@
               </h4>
             </div>
             <p class="text-[10px]! text-slate-400!">
-              Tanggal (1-31) untuk semua aturan tagihan: jatuh tempo tagihan bulanan sekaligus
-              tanggal generate jurnal piutang.
+              Tanggal (1-31) akhir bayar / jatuh tempo. Dihitung pada bulan pencatatan meter; bila
+              pencatatan lewat tanggal ini, jatuh tempo bergeser ke bulan berikutnya.
             </p>
             <BaseInput
               v-model="form.toleransiTunggakan"
@@ -47,15 +47,13 @@
               >
                 <font-awesome-icon icon="calendar-xmark" />
               </div>
-              <h4 class="text-xs! font-black! text-slate-800! leading-tight!">
-                Batas Tagihan Bulanan
-              </h4>
+              <h4 class="text-xs! font-black! text-slate-800! leading-tight!">Batas Tagihan</h4>
             </div>
             <p class="text-[10px]! text-slate-400!">
               Berapa bulan tunggakan yang masih ditoleransi sebelum sambungan pelanggan diputus.
             </p>
             <BaseInput
-              v-model="form.batasBulanTunggakan"
+              v-model="form.batasTagihan"
               placeholder="3"
               type="number"
               :min="0"
@@ -94,9 +92,8 @@
               Generate Piutang Otomatis
             </h4>
             <p class="text-[11px]! font-medium! text-slate-500! leading-relaxed!">
-              Jurnal piutang (abodemen, pemakaian, denda) dibuat otomatis setiap kali ada staff
-              login <strong class="text-indigo-700!">pada tanggal Toleransi Menunggak</strong>.
-              Tanggal 29-31 berjalan di hari terakhir bulan.
+              Jurnal piutang (abodemen, pemakaian, denda) diakui saat tanggal jatuh tempo tercapai.
+              Tanggal jatuh tempo mengikuti bulan pencatatan meter.
             </p>
           </div>
         </div>

@@ -8,8 +8,7 @@ use App\Models\Customer;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
 use App\Models\Transaction;
-use App\Services\BillingDueDate;
-use App\Services\BillingTolerance;
+use App\Services\BillingCycleSettings;
 use App\Services\BillRecalculationService;
 use App\Services\MonthlyBillService;
 use App\Services\TenantCache;
@@ -720,30 +719,14 @@ class MonthlyBillController extends Controller
         // RUMUSNYA TIDAK BERUBAH dari pamsides-v2. Yang berubah hanya
         // sumber nilainya: `BillingTolerance` memperjelas bahwa satuan ini
         // berbeda dari satuan `toleransi_tunggakan` di tiga tempat lain.
-        $toleransiTgl = app(BillingTolerance::class)->advanceDayOfMonth();
-        $isAdvancePayment = false;
-        $thresholdDate = null;
-        if ($toleransiTgl >= 1) {
-            $thresholdYear = (int) ($bill->billing_period_year ?? 0);
-            $thresholdMonth = (int) ($bill->billing_period_month ?? 0);
-            // Fallback ke due_date kalau billing_period tidak ada (legacy data).
-            if ($thresholdYear < 1 || $thresholdMonth < 1) {
-                $dueRef = Carbon::parse($bill->due_date);
-                $thresholdYear = $dueRef->year;
-                $thresholdMonth = $dueRef->month;
-                // `due_date` sudah menunjuk ke bulan TAGIHAN, jadi jangan
-                // digeser satu bulan lagi di sini.
-                $thresholdDate = $dueRef->startOfDay();
-                $isAdvancePayment = $paidAtDate->lt($thresholdDate);
-            } else {
-                $thresholdDate = BillingDueDate::inBillingMonth(
-                    $thresholdYear,
-                    $thresholdMonth,
-                    $toleransiTgl
-                );
-                $isAdvancePayment = $paidAtDate->lt($thresholdDate);
-            }
-        }
+        // Ambangnya adalah `due_date` tagihan yang sudah tersimpan.
+        // Jatuh tempo dihitung backend dari waktu pencatatan meter, jadi
+        // frontend dan backend memakai tanggal yang sama.
+        $thresholdDate = $bill->due_date
+            ? Carbon::parse($bill->due_date)->startOfDay()
+            : null;
+        $isAdvancePayment = $thresholdDate !== null
+            && $paidAtDate->lt($thresholdDate);
 
         // Kombinasi yang TIDAK mungkin secara logika tapi tetap dijaga: tagihan
         // terklasifikasi advance (tanggal bayar < ambang) TETAPI punya jurnal
@@ -1381,22 +1364,15 @@ class MonthlyBillController extends Controller
         $year = (int) $request->year;
         $meterValue = (int) $request->meter_value;
 
-        // Tanggal akhir periode pemakaian, dipakai kalau periode ini belum
-        // punya `MeterReading` dan harus dibuat di dalam transaksi di bawah.
-        //
-        // Harus SAMA dengan `MeterReadingController::store`: `recorded_at`
-        // adalah tanggal akhir periode pemakaian (hari `batas_tagihan` di
-        // bulan pemakaian), bukan tanggal hari ini. Dulu cabang ini memakai
-        // `now()`, sehingga mengedit pemakaian periode lama lewat halaman
-        // "Data Pemakaian" menyimpan `recorded_at` hari ini -- dan frontend
-        // menampilkannya sebagai "TANGGAL AKHIR" yang sama sekali bukan akhir
-        // periode itu.
-        //
-        // Rumusnya satu tempat: `BillingDueDate::inUsageMonth()`.
-        $batasTagihan = app(BillingTolerance::class)->tanggal();
+        // Tanggal akhir bayar berasal dari SOP. Kalau belum diisi, tolak
+        // dengan pesan yang jelas -- jangan memakai angka default diam-diam.
+        $dueDay = BillingCycleSettings::dueDay();
 
-        if ($batasTagihan === 0) {
-            $batasTagihan = BillingDueDate::DEFAULT_BATAS_TAGIHAN;
+        if ($dueDay < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tanggal Toleransi Menunggak belum diisi di SOP. Isi dulu di halaman SOP sebelum mengubah pemakaian.',
+            ], 422);
         }
 
         $customer = Customer::with(['ticket.package', 'ticket.user', 'user'])
@@ -1466,7 +1442,7 @@ class MonthlyBillController extends Controller
 
         // 3. Terapkan perubahan meter + hitung ulang tagihan.
         try {
-            $result = DB::transaction(function () use ($customer, $year, $month, $meterValue, $batasTagihan) {
+            $result = DB::transaction(function () use ($customer, $year, $month, $meterValue) {
                 $reading = MeterReading::where('customer_id', $customer->id)
                     ->where('reading_year', $year)
                     ->where('reading_month', $month)
@@ -1479,9 +1455,8 @@ class MonthlyBillController extends Controller
                     // tagihannya sudah ada (mis. generate tagihan duluan).
                     // Catat saja supaya angka pemakaian dan tagihan sinkron.
                     //
-                    // Tanggalnya memakai akhir periode yang sedang diedit
-                    // (`batas_tagihan` di bulan pemakaian), bukan `now()`.
-                    // Lihat komentar `$batasTagihan` di atas.
+                    // `recorded_at` = waktu edit ini; jatuh tempo mengikuti
+                    // tanggal pencatatan, bukan periode tagihan.
                     MeterReading::create([
                         'customer_id' => $customer->id,
                         'recorded_by' => Auth::id(),
@@ -1489,8 +1464,7 @@ class MonthlyBillController extends Controller
                         'reading_month' => $month,
                         'meter_value' => $meterValue,
                         'photo_url' => null,
-                        'recorded_at' => BillingDueDate::inUsageMonth($year, $month, $batasTagihan)
-                            ->setTimeFrom(now()),
+                        'recorded_at' => now(),
                     ]);
                 }
 

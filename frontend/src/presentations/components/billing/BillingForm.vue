@@ -336,10 +336,9 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import AppDatePicker from '../AppDatePicker.vue'
 import { formatRupiah } from '@/composables/useFormatCurrency.js'
-import { useSettingsStore } from '@/stores/settingsStore.js'
 import { MySwal, Toast } from '@/utils/swal.js'
 
 const props = defineProps({
@@ -354,16 +353,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['save'])
-const settingsStore = useSettingsStore()
-
-// Pastikan settings.toleransiTunggakan sudah di-load dari backend SEBELUM
-// computed `paidBeforeDueDate` dievaluasi.
-// Sebelumnya store default = 0 → notifikasi ADVANCE tidak pernah muncul kalau
-// user belum pernah ke halaman SOP (yang sebelumnya satu-satunya pemanggil loadSettings).
-// Idempotent: store punya flag `isLoaded`, jadi aman dipanggil berulang.
-onMounted(() => {
-  settingsStore.loadSettings()
-})
 
 // Flag dari parent: true kalau masih ada tagihan LEBIH LAMA yang belum lunas.
 // Tombol konfirmasi di-disable supaya teknisi bayar dari yang terlama dulu.
@@ -563,56 +552,20 @@ const overdueDays = computed(() => {
 })
 
 /**
- * Hitung & format tanggal threshold (hari toleransi_tunggakan di BULAN
- * PEMAKAIAN tagihan = billing_period_month/year).
- * Return string `YYYY-MM-DD` atau null kalau tidak bisa dihitung.
- */
-/**
- * TRUE kalau tanggal pembayaran LEBIH AWAL dari threshold.
- * Logika SAMA dengan backend `MonthlyBillController::pay`:
- *   - threshold = tanggal jatuh tempo tagihan, yaitu hari
- *     `toleransi_tunggakan` di BULAN TAGIHAN (bulan pemakaian + 1)
- *   - bayar < threshold → ADVANCE (jurnal piutang, bila ada, akan DIREKLAS jadi
- *     kas masuk — bukan dihapus)
- *   - bayar >= threshold → NORMAL
- *
- * Perhatikan bulan tagihannya digeser satu bulan dari bulan pemakaian:
- * tagihan pemakaian Juni dibayar pada bulan Juli, jadi ambangnya ada di
- * bulan Juli. Backend memakai `BillingDueDate::inBillingMonth()` untuk hal
- * yang sama -- kalau salah satu tidak digeser, pratinjau advance akan
- * berbeda dengan hasil sebenarnya.
+ * TRUE kalau tanggal pembayaran LEBIH AWAL dari `due_date` tagihan.
+ * Backend memakai tanggal yang sama (`MonthlyBillController::pay`), jadi
+ * pratinjau di sini tidak perlu menghitung ulang tanggal dari SOP.
  */
 const paidBeforeDueDate = computed(() => {
   try {
-    if (!tanggalStr.value) return false
-    const tgl = Number(settingsStore.toleransiTunggakan || 0)
-    if (tgl < 1) return false
+    if (!tanggalStr.value || !formData.dueDate) return false
 
     const paid = parseLocalDate(tanggalStr.value)
-    if (!paid) return false
+    const due = parseLocalDate(formData.dueDate)
 
-    let year, month
-    if (formData.billingPeriodMonth && formData.billingPeriodYear) {
-      year = Number(formData.billingPeriodYear)
-      // `month` di sini 0-based. Digeser satu bulan supaya ambangnya ada
-      // di bulan TAGIHAN, bukan di bulan pemakaian.
-      month = Number(formData.billingPeriodMonth) // 1-based -> index bulan berikutnya
-    } else if (formData.dueDate) {
-      // Fallback untuk data tanpa periode tagihan: `due_date` sudah
-      // menunjuk ke bulan tagihan, jadi tidak digeser lagi.
-      const due = parseLocalDate(formData.dueDate)
-      if (!due) return false
-      return paid.getTime() < due.getTime()
-    } else {
-      return false
-    }
-    if (Number.isNaN(year) || Number.isNaN(month)) return false
+    if (!paid || !due) return false
 
-    const daysInMonth = new Date(year, month + 1, 0).getDate()
-    const effectiveDay = Math.min(tgl, daysInMonth)
-    const threshold = new Date(year, month, effectiveDay)
-
-    return paid.getTime() < threshold.getTime()
+    return paid.getTime() < due.getTime()
   } catch {
     return false
   }
