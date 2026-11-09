@@ -4,13 +4,12 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\MonthlyBill;
-use App\Models\Setting;
 use App\Models\WaterTariffBlock;
 use Illuminate\Support\Facades\Log;
 
 class BillingService
 {
-    public function generateForCustomer(Customer $customer, int $year, int $month, ?int $batasTagihan = null): MonthlyBill
+    public function generateForCustomer(Customer $customer, int $year, int $month, ?int $dueDay = null): MonthlyBill
     {
         $currentReading = $customer->meterReadings()
             ->where('reading_year', $year)
@@ -46,9 +45,10 @@ class BillingService
 
         $totalAmount = round($usageCharge + $abodemen + $penaltyAmount);
 
-        if ($batasTagihan === null) {
-            $settings = Setting::first();
-            $batasTagihan = $settings?->batas_tagihan ?? 27;
+        $dueDate = BillingCycleSettings::dueDate($currentReading->recorded_at, $dueDay);
+
+        if ($dueDate === null) {
+            throw new \RuntimeException('Tanggal Toleransi Menunggak belum diisi di SOP.');
         }
 
         // Tagihan Rp 0 bisa langsung berstatus `paid` — TAPI hanya kalau nolnya
@@ -99,7 +99,7 @@ class BillingService
             'penalty_amount' => $penaltyAmount,
             'total_amount' => $totalAmount,
             'status' => $status,
-            'due_date' => $this->computeDueDate($year, $month, $batasTagihan),
+            'due_date' => $dueDate,
         ]);
     }
 
@@ -275,14 +275,14 @@ class BillingService
     }
 
     /**
-     * Tanggal jatuh tempo tagihan untuk satu periode pemakaian.
+     * Tanggal jatuh tempo untuk satu waktu pencatatan meter.
      *
-     * Menuju ke `BillingDueDate` supaya rumusnya cuma ada di satu tempat.
-     * Lihat service itu untuk penjelasan aturan "dibayar bulan berikutnya".
+     * Menuju ke `BillingCycleSettings` supaya rumusnya cuma ada di satu
+     * tempat.
      */
-    public function computeDueDate(int $year, int $month, int $day = 27): string
+    public function computeDueDate($recordedAt, ?int $dueDay = null): ?string
     {
-        return BillingDueDate::compute($year, $month, $day);
+        return BillingCycleSettings::dueDate($recordedAt, $dueDay);
     }
 
     public function calculateChargeForTesting($package, float $usageM3): float

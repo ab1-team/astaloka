@@ -7,35 +7,27 @@ import sopService from '@/services/sop.service.js'
  * dibutuhkan lintas komponen (mis. BillingForm), sehingga tidak
  * setiap komponen harus memanggil API sendiri.
  *
- * Saat ini menyimpan data Sistem Tagihan:
- * - toleransiTunggakan: TANGGAL untuk semua aturan berbasis tanggal
- *   (jatuh tempo tagihan, generate piutang, advance payment) -- default 10.
- *   Ambang pengakuan piutang TIDAK memakai angka ini: piutang diakui saat
- *   tanggal jatuh tempo sudah tercapai.
- * - batasTagihan: SALINAN dari `toleransiTunggakan` dengan nilai yang
- *   sama. Ada karena dua komponen masih membaca nama lama ini:
- *   `ReportCetakDaftarTagihan.vue` (fallback "Tgl Akhir Pembayaran")
- *   dan `BillingForm.vue` (pratinjau advance payment). Keduanya harus
- *   melihat angka yang sama dengan yang dipakai backend.
- * - batasBulanTunggakan: JUMLAH BULAN tunggakan yang boleh ditoleransi
- *   sebelum sambungan pelanggan diputus (default 3)
+ * DUA kolom SOP, DUA arti:
  *
- * Dan pengaturan pencatatan meteran:
- * - autoOpenMeterCamera: kamera scan langsung terbuka saat popup input
- *   meter dibuka? (default false -- yang wajib diisi cuma meter akhir)
+ * - toleransiTunggakan: TANGGAL (1-31) akhir bayar / jatuh tempo.
+ *   Jatuh tempo dihitung pada BULAN PENCATATAN meter: kalau pencatatan
+ *   lewat tanggal ini, jatuh tempo bergeser ke bulan berikutnya.
+ * - batasTagihan: JUMLAH BULAN tunggakan yang boleh menumpuk sebelum
+ *   sambungan pelanggan diputus (0 = tidak pernah putus otomatis).
+ *
+ * Tidak ada kolom ketiga. Nilai bawaan di sini hanya dipakai kalau
+ * backend belum sempat dimuat; setelah `loadSettings()` berhasil,
+ * nilainya selalu mengikuti SOP.
  */
 export const useSettingsStore = defineStore('settings', () => {
   // State - Sistem Tagihan
-  const batasTagihan = ref(10)
   const toleransiTunggakan = ref(10)
-  const batasBulanTunggakan = ref(3)
+  const batasTagihan = ref(3)
 
   /*
    * Kamera scan pada popup "Input Pemakaian".
    *
-   * Default `false` dengan alasan yang sama seperti `batasTagihan` di atas:
-   * kalau request gagal, komponen harus tetap punya perilaku yang bisa
-   * dipakai -- bukan menghilang jadi tidak ada tombol sama sekali.
+   * Default `false`: kalau request gagal, popup tetap bisa diisi manual.
    */
   const autoOpenMeterCamera = ref(false)
 
@@ -70,19 +62,8 @@ export const useSettingsStore = defineStore('settings', () => {
       if (!data) return
 
       if (data.sistemTagihan) {
-        /*
-         * SATU angka tanggal. Backend mengirim `toleransiTunggakan` dan
-         * `batasTagihan` dengan nilai yang sama; yang dipakai di sini
-         * adalah `toleransiTunggakan`, dengan `batasTagihan` sebagai
-         * fallback kalau backend versi lama tidak mengirimkannya.
-         */
-        const tanggal = Number(
-          data.sistemTagihan.toleransiTunggakan ?? data.sistemTagihan.batasTagihan ?? 10,
-        )
-
-        toleransiTunggakan.value = tanggal
-        batasTagihan.value = tanggal
-        batasBulanTunggakan.value = Number(data.sistemTagihan.batasBulanTunggakan ?? 3)
+        toleransiTunggakan.value = Number(data.sistemTagihan.toleransiTunggakan ?? 10)
+        batasTagihan.value = Number(data.sistemTagihan.batasTagihan ?? 3)
       }
       if (data.lembaga?.nama) {
         lembagaName.value = data.lembaga.nama
@@ -94,7 +75,7 @@ export const useSettingsStore = defineStore('settings', () => {
       isLoaded.value = true
     } catch (err) {
       // Jangan lempar error agar komponen lain tidak crash.
-      // Biarkan nilai default (batasTagihan=10, toleransiTunggakan=10).
+      // Biarkan nilai default (toleransiTunggakan=10, batasTagihan=3).
       console.error('[settingsStore] loadSettings error:', err)
     } finally {
       isLoading.value = false
@@ -129,28 +110,25 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * Update nilai toleransiTunggakan secara lokal (mis. setelah save dari
-   * halaman SOP) tanpa harus refetch semua data.
-   *
-   * `batasTagihan` ikut diperbarui dengan nilai yang sama -- keduanya
-   * sekarang cuma salinan dari satu angka tanggal.
+   * Update tanggal toleransi secara lokal (mis. setelah save dari halaman
+   * SOP) tanpa harus refetch semua data.
    */
   const setToleransiTunggakan = (val) => {
-    const angka = Number(val ?? 10)
-
-    toleransiTunggakan.value = angka
-    batasTagihan.value = angka
-  }
-
-  const setBatasTagihan = (val) => {
-    setToleransiTunggakan(val)
+    toleransiTunggakan.value = Number(val ?? 10)
   }
 
   /**
-   * Update batas tunggakan (jumlah bulan) secara lokal.
+   * Update batas tagihan (JUMLAH BULAN) secara lokal.
+   */
+  const setBatasTagihan = (val) => {
+    batasTagihan.value = Number(val ?? 3)
+  }
+
+  /**
+   * Alias lama. Tidak menambah kolom; hanya memanggil setter yang sama.
    */
   const setBatasBulanTunggakan = (val) => {
-    batasBulanTunggakan.value = Number(val ?? 3)
+    setBatasTagihan(val)
   }
 
   /**
@@ -165,9 +143,8 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   const reset = () => {
-    batasTagihan.value = 10
     toleransiTunggakan.value = 10
-    batasBulanTunggakan.value = 3
+    batasTagihan.value = 3
     autoOpenMeterCamera.value = false
     lembagaName.value = ''
     isLoaded.value = false
@@ -176,9 +153,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     // state
-    batasTagihan,
     toleransiTunggakan,
-    batasBulanTunggakan,
+    batasTagihan,
     autoOpenMeterCamera,
     lembagaName,
     isLoading,

@@ -65,31 +65,23 @@ jatuh tempo = bulan **berikutnya**.
 // MonthlyBillService.php:127-139  (generator massal)
 'billing_period_month' => $bulan,   // = $now->month (bulan pemakaian)
 'billing_period_year'  => $tahun,
-'due_date' => $this->computeDueDate($tahun, $bulan, $batasTagihan),
+'due_date' => BillingCycleSettings::dueDate($reading->recorded_at),
 ```
 
-Tersedia kolom eksplisit `billing_period_month`, `billing_period_year`, dan `due_date`.
-Periode tagihan **tetap bulan pemakaian**, sedangkan jatuh tempo dihitung di
-**bulan tagihan** — yaitu bulan pemakaian + 1:
+Tersedia kolom eksplisit `billing_period_month`, `billing_period_year`, dan
+`due_date`. Periode tagihan **tetap bulan pemakaian**, sedangkan jatuh tempo
+dihitung dari **bulan pencatatan meter** dan tanggal `toleransi_tunggakan`:
 
 ```php
-// app/Services/BillingDueDate.php
-public static function compute(int $year, int $month, int $day = self::DEFAULT_BATAS_TAGIHAN): string
-{
-    return self::inBillingMonth($year, $month, $day)->toDateString();
-}
+// app/Services/BillingCycleSettings.php
+// dueDay = settings.toleransi_tunggakan (1-31)
+// pencatatan <= dueDay -> jatuh tempo bulan pencatatan
+// pencatatan >  dueDay -> jatuh tempo bulan berikutnya
+$dueDate = BillingCycleSettings::dueDate($reading->recorded_at);
 
-public static function inBillingMonth(int $year, int $month, int $day = self::DEFAULT_BATAS_TAGIHAN): Carbon
-{
-    // Bulan TAGIHAN = bulan pemakaian + 1. Ini inti aturan bisnisnya.
-    $billing = Carbon::create($year, $month, 1)->addMonthNoOverflow();
-
-    // Tanggal yang diset dijepit ke hari terakhir bulan tagihan.
-    // Jadi batas 31 -> 31 di Oktober, 30 di November, 28/29 di Februari.
-    $effectiveDay = min(max($day, 1), $billing->daysInMonth);
-
-    return $billing->setDay($effectiveDay)->startOfDay();
-}
+// Contoh toleransi 26:
+// recorded_at 2026-11-02 -> due_date 2026-11-26
+// recorded_at 2026-01-29 -> due_date 2026-02-26
 ```
 
 Seluruh pemakaian tagihan (generator massal, per pelanggan, import legacy, dan
@@ -97,21 +89,22 @@ threshold pembayaran dini) **menuju ke satu service yang sama**, jadi rumusnya
 tidak bisa lagi berbeda satu sama lain.
 
 > **Dampak praktis:** Tagihan pemakaian Agustus 2026 di APK lama jatuh tempo
-> **27 September 2026**. Di APK baru juga **27 September 2026** — dengan
-> `settings.batas_tagihan` = 27.
+> **27 September 2026**. Di APK baru juga **27 September 2026** kalau
+> `settings.toleransi_tunggakan` = 27 dan pencatatan meter tidak lewat
+> tanggal 27.
 >
-> Perbedaannya ada pada **nilai defaultnya**: APK lama memakai `toleransi`
-> (nilai yang sama persis dengan `batas_tagihan` di ASTALOKA), sedangkan
-> ASTALOKA punya dua kolom tanggal yang isinya **selalu sama** —
-> `batas_tagihan` (sumber tunggal: jatuh tempo, generate piutang, ambang
-> piutang, deteksi advance payment) dan `toleransi_tunggakan` (salinannya,
-> dipertahankan untuk import legacy) — plus `billing_unpaid_limit` (jumlah
-> **bulan** tunggakan yang boleh menunggak sebelum sambungan diputus — lihat
-> §6.2.1). Jadi ASTALOKA juga punya **satu** input tanggal di halaman SOP,
-> sama seperti APK lama.
+> Perbedaannya: ASTALOKA punya **dua kolom dengan satuan berbeda** —
+> `toleransi_tunggakan` = TANGGAL jatuh tempo (1-31), dan `batas_tagihan` =
+> JUMLAH BULAN tunggakan sebelum sambungan diputus. Halaman SOP menampilkan
+> dua input itu. Tidak ada lagi kolom `billing_unpaid_limit`.
 >
-> Tagihan yang **sudah ada** di database ikut digeser ke bulan tagihan saat
-> migrasi `2026_10_30_000001_shift_bill_due_date_to_next_month` dijalankan.
+> Jatuh tempo mengikuti **bulan pencatatan meter**: pencatatan s.d. tanggal
+> toleransi jatuh tempo di bulan itu; lewat tanggal toleransi bergeser ke
+> bulan berikutnya. `meter_readings.recorded_at` menyimpan waktu input
+> sebenarnya, bukan tanggal akhir periode.
+>
+> Tagihan yang **sudah ada** di database ikut diselaraskan oleh migration
+> `2026_11_09_000001_align_billing_cycle_settings`.
 
 ---
 
@@ -420,7 +413,8 @@ $func = 'detail'.$installation->status;
 **Penjaga tambahan APK Baru:**
 - Pelanggan `suspended`/`terminated` **dilarang** registrasi ulang
 - Otomatis `suspended` bila tunggakan **bulanan** melewati
-  `billing_unpaid_limit` (bukan `toleransi_tunggakan` — lihat §6.2.1)
+  `settings.batas_tagihan` (JUMLAH BULAN — lihat §6.2.1; `toleransi_tunggakan`
+  adalah TANGGAL jatuh tempo)
 - Otomatis **pulih ke `completed`** bila semua tagihan lunas
 
 ---
@@ -459,33 +453,24 @@ Masing-masing punya **satuan berbeda**, dan karena itu dipisah-pisah:
 
 | Kolom `settings` | Label di UI | Satuan | Dipakai untuk |
 |---|---|---|---|
-| `batas_tagihan` | Toleransi Menunggak | **TANGGAL** (1-31) | **Sumber tunggal**: jatuh tempo tagihan (`BillingDueDate`), tanggal generate jurnal piutang, dan ambang deteksi advance payment. Ambang pengakuan piutang **tidak** memakai angka ini — piutang diakui saat `due_date <= tanggal generate` |
-| `toleransi_tunggakan` | — (kolom salinan, tidak ada input sendiri) | **TANGGAL** (1-31) | Salinan dari `batas_tagihan`; dibaca import legacy. Tidak pernah berbeda isinya |
-| `billing_unpaid_limit` | Batas Tagihan Bulanan | **JUMLAH BULAN** (0-24) | Batas tunggakan sebelum sambungan `suspended` |
+| `toleransi_tunggakan` | Toleransi Menunggak | **TANGGAL** (1-31) | Tanggal akhir bayar / jatuh tempo (`TGL AKHIR BAYAR`). Jatuh tempo dihitung pada bulan pencatatan meter: pencatatan s.d. tanggal ini = bulan itu; lewat tanggal ini = bulan berikutnya. Angka yang sama juga menjadi jadwal generate piutang. Piutang diakui saat `due_date <= tanggal generate` |
+| `batas_tagihan` | Batas Tagihan | **JUMLAH BULAN** (0-24) | Batas tunggakan sebelum sambungan `suspended`. `0` = tidak pernah memutus otomatis |
 
 > ⚠️ **Nama label di APK lama tertukar.** Di `siap_mapan`, "Toleransi"
 > = `batas_tagihan` (satuan **BULAN**, dipakai untuk status **BLOKIR**),
 > sedangkan "Batas Tagihan Bulanan" = `tanggal_toleransi` (satuan
-> **TANGGAL**, dipakai untuk jatuh tempo). Di ASTALOKA pembagiannya
-> dibalik supaya tidak membingungkan: `batas_tagihan` sudah lama berisi
-> TANGGAL jatuh tempo dan dipakai di belasan tempat, jadi **jumlah
-> bulannya** dipisah ke kolom `billing_unpaid_limit` yang terpisah.
+> **TANGGAL**, dipakai untuk jatuh tempo). Di ASTALOKA dibedakan jelas:
+> `toleransi_tunggakan` = TANGGAL, `batas_tagihan` = JUMLAH BULAN.
 >
-> **Dua tanggal digabung jadi satu.** `batas_tagihan` (jatuh tempo) dan
-> `toleransi_tunggakan` (generate piutang) punya satuan yang sama — "hari ke
-> berapa dalam bulan" — jadi di ASTALOKA sekarang hanya ada **satu** input
-> tanggal, seperti di APK lama. Arahnya penting: sumbernya `batas_tagihan`,
-> karena `monthly_bills.due_date` yang sudah tersimpan dihitung dari situ —
-> kalau sumbernya `toleransi_tunggakan`, tagihan lama dan baru dalam bulan
-> yang sama akan punya jatuh tempo berbeda.
+> Tidak ada lagi kolom `billing_unpaid_limit`. Migration tenant
+> `2026_11_09_000001_align_billing_cycle_settings` memindahkan nilainya ke
+> `batas_tagihan`, menormalkan `recorded_at`, memperbaiki `due_date`, lalu
+> menghapus kolomnya.
 >
-> Konsekuensi yang disengaja: ini sekaligus memperbaiki bug advance payment.
-> Dulu ambang advance dibaca dari `toleransi_tunggakan` (30) sementara
-> `due_date` dihitung dari `batas_tagihan` (27), sehingga pembayaran tanggal
-> 28–30 salah flagged `ADVANCE` padahal tagihannya belum jatuh tempo.
->
-> Migration tenant `2026_10_31_000002_sync_toleransi_tunggakan_with_batas_tagihan`
-> menyamakan kedua kolom (idempoten) tanpa pernah menyentuh `batas_tagihan`.
+> Frontend menampilkan `monthly_bills.due_date` apa adanya — tidak
+> dikurangi satu hari. Kalau SOP tanggal belum diisi, sistem tidak memakai
+> angka cadangan 26/27; generate/edit tagihan ditolak atau report
+> menampilkan `-`.
 
 **Auto-suspend** (`MeterReadingController::store`) memakai angka **bulan**,
 dihitung dari tagihan unpaid yang jatuh temponya sudah lewat:
@@ -502,14 +487,14 @@ $bill = MonthlyBill::where('customer_id', $id)
 ```
 
 Jadi pelanggan yang menunggak **4 bulan** (tagihan tertua periode 4 bulan
-lalu) akan `suspended` kalau `billing_unpaid_limit` = 3. Tagihan yang jatuh
-temponya **belum sampai** tidak dihitung sebagai tunggakan.
+lalu) akan `suspended` kalau `settings.batas_tagihan` = 3. Tagihan yang
+jatuh temponya **belum sampai** tidak dihitung sebagai tunggakan.
 
-> **Nilai kosong = 3 bulan.** `billing_unpaid_limit` nullable tanpa default,
-> jadi lokasi yang belum pernah menyimpan SOP punya `NULL` di sana.
-> `NULL` dibaca sebagai 3 (bawaan `SettingsSeeder`) supaya semua lokasi
-> punya perilaku auto-suspend yang sama sejak awal. Nilai `0` berarti
-> "tidak pernah memutus sambungan otomatis".
+> **Nilai kosong = 3 bulan untuk lokasi baru.** `SettingsSeeder` dan
+> `TenantManager` mengisi `batas_tagihan = 3`, sedangkan baris lama yang
+> belum punya nilai dibaca sebagai 0 — artinya auto-suspend dimatikan
+> sampai admin mengisi SOP. Nilai `0` memang berarti "tidak pernah memutus
+> sambungan otomatis".
 >
 > Pemutusannya tetap di tempat yang sama seperti sebelumnya — saat cater /
 > teknisi mencatat pemakaian air. Tidak ada pemicu auto-suspend baru.
@@ -689,7 +674,7 @@ tampil `1.676.823.680`, seharusnya `868.785.590`).
 | # | Aspek | APK Lama | APK Baru | Dampak |
 |---|---|---|---|---|
 | 1 | **Periode tagihan** | jatuh tempo | **pemakaian** | Angka tagihan per bulan **bergesar 1 bulan** |
-| 2 | **Jatuh tempo** | `tgl_pemakaian + 1 bulan` | **bulan berikutnya** (hari `batas_tagihan`) | **Sama** — pemakai bulan ini dibayar bulan depan |
+| 2 | **Jatuh tempo** | `tgl_pemakaian + 1 bulan` | **bulan pencatatan** (hari `toleransi_tunggakan`, geser ke bulan berikutnya kalau pencatatan lewat tanggal itu) | **Sama** — pemakai bulan ini dibayar bulan depan |
 | 3 | **Entitas tagihan** | tidak ada | `monthly_bills` + `bill_payments` | APK baru punya riwayat pembayaran riil |
 | 4 | **`amount`** | kumulatif | **mutasi per bulan** | APK baru harus jumlah ulang lintas tahun |
 | 5 | **TTD** | 2 laporan | **semua laporan** | APK baru siap cetak resmi |

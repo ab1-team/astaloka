@@ -66,32 +66,22 @@ export function useSop() {
   /*
    * Pengaturan tagihan.
    *
-   * DUA angka di sini, dan masing-masing punya satuan yang BERBEDA:
+   * DUA angka, DUA satuan yang berbeda:
    *
-   *   - `toleransiTunggakan`  : TANGGAL (1-31) untuk semua aturan berbasis
-   *                             tanggal -- jatuh tempo tagihan bulanan,
-   *                             generate piutang tiap bulan, dan deteksi
-   *                             advance payment. (Ambang pengakuan piutang
-   *                             TIDAK memakai angka ini: piutang diakui saat
-   *                             tanggal jatuh tempo sudah tercapai.)
-   *   - `batasBulanTunggakan` : JUMLAH BULAN tunggakan yang boleh ditoleransi
-   *                             sebelum sambungan pelanggan diputus.
+   *   - `toleransiTunggakan` : TANGGAL (1-31) akhir bayar / jatuh tempo.
+   *                           Jatuh tempo dihitung pada bulan pencatatan
+   *                           meter; kalau pencatatan lewat tanggal ini,
+   *                           jatuh tempo bergeser ke bulan berikutnya.
+   *   - `batasTagihan`       : JUMLAH BULAN tunggakan yang boleh
+   *                           ditoleransi sebelum sambungan pelanggan
+   *                           diputus (0 = tidak pernah putus otomatis).
    *
-   * Sebelumnya ada TIGA input: `batasTagihan` (tanggal jatuh tempo) dan
-   * `toleransiTunggakan` (tanggal generate piutang) berdampingan. Keduanya
-   * TANGGAL dalam bulan dengan satuan yang sama, jadi hanya bedanya nama --
-   * dan dua input untuk satu angka membuat admin mengira ada dua aturan
-   * yang harus diselaraskan sendiri, padahal di database keduanya bisa
-   * berisi angka berbeda (27 vs 30 di lokasi demo).
-   *
-   * Sekarang keduanya digabung jadi satu input "Toleransi Menunggak".
-   *
-   * `batasBulanTunggakan` disimpan di kolom `settings.billing_unpaid_limit`,
-   * yang memang sudah tersedia di database (nullable, tanpa default).
+   * Keduanya disimpan di kolom `settings.toleransi_tunggakan` dan
+   * `settings.batas_tagihan`. Tidak ada kolom ketiga.
    */
   const sistemTagihanForm = ref({
     toleransiTunggakan: 10,
-    batasBulanTunggakan: 3,
+    batasTagihan: 3,
   })
 
   // ---- CALK ----
@@ -134,30 +124,15 @@ export function useSop() {
       /*
        * Pengaturan tagihan.
        *
-       * Dipetakan eksplisit ke angka, bukan di-spread apa adanya: backend
-       * mengirim nilai yang sudah di-cast jadi integer, tapi `null` bisa
-       * muncul kalau baris `settings` belum ada sama sekali, dan `null` di
-       * dalam `<input type="number">` tampil sebagai string kosong yang
-       * tidak bisa di-submit sebagai angka.
-       *
-       * `toleransiTunggakan` adalah SATU angka tanggal. Backend mengirimnya
-       * juga di field `batasTagihan` (nilainya sama) supaya konsumen lama
-       * yang masih membaca `batasTagihan` -- `ReportCetakDaftarTagihan.vue`
-       * dan `BillingForm.vue` -- tidak perlu diubah. Yang dipakai form ini
-       * tetap `toleransiTunggakan`, karena itu nama yang tampil di
-       * halaman.
-       *
-       * `batasBulanTunggakan` punya bawaan 3, sama dengan default backend
-       * (`BillingTolerance::unpaidBillLimit()`), jadi kolom kosong di
-       * database tidak pernah tampil sebagai angka 0 yang berarti "tidak
-       * pernah memutus sambungan".
+       * Dipetakan eksplisit ke angka, bukan di-spread apa adanya: `null`
+       * bisa muncul kalau baris `settings` belum ada, dan `null` di dalam
+       * `<input type="number">` tampil sebagai string kosong yang tidak
+       * bisa di-submit sebagai angka.
        */
       if (data.sistemTagihan) {
         sistemTagihanForm.value = {
-          toleransiTunggakan: Number(
-            data.sistemTagihan.toleransiTunggakan ?? data.sistemTagihan.batasTagihan ?? 10,
-          ),
-          batasBulanTunggakan: Number(data.sistemTagihan.batasBulanTunggakan ?? 3),
+          toleransiTunggakan: Number(data.sistemTagihan.toleransiTunggakan ?? 10),
+          batasTagihan: Number(data.sistemTagihan.batasTagihan ?? 3),
         }
       }
 
@@ -281,17 +256,17 @@ export function useSop() {
     }
 
     /*
-     * Batas tunggakan (JUMLAH BULAN) punya rentang sendiri: 0-24.
+     * Batas tagihan (JUMLAH BULAN) punya rentang sendiri: 0-24.
      *
      * 0 itu sah -- artinya sambungan tidak boleh diputus otomatis sama
      * sekali -- jadi penolakannya hanya untuk angka negatif atau di atas
      * 24 bulan.
      */
-    const batasBulan = Number(sistemTagihanForm.value.batasBulanTunggakan)
+    const batasBulan = Number(sistemTagihanForm.value.batasTagihan)
 
     if (!Number.isFinite(batasBulan) || batasBulan < 0 || batasBulan > 24) {
       showErrorToast({
-        message: 'Batas tagihan bulanan harus antara 0 dan 24 bulan.',
+        message: 'Batas tagihan harus antara 0 dan 24 bulan.',
       })
 
       return
@@ -300,13 +275,15 @@ export function useSop() {
     try {
       isSaving.value = true
       await sopService.saveSistemTagihan({
-        // Satu angka tanggal untuk semua aturan. `batasTagihan` ikut
-        // dikirim dengan nilai yang sama supaya endpoint tetap kompatibel
-        // dengan klien lama yang masih mengirim kedua field itu.
         toleransiTunggakan: toleransi,
-        batasTagihan: toleransi,
-        batasBulanTunggakan: batasBulan,
+        batasTagihan: batasBulan,
       })
+
+      // Sinkronkan store lokal supaya komponen lain yang sudah terbuka
+      // langsung memakai SOP terbaru tanpa menunggu halaman dimuat ulang.
+      settingsStore.setToleransiTunggakan(toleransi)
+      settingsStore.setBatasTagihan(batasBulan)
+
       showSuccessToast('Sistem Tagihan berhasil disimpan')
     } catch (error) {
       showErrorToast(error)

@@ -7,7 +7,7 @@ use App\Http\Controllers\Concerns\GeneratesSafeUploadNames;
 use App\Models\Customer;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
-use App\Services\BillingDueDate;
+use App\Services\BillingCycleSettings;
 use App\Services\BillingService;
 use App\Services\BillingTolerance;
 use App\Services\UnpaidMonths;
@@ -219,38 +219,23 @@ class MeterReadingController extends Controller
             ? $this->storeUploadedImage($request->file('photo'), 'meter-readings')
             : null;
 
-        // Satu angka TANGGAL dari SOP dipakai untuk dua tanggal sekaligus:
-        // akhir periode pemakaian (`recorded_at`) dan jatuh tempo
-        // (`due_date`). `BillingTolerance::tanggal()` yang memutuskan
-        // angkanya -- termasuk saat `batas_tagihan` masih 0 karena SOP belum
-        // pernah disimpan. Dulu controller ini membaca kolomnya langsung dan
-        // menganggap 0 sebagai tanggal sah, padahal 0 berarti "belum diisi".
-        $batasTagihan = app(BillingTolerance::class)->tanggal();
+        // Tanggal akhir bayar berasal dari SOP (`toleransi_tunggakan`).
+        // Kalau belum diisi, jangan diam-diam memakai angka lain.
+        $dueDay = BillingCycleSettings::dueDay();
 
-        if ($batasTagihan === 0) {
-            $batasTagihan = BillingDueDate::DEFAULT_BATAS_TAGIHAN;
+        if ($dueDay < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tanggal Toleransi Menunggak belum diisi di SOP. Isi dulu di halaman SOP sebelum mencatat pemakaian.',
+            ], 422);
         }
 
-        // Waktu pencatatan meter = hari `batas_tagihan` di dalam bulan
-        // PEMAKAIAN, bukan bulan tagihannya.
-        //
-        // `recorded_at` dipakai frontend sebagai "TANGGAL AKHIR" pemakaian
-        // (lihat `usePemakaianAir.js`: `tanggalAkhir = reading_recorded_at
-        // || due_date`), jadi nilainya harus menunjuk ke batas akhir periode
-        // pemakaian -- bukan ke tanggal jatuh temponya yang sudah digeser
-        // ke bulan berikutnya.
-        //
-        // Meter dibaca di sekitar hari `batas_tagihan` bulan berjalan, lalu
-        // tagihannya dibayar pada bulan berikutnya.
-        //
-        // Rumus tanggalnya ada di `BillingDueDate::inUsageMonth()` supaya
-        // jalur lain yang juga membuat `MeterReading` (edit pemakaian, seed
-        // data demo) menghasilkan tanggal yang sama. Jam di bawah tetap jam
-        // pencatatan sebenarnya -- yang dipakai frontend hanya tanggalnya.
-        $recordedAt = BillingDueDate::inUsageMonth($tahun, $bulan, $batasTagihan)
-            ->setTimeFrom(now());
+        // `recorded_at` = waktu pencatatan meter yang sebenarnya. Ini
+        // patokan jatuh tempo: tanggal toleransi di bulan pencatatan, atau
+        // bulan berikutnya kalau pencatatan lewat tanggal toleransi.
+        $recordedAt = now();
 
-        $result = DB::transaction(function () use ($request, $customer, $bulan, $tahun, $fileName, $recordedAt, $batasTagihan) {
+        $result = DB::transaction(function () use ($request, $customer, $bulan, $tahun, $fileName, $recordedAt, $dueDay) {
             $reading = MeterReading::create([
                 'customer_id' => $customer->id,
                 'recorded_by' => Auth::id(),
@@ -262,7 +247,7 @@ class MeterReadingController extends Controller
             ]);
 
             $bill = app(BillingService::class)
-                ->generateForCustomer($customer, $tahun, $bulan, $batasTagihan);
+                ->generateForCustomer($customer, $tahun, $bulan, $dueDay);
 
             return ['reading' => $reading, 'bill' => $bill, 'customer' => $customer];
         });
@@ -274,8 +259,8 @@ class MeterReadingController extends Controller
          *
          * Satuannya JUMLAH BULAN -- bukan tanggal dalam bulan dan bukan
          * jumlah tagihan. Angka ini dibaca dari kolom
-         * `settings.billing_unpaid_limit`, yang terpisah dari
-         * `toleransi_tunggakan` justru karena satuannya berbeda.
+         * `settings.batas_tagihan`, terpisah dari `toleransi_tunggakan`
+         * (yang satuannya TANGGAL) justru karena satuannya berbeda.
          *
          * Yang dibandingkan adalah JUMLAH BULAN menunggak, bukan jumlah
          * baris tagihan unpaid. Alasannya: yang ditanyakan admin adalah

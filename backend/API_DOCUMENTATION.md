@@ -438,40 +438,28 @@ php artisan billing:generate-overdue-transactions --force
 | POST | `/api/settings/sop/logo` | SopController | Perbarui logo |
 | POST | `/api/settings/sop/whatsapp` | SopController | Perbarui whatsapp |
 
-**Sistem Tagihan (`toleransiTunggakan`, `batasBulanTunggakan`)**
+**Sistem Tagihan (`toleransiTunggakan`, `batasTagihan`)**
 
-Dua angka dengan **satuan berbeda**, jadi masing-masing punya kolom sendiri:
+Dua angka, dua satuan, dua kolom:
 
 | Field API | Kolom `settings` | Satuan | Arti |
 |---|---|---|---|
-| `toleransiTunggakan` | `batas_tagihan` + `toleransi_tunggakan` | TANGGAL (1-31) | Satu angka untuk jatuh tempo tagihan, generate piutang, ambang piutang, dan deteksi advance payment |
-| `batasBulanTunggakan` | `billing_unpaid_limit` | **JUMLAH BULAN** (0-24) | Batas tunggakan sebelum sambungan pelanggan di-`suspended` |
+| `toleransiTunggakan` | `toleransi_tunggakan` | TANGGAL (1-31) | Tanggal akhir bayar / jatuh tempo (TGL AKHIR BAYAR). Jatuh tempo dihitung pada bulan pencatatan meter: pencatatan s.d. tanggal ini = bulan itu; lewat tanggal ini = bulan berikutnya. |
+| `batasTagihan` | `batas_tagihan` | JUMLAH BULAN (0-24) | Batas tunggakan sebelum sambungan pelanggan di-`suspended`. `0` = tidak pernah memutus otomatis. |
 
-> **TWO FIELD TANGGAL DIGABUNG JADI SATU.** `batas_tagihan` (jatuh tempo)
-> dan `toleransi_tunggakan` (generate piutang) dulu bisa berisi angka
-> berbeda -- di lokasi demo 27 vs 30 -- padahal satuannya sama: "hari ke
-> berapa dalam bulan". Dua input untuk satu satuan yang sama bikin admin
-> mengira ada dua aturan terpisah. Sekarang halaman SOP hanya punya SATU
-> input tanggal, dan satu angka itu berlaku untuk keempat aturan berbasis
-> tanggal.
+> `batasBulanTunggakan` masih diterima/dikirim sebagai alias lama untuk
+> `batasTagihan`. Tidak ada lagi kolom `billing_unpaid_limit`; migration
+> tenant `2026_11_09_000001_align_billing_cycle_settings` memindahkan
+> nilainya ke `batas_tagihan`, lalu menghapus kolomnya.
 >
-> **Arahnya penting: sumbernya `batas_tagihan`.** `monthly_bills.due_date`
-> yang sudah tersimpan di database dihitung dari `batas_tagihan`. Kalau
-> sumbernya `toleransi_tunggakan` (= 30 di demo), jatuh tempo tagihan BARU
-> bergeser ke tanggal 30 sementara tagihan LAMA tetap tanggal 27 -- satu
-> bulan tagihan yang sama punya dua jatuh tempo berbeda.
+> Jatuh tempo memakai bulan PENCATATAN meter, bukan bulan pemakaian.
+> Contoh toleransi 26: pencatatan 2 Nov 2026 -> 26 Nov 2026; pencatatan
+> 29 Jan 2026 -> 26 Feb 2026. `meter_readings.recorded_at` menyimpan waktu
+> input sebenarnya, bukan tanggal akhir periode.
 >
-> `settings.toleransi_tunggakan` tidak dihapus: kolomnya tetap ada dan
-> tetap diisi dengan angka yang sama (salinan). Dipakai import legacy dan
-> dilacak lewat banyak query lama. Migration tenant
-> `2026_10_31_000002_sync_toleransi_tunggakan_with_batas_tagihan`
-> menyamakan keduanya (idempoten) tanpa menyentuh `batas_tagihan`.
->
-> Konsekuensi yang disengaja: ini sekaligus memperbaiki bug advance
-> payment. Dulu ambang advance dibaca dari `toleransi_tunggakan` (30)
-> sementara `due_date` dihitung dari `batas_tagihan` (27), jadi pembayaran
-> pada tanggal 28-30 salah flagged ADVANCE padahal tagihannya belum jatuh
-> tempo. Sekarang keduanya satu angka, jadi bug itu ikut hilang.
+> Kalau `toleransi_tunggakan` belum diisi, generate/edit tagihan ditolak;
+> tidak ada fallback angka 27 yang tersembunyi. Default lokasi baru:
+> `toleransi_tunggakan = 10`, `batas_tagihan = 3`.
 
 **Response `data.sistemTagihan` dari GET `/api/settings/sop`:**
 ```json
@@ -479,7 +467,7 @@ Dua angka dengan **satuan berbeda**, jadi masing-masing punya kolom sendiri:
     "success": true,
     "data": {
         "sistemTagihan": {
-            "batasTagihan": 27,
+            "batasTagihan": 3,
             "toleransiTunggakan": 27,
             "batasBulanTunggakan": 3
         }
@@ -487,43 +475,30 @@ Dua angka dengan **satuan berbeda**, jadi masing-masing punya kolom sendiri:
 }
 ```
 
-> GET mengirim `batasTagihan` dan `toleransiTunggakan` dengan nilai yang
-> SAMA. `batasTagihan` dipertahankan sebagai alias supaya consumer lama
-> (`ReportCetakDaftarTagihan.vue` memakai `settingsStore.batasTagihan`)
-> tetap jalan tanpa perubahan.
+> `batasTagihan` berisi JUMLAH BULAN, bukan tanggal. `batasBulanTunggakan`
+> adalah alias lama dengan nilai yang sama, dipertahankan supaya consumer
+> lama tetap jalan.
 
 **Request POST `/api/settings/sop/sistem-tagihan`:**
 ```json
 {
     "toleransiTunggakan": 27,
-    "batasBulanTunggakan": 3
+    "batasTagihan": 3
 }
 ```
 
-> `toleransiTunggakan` WAJIB diisi, rentang 1-31. `batasBulanTunggakan`
-> WAJIB diisi, rentang 0-24.
+> `toleransiTunggakan` WAJIB diisi, rentang 1-31. `batasTagihan` WAJIB
+> diisi, rentang 0-24. `batasBulanTunggakan` masih diterima sebagai alias
+> lama kalau `batasTagihan` tidak dikirim.
 >
-> `batasTagihan` masih diterima sebagai **alias legacy** (opsional). Kalau
-> dikirim, nilainya harus sama dengan `toleransiTunggakan` -- kalau beda,
-> request ditolak dengan `422`. Alasannya: kalau dua input diizinkan
-> berbeda, yang tersimpan hanya satu angka, jadi angka yang "kalah" akan
-> hilang tanpa jejak.
+> Keduanya **tidak** harus sama: `toleransiTunggakan` adalah tanggal,
+> sedangkan `batasTagihan` adalah jumlah bulan.
 >
-> Menyimpan lewat endpoint ini menulis kedua kolom `settings` dengan angka
-> yang sama: `batas_tagihan` = `toleransi_tunggakan` = `toleransiTunggakan`.
->
-> `batasBulanTunggakan` yang kosong di database (`NULL`) dibaca sebagai **3
-> bulan** — bawaan yang sama dengan `SettingsSeeder`, supaya lokasi yang
-> belum pernah menyimpan SOP tetap punya perilaku auto-suspend yang seragam.
-> Nilai `0` berarti "tidak pernah memutus sambungan otomatis".
->
-> Yang dibandingkan adalah **jumlah bulan** sejak tagihan paling lama
-> unpaid yang jatuh temponya sudah lewat (`App\Services\UnpaidMonths`),
-> **bukan jumlah tagihan**. Pemutusannya tetap di `MeterReadingController::store`
-> (saat cater/teknisi mencatat pemakaian) — tidak ada pemicu baru.
->
-> `billing_unpaid_limit` nullable tanpa default; migration tenant
-> `2026_10_31_000001_fill_billing_unpaid_limit_default` mengisi `NULL` → 3.
+> Yang dibandingkan untuk auto-suspend adalah **jumlah bulan** sejak
+> tagihan paling lama unpaid yang jatuh temponya sudah lewat
+> (`App\Services\UnpaidMonths`), **bukan jumlah tagihan**. Pemutusannya
+> tetap di `MeterReadingController::store` (saat cater/teknisi mencatat
+> pemakaian) — tidak ada pemicu baru.
 
 **Pengaturan pemakaian (`autoOpenMeterCamera`)**
 
@@ -699,6 +674,41 @@ otomatis, bukan apakah fitur scan boleh dipakai.
 ---
 
 ## 3. Changelog
+
+### v1.5 (2026-11-09) — Dua Kolom SOP: Tanggal Jatuh Tempo dan Batas Bulan
+
+**Baru:**
+- `App\Services\BillingCycleSettings` — satu sumber aturan siklus tagihan:
+  `dueDay()` + `dueDate()` membaca `settings.toleransi_tunggakan`, sedangkan
+  `arrearsLimit()` membaca `settings.batas_tagihan`.
+- Migration tenant `2026_11_09_000001_align_billing_cycle_settings` —
+  memindahkan nilai `billing_unpaid_limit` ke `batas_tagihan`, menormalkan
+  `meter_readings.recorded_at`, menghitung ulang `due_date` tagihan belum
+  lunas, lalu menghapus kolom `billing_unpaid_limit`.
+
+**Diubah:**
+- Jatuh tempo dihitung dari **bulan pencatatan meter**: pencatatan s.d.
+  tanggal `toleransi_tunggakan` jatuh tempo di bulan itu; lewat tanggal itu
+  bergeser ke bulan berikutnya.
+- `toleransiTunggakan` = TANGGAL (1-31) dan `batasTagihan` = JUMLAH BULAN
+  (0-24). Keduanya tidak lagi harus sama; `batasBulanTunggakan` hanya alias.
+- `meter_readings.recorded_at` diisi waktu input sebenarnya, bukan tanggal
+  akhir periode.
+- Tidak ada fallback angka 27 di backend/frontend. Kalau SOP belum diisi,
+  generate/edit tagihan ditolak atau menampilkan `-`; kalau `batasTagihan`
+  = 0, auto-suspend dimatikan.
+- Frontend menampilkan `monthly_bills.due_date` apa adanya (tidak dikurangi
+  satu hari).
+
+**Perbaikan:**
+- Tagihan lama dan baru memakai arti kolom yang sama, sehingga tidak ada
+  lagi dua jatuh tempo berbeda untuk bulan tagihan yang sama.
+- Previews/payment memakai `due_date` tersimpan; report dan halaman cetak
+  tidak lagi menanam angka 26/27 di kode.
+
+**Test regresi:**
+- `BillingDueDateTest`, `BillingToleranceTest`, `UpdatePemakaianAirTest`,
+  dan test billing lain memakai SOP dua kolom.
 
 ### v1.4 (2026-11-04) — Perbaiki Pengakuan Piutang Bulan Berjalan
 

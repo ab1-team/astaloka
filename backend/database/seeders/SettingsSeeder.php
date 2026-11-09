@@ -21,35 +21,18 @@ class SettingsSeeder extends Seeder
                 'domain' => 'https://tirtomulo.desa.id',
                 'status_pembayaran' => true,
                 /*
-                 * SATU ANGKA TANGGAL untuk semua aturan berbasis tanggal.
+                 * DUA kolom, DUA fungsi:
                  *
-                 * `batas_tagihan` = TANGGAL jatuh tempo (dan, setelah
-                 * penggabungan dua kolom, juga tanggal generate piutang,
-                 * ambang piutang, serta ambang advance payment).
+                 * `toleransi_tunggakan` = TANGGAL akhir bayar / jatuh tempo.
+                 * `batas_tagihan` = JUMLAH BULAN tunggakan sebelum
+                 * sambungan pelanggan diputus.
                  *
-                 * `toleransi_tunggakan` = SALINAN dari angka yang sama.
-                 * Kolomnya tidak dihapus -- masih dilacak importer legacy
-                 * dan dipakai `BillingTolerance` -- tapi isinya selalu
-                 * sama dengan `batas_tagihan`, jadi tidak ada lagi dua
-                 * tanggal yang bisa saling bertentangan.
-                 *
-                 * Angka 10 diambil dari `batas_tagihan` bawaan lama, jadi
-                 * tagihan yang sudah ada tidak bergeser.
+                 * Nilainya hanya titik awal lokasi baru. Setelah itu admin
+                 * mengubahnya lewat halaman SOP, dan seluruh sistem membaca
+                 * dari kolom yang sama.
                  */
-                'batas_tagihan' => 10,
                 'toleransi_tunggakan' => 10,
-                /*
-                 * Batas tunggakan dalam BULAN sebelum sambungan diputus.
-                 *
-                 * Satuannya berbeda dari dua di atas: yang ini JUMLAH BULAN,
-                 * sedangkan `batas_tagihan`/`toleransi_tunggakan` adalah
-                 * TANGGAL dalam bulan.
-                 *
-                 * Diisi eksplisit (bukan dibiarkan NULL) supaya angka yang
-                 * tampil di halaman SOP langsung terisi, dan supaya semua
-                 * lokasi punya titik awal yang sama.
-                 */
-                'billing_unpaid_limit' => 3,
+                'batas_tagihan' => 3,
                 'logo' => null,
                 'pesan_tagihan' => 'Yth. {customer}, tagihan layanan bulan ini sebesar {jumlah_tagihan}. Mohon segera melakukan pembayaran sebelum jatuh tempo. Terima kasih.',
                 'pesan_pembayaran' => 'Yth. {customer}, pembayaran tagihan sebesar {tagihan} telah kami terima. Terima kasih.',

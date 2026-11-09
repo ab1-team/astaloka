@@ -196,9 +196,9 @@ const jamCetak = computed(() =>
 /**
  * "Tgl Akhir Pembayaran" pada kop laporan.
  *
- * Label ini berarti batas akhir SUDAH BAYAR -- jadi satu hari SEBELUM
- * tanggal jatuh tempo. Kalau tagihannya jatuh tempo 27 Agustus, maka
- * pembayaran terakhirnya 26 Agustus.
+ * Label ini memakai tanggal jatuh tempo tagihan APA ADANYA. Kalau tagihannya
+ * jatuh tempo 27 Agustus, maka pembayaran terakhirnya juga 27 Agustus --
+ * backend menandai tagihan menunggak baru pada `due_date < hari ini`.
  *
  * Sumbernya `jatuhTempo` milik baris data, jadi tidak ada tanggal yang
  * diketik manual di sini. Fallback-nya (kalau baris data tidak punya
@@ -218,20 +218,17 @@ const tanggalAkhir = computed(() => {
     const y = parseInt(f.tahun, 10)
     if (!m || !Number.isFinite(y)) return '-'
 
-    // Bulan tagihan = bulan pemakaian + 1 (aturan "dibayar bulan
-    // berikutnya").
-    const next = m === 12 ? { m: 1, y: y + 1 } : { m: m + 1, y }
+    // Jatuh tempo dihitung pada BULAN PENCATATAN meter. Untuk fallback
+    // tanpa baris tagihan, bulan pemakaian dipakai sebagai bulan
+    // pencatatan; tanggal 1 selalu <= toleransi, jadi jatuh temponya masih
+    // di bulan yang sama.
+    const toleransi = Number(props.payload?.toleransiTunggakan || 0)
+    if (toleransi < 1) return '-'
 
-    // Toleransi tunggakan (tanggal jatuh tempo) dikirim oleh halaman cetak
-    // lewat `payload.toleransiTunggakan`. Kalau tidak ada -- misalnya
-    // halaman dibuka tanpa query -- dipakai angka bawaan 27.
-    const toleransi = Number(props.payload?.toleransiTunggakan || 27)
-    const maxDay = new Date(next.y, next.m, 0).getDate()
-    // Batas akhir bayar = hari toleransi - 1 hari.
-    const day = Math.min(Math.max(1, toleransi - 1), maxDay)
+    const maxDay = new Date(y, m, 0).getDate()
+    const day = Math.min(Math.max(1, toleransi), maxDay)
 
-    const d = new Date(next.y, next.m - 1, day)
-    d.setDate(d.getDate() - 1)
+    const d = new Date(y, m - 1, day)
 
     return d.toLocaleDateString('id-ID', {
       day: '2-digit',
@@ -242,7 +239,6 @@ const tanggalAkhir = computed(() => {
 
   const d = parseLocalDate(withDue.jatuhTempo)
   if (!d) return '-'
-  d.setDate(d.getDate() - 1)
   return d.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: 'long',
