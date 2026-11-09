@@ -22,7 +22,6 @@ class Setting extends Model
         'status_pembayaran',
         'batas_tagihan',
         'toleransi_tunggakan',
-        'billing_unpaid_limit',
         'auto_open_meter_camera',
         'logo',
         'pesan_tagihan',
@@ -33,7 +32,6 @@ class Setting extends Model
         'status_pembayaran' => 'boolean',
         'batas_tagihan' => 'integer',
         'toleransi_tunggakan' => 'integer',
-        'billing_unpaid_limit' => 'integer',
         'auto_open_meter_camera' => 'boolean',
         'calk' => 'array',
     ];

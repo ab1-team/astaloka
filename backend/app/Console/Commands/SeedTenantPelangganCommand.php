@@ -11,13 +11,11 @@ use App\Models\InstallationTicketHistory;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
 use App\Models\Payment;
-use App\Models\Setting;
 use App\Models\SurveyResult;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Village;
 use App\Services\AmountRecalculator;
-use App\Services\BillingDueDate;
 use App\Services\BillingService;
 use App\Services\SuspendTransactionsTrigger;
 use App\Services\TenantManager;
@@ -327,7 +325,6 @@ class SeedTenantPelangganCommand extends Command
         $this->jurnalUserId = (int) $admin->id;
 
         $billing = app(BillingService::class);
-        $batasTagihan = (int) (Setting::first()?->batas_tagihan ?? 27);
 
         foreach ($this->rencanaPelanggan() as $i => $rencana) {
             $village = $desa[$rencana['village_code']];
@@ -410,8 +407,7 @@ class SeedTenantPelangganCommand extends Command
                     $rencana,
                     $teknisi->id,
                     $admin->id,
-                    $billing,
-                    $batasTagihan
+                    $billing
                 );
             }
 
@@ -563,8 +559,7 @@ class SeedTenantPelangganCommand extends Command
         array $rencana,
         int $teknisiId,
         int $adminId,
-        BillingService $billing,
-        int $batasTagihan
+        BillingService $billing
     ): array {
         $hasil = [];
         $meter = (float) $rencana['meter_awal'];
@@ -581,11 +576,12 @@ class SeedTenantPelangganCommand extends Command
                 'reading_month' => $bulan,
                 'meter_value' => $meter,
                 'photo_url' => null,
-                'recorded_at' => BillingDueDate::inUsageMonth($tahun, $bulan, $batasTagihan)
-                    ->setTime(9, 0),
+                // Awal periode = tanggal pencatatan. Jatuh tempo dihitung
+                // dari tanggal ini dengan SOP (`toleransi_tunggakan`).
+                'recorded_at' => Carbon::create($tahun, $bulan, 1)->setTime(9, 0),
             ]);
 
-            $bill = $billing->generateForCustomer($customer, $tahun, $bulan, $batasTagihan);
+            $bill = $billing->generateForCustomer($customer, $tahun, $bulan);
 
             $payment = null;
 

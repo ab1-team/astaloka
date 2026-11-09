@@ -357,16 +357,15 @@ const formatRupiah = (val) =>
 /**
  * Tanggal jatuh tempo.
  *
- * Dikurangi satu hari, sama seperti di tabel: backend mengirim batas
- * akhir pembayaran yang sudah digeser ke hari berikutnya, jadi angka
- * yang ditampilkan harus dikembalikan satu hari agar sama dengan
- * yang dicetak di struk.
+ * `due_date` dari backend SUDAH tanggal jatuh tempo itu sendiri (hari
+ * `batas_tagihan`/`toleransi_tunggakan`). Backend juga memakai tanggal yang
+ * sama untuk menandai tunggakan (`due_date < hari ini`), jadi tanggalnya
+ * ditampilkan APA ADANYA -- tidak dikurangi satu hari.
  */
 const formatDate = (val) => {
   if (!val) return '-'
   const d = new Date(val)
   if (Number.isNaN(d.getTime())) return val
-  d.setDate(d.getDate() - 1)
   return d.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: '2-digit',

@@ -7,6 +7,7 @@ use App\Models\InstallationPackage;
 use App\Models\InstallationTicket;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\WaterTariffBlock;
 use App\Services\BillingService;
@@ -72,6 +73,12 @@ class LeastPrivilegeTagihanTest extends TestCase
         ]);
 
         $this->billing = new BillingService;
+
+        Setting::create([
+            'key' => 'sop',
+            'toleransi_tunggakan' => 26,
+            'batas_tagihan' => 3,
+        ]);
     }
 
     private function makePaket(): InstallationPackage

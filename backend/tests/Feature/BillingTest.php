@@ -6,6 +6,8 @@ use App\Models\Customer;
 use App\Models\InstallationPackage;
 use App\Models\InstallationTicket;
 use App\Models\MeterReading;
+use App\Models\MonthlyBill;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\WaterTariffBlock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -24,20 +26,27 @@ class BillingTest extends TestCase
     {
         parent::setUp();
         $this->admin = User::create([
-            'name'     => 'Admin Test',
-            'email'    => 'admin@pdam.test',
+            'name' => 'Admin Test',
+            'email' => 'admin@pdam.test',
             'password' => Hash::make('password'),
-            'role'     => 'admin',
+            'role' => 'admin',
+        ]);
+
+        Setting::create([
+            'key' => 'sop',
+            'toleransi_tunggakan' => 26,
+            'batas_tagihan' => 3,
         ]);
     }
+
     private function setupCustomerWithMeterReading(): array
     {
         // Buat paket
         $package = InstallationPackage::create([
-            'name'             => 'Paket Test',
+            'name' => 'Paket Test',
             'installation_fee' => 1_500_000,
             'monthly_abodemen' => 15_000,
-            'late_penalty'     => 10_000,
+            'late_penalty' => 10_000,
         ]);
 
         WaterTariffBlock::insert([
@@ -48,51 +57,51 @@ class BillingTest extends TestCase
 
         // Buat user pelanggan
         $userPelanggan = User::create([
-            'name'     => 'Pelanggan Test',
-            'email'    => 'pelanggan@pdam.test',
+            'name' => 'Pelanggan Test',
+            'email' => 'pelanggan@pdam.test',
             'password' => Hash::make('password'),
-            'role'     => 'pelanggan',
+            'role' => 'pelanggan',
         ]);
 
         // Buat tiket
         $admin = $this->admin;
         $ticket = InstallationTicket::create([
-            'package_id'     => $package->id,
+            'package_id' => $package->id,
             'applicant_name' => 'Pelanggan Test',
-            'nik'            => '3300000000000001',
-            'address'        => 'Jl. Test No. 1',
-            'lat'            => -7.797068,
-            'lng'            => 110.370529,
-            'status'         => 'completed',
-            'created_by'     => $admin->id,
+            'nik' => '3300000000000001',
+            'address' => 'Jl. Test No. 1',
+            'lat' => -7.797068,
+            'lng' => 110.370529,
+            'status' => 'completed',
+            'created_by' => $admin->id,
         ]);
 
         // Buat customer
         $customer = Customer::create([
-            'ticket_id'             => $ticket->id,
-            'user_id'               => $userPelanggan->id,
-            'customer_code'         => 'PDAM-TEST-00001',
+            'ticket_id' => $ticket->id,
+            'user_id' => $userPelanggan->id,
+            'customer_code' => 'PDAM-TEST-00001',
             'initial_meter_reading' => 0,
-            'meter_photo_url'       => '/storage/test.jpg',
-            'activated_at'          => now(),
+            'meter_photo_url' => '/storage/test.jpg',
+            'activated_at' => now(),
         ]);
 
         // Buat meter reading bulan ini
         $teknisi = User::create([
-            'name'     => 'Teknisi Test',
-            'email'    => 'teknisi@pdam.test',
+            'name' => 'Teknisi Test',
+            'email' => 'teknisi@pdam.test',
             'password' => Hash::make('password'),
-            'role'     => 'teknisi',
+            'role' => 'teknisi',
         ]);
 
         MeterReading::create([
-            'customer_id'   => $customer->id,
-            'recorded_by'   => $teknisi->id,
-            'reading_year'  => now()->year,
+            'customer_id' => $customer->id,
+            'recorded_by' => $teknisi->id,
+            'reading_year' => now()->year,
             'reading_month' => now()->month,
-            'meter_value'   => 25,
-            'photo_url'     => '/storage/test.jpg',
-            'recorded_at'   => now(),
+            'meter_value' => 25,
+            'photo_url' => '/storage/test.jpg',
+            'recorded_at' => now(),
         ]);
 
         return compact('package', 'customer', 'ticket');
@@ -107,18 +116,18 @@ class BillingTest extends TestCase
         $this->setupCustomerWithMeterReading();
 
         $response = $this->postJson('/api/bills/generate', [
-            'year'  => now()->year,
+            'year' => now()->year,
             'month' => now()->month,
         ]);
 
         $response->assertStatus(201)
-                 ->assertJson([
-                     'success' => true,
-                     'data'    => [
-                         'message'     => 'Tagihan berhasil digenerate.',
-                         'total_bills' => 1,
-                     ],
-                 ]);
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'message' => 'Tagihan berhasil digenerate.',
+                    'total_bills' => 1,
+                ],
+            ]);
     }
 
     #[Test]
@@ -129,46 +138,46 @@ class BillingTest extends TestCase
 
         // Setup customer tanpa meter reading
         $package = InstallationPackage::create([
-            'name'             => 'Paket Test',
+            'name' => 'Paket Test',
             'installation_fee' => 1_500_000,
             'monthly_abodemen' => 15_000,
-            'late_penalty'     => 10_000,
+            'late_penalty' => 10_000,
         ]);
 
         $userPelanggan = User::create([
-            'name'     => 'Pelanggan Test',
-            'email'    => 'pelanggan@pdam.test',
+            'name' => 'Pelanggan Test',
+            'email' => 'pelanggan@pdam.test',
             'password' => Hash::make('password'),
-            'role'     => 'pelanggan',
+            'role' => 'pelanggan',
         ]);
 
         $ticket = InstallationTicket::create([
-            'package_id'     => $package->id,
+            'package_id' => $package->id,
             'applicant_name' => 'Pelanggan Test',
-            'nik'            => '3300000000000001',
-            'address'        => 'Jl. Test No. 1',
-            'lat'            => -7.797068,
-            'lng'            => 110.370529,
-            'status'         => 'completed',
-            'created_by'     => $admin->id,
+            'nik' => '3300000000000001',
+            'address' => 'Jl. Test No. 1',
+            'lat' => -7.797068,
+            'lng' => 110.370529,
+            'status' => 'completed',
+            'created_by' => $admin->id,
         ]);
 
         Customer::create([
-            'ticket_id'             => $ticket->id,
-            'user_id'               => $userPelanggan->id,
-            'customer_code'         => 'PDAM-TEST-00001',
+            'ticket_id' => $ticket->id,
+            'user_id' => $userPelanggan->id,
+            'customer_code' => 'PDAM-TEST-00001',
             'initial_meter_reading' => 0,
-            'meter_photo_url'       => '/storage/test.jpg',
-            'activated_at'          => now(),
+            'meter_photo_url' => '/storage/test.jpg',
+            'activated_at' => now(),
         ]);
 
         $response = $this->postJson('/api/bills/generate', [
-            'year'  => now()->year,
+            'year' => now()->year,
             'month' => now()->month,
         ]);
 
         $response->assertStatus(422)
-                 ->assertJson(['success' => false]);
+            ->assertJson(['success' => false]);
     }
 
     #[Test]
@@ -181,18 +190,18 @@ class BillingTest extends TestCase
 
         // Generate pertama
         $this->postJson('/api/bills/generate', [
-            'year'  => now()->year,
+            'year' => now()->year,
             'month' => now()->month,
         ]);
 
         // Generate kedua — harus gagal
         $response = $this->postJson('/api/bills/generate', [
-            'year'  => now()->year,
+            'year' => now()->year,
             'month' => now()->month,
         ]);
 
         $response->assertStatus(422)
-                 ->assertJson(['success' => false]);
+            ->assertJson(['success' => false]);
     }
 
     #[Test]
@@ -205,7 +214,7 @@ class BillingTest extends TestCase
 
         // Generate tagihan
         $generateResponse = $this->postJson('/api/bills/generate', [
-            'year'  => now()->year,
+            'year' => now()->year,
             'month' => now()->month,
         ]);
         $generateResponse->assertStatus(201);
@@ -213,12 +222,12 @@ class BillingTest extends TestCase
         $billId = $generateResponse->json('data.0.id')
             ?? $generateResponse->json('data.id')
             ?? $generateResponse->json('data.0.data.id')
-            ?? \App\Models\MonthlyBill::latest('id')->first()?->id;
+            ?? MonthlyBill::latest('id')->first()?->id;
 
         // Lihat detail tagihan
         $response = $this->getJson("/api/bills/{$billId}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 }

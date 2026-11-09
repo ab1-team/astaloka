@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Customer;
 use App\Models\MeterReading;
 use App\Models\MonthlyBill;
-use App\Models\Setting;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -117,15 +116,18 @@ class BillRecalculationService
                 ]);
             }
 
-            $settings = Setting::first();
-            $batasTagihan = (int) ($settings?->batas_tagihan ?? 27);
+            $dueDate = BillingCycleSettings::dueDate($currentReading?->recorded_at ?? now());
+
+            if ($dueDate === null) {
+                throw new \RuntimeException('Tanggal Toleransi Menunggak belum diisi di SOP.');
+            }
 
             $bill = MonthlyBill::create(array_merge($after, [
                 'customer_id' => $customer->id,
                 'billing_period_year' => $year,
                 'billing_period_month' => $month,
                 'status' => $status,
-                'due_date' => $this->billingService->computeDueDate($year, $month, $batasTagihan),
+                'due_date' => $dueDate,
             ]));
 
             return [

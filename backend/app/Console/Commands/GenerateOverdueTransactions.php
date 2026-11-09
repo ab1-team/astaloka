@@ -37,7 +37,7 @@ class GenerateOverdueTransactions extends Command
         //
         // Kenapa begitu? Karena generate hanya jalan SATU HARI dalam bulan,
         // dan tanggal jalannya diambil dari angka yang SAMA dengan tanggal
-        // jatuh tempo tagihan (`settings.batas_tagihan`). Ambang lama
+        // jatuh tempo tagihan (`settings.toleransi_tunggakan`). Ambang lama
         // (`today - N hari`, dengan N = angka "hari ke berapa dalam bulan")
         // karena itu selalu jatuh di AKHIR BULAN SEBELUMNYA -- sehingga
         // tagihan periode M (jatuh tempo di bulan M+1) baru dijurnal pada

@@ -112,24 +112,17 @@ const settingsStore = useSettingsStore()
 /**
  * Tanggal jatuh tempo tagihan (hari ke berapa dalam bulan).
  *
- * Dipakai untuk kop "Tgl Akhir Pembayaran" saat daftar belum punya tagihan.
- *
- * `settingsStore.toleransiTunggakan` adalah sumbernya, tapi endpoint
- * `GET /settings/sop` itu `role:admin` -- jadi TEKNISI selalu kena 403 dan
- * store-nya tidak pernah ter-load. Nilai bawaan store (10) bukan tanggal
- * jatuh tempo yang sebenarnya; backend memakai 27
- * (`BillingDueDate::DEFAULT_BATAS_TAGIHAN`), jadi angka itu yang ditulis
- * eksplisit di sini.
- *
- * Tanpa ini, laporan yang dicetak teknisi menulis tanggal akhir bayar yang
- * salah -- dan gejalanya tidak kelihatan, karena kop tetap tercetak rapi.
+ * Dipakai untuk kop "Tgl Akhir Pembayaran" saat daftar belum punya
+ * tagihan. Kalau SOP belum termuat (mis. endpoint admin menolak role
+ * teknisi), nilai 0 membuat label ditampilkan sebagai "-" -- lebih baik
+ * kosong daripada menulis tanggal yang belum tentu benar.
  */
 const toleransiTunggakan = computed(() => {
-  if (!settingsStore.isLoaded) return 27
+  if (!settingsStore.isLoaded) return 0
 
   const nilai = Number(settingsStore.toleransiTunggakan)
 
-  return nilai >= 1 && nilai <= 31 ? nilai : 27
+  return nilai >= 1 && nilai <= 31 ? nilai : 0
 })
 
 const PAGE_CONFIG = { paper_size: 'A4', orientation: 'portrait' }

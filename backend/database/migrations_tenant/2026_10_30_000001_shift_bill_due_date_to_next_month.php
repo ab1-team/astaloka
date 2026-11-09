@@ -72,8 +72,9 @@ return new class extends Migration
             return;
         }
 
-        $batasTagihan = (int) (DB::table('settings')->value('batas_tagihan')
-            ?: BillingDueDate::DEFAULT_BATAS_TAGIHAN);
+        $batasTagihan = (int) (DB::table('settings')->value('toleransi_tunggakan')
+            ?: DB::table('settings')->value('batas_tagihan')
+            ?: 1);
 
         DB::table('monthly_bills')
             ->whereNull('deleted_at')
@@ -127,8 +128,9 @@ return new class extends Migration
             return;
         }
 
-        $batasTagihan = (int) (DB::table('settings')->value('batas_tagihan')
-            ?: BillingDueDate::DEFAULT_BATAS_TAGIHAN);
+        $batasTagihan = (int) (DB::table('settings')->value('toleransi_tunggakan')
+            ?: DB::table('settings')->value('batas_tagihan')
+            ?: 1);
 
         DB::table('monthly_bills')
             ->whereNull('deleted_at')
